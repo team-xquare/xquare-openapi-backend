@@ -29,6 +29,7 @@ API 스펙이 있습니다.
 ## 로컬 실행에 필요한 환경변수
 
 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `REDIS_HOST`, `REDIS_PORT`, `JWT_SECRET`(32바이트 이상이어야 하고, 짧으면 앱이 뜨지 않음).
+`CORS_ALLOWED_ORIGINS`는 쉼표로 구분한 허용 origin 목록이다(예: `http://localhost:3000,https://example.com`). 비워 두면 브라우저의 다른 origin 요청이 모두 막힌다.
 `JPA_DDL_AUTO`는 기본값이 `validate`다. 마이그레이션 도구가 없으므로 빈 DB에서는 테이블이 먼저 있어야 한다.
 
 `src/test/resources/application.yaml`은 main 설정을 덮는 게 아니라 통째로 대신한다(H2, 테스트용 JWT secret). 새 설정 키를 추가하면 두 파일 모두에 넣는다.
@@ -43,6 +44,7 @@ API 스펙이 있습니다.
   - 비즈니스 로직은 API 하나당 UseCase 클래스 하나(`SignupUseCase.execute`)로 나눈다. OpenAPI 특성상 기능이 계속 늘어나서 서비스 하나에 몰리지 않게 하려는 것이다(PR #3 리뷰).
 - 에러 처리: `XquareException(ErrorCode.X)`를 던지면 `GlobalExceptionHandler`가 `{ "code", "message" }` 응답으로 바꾼다. 새 에러는 명세의 에러 코드 이름 그대로 `ErrorCode`에 추가한다. 입력 검증 실패와 JSON 파싱 실패는 모두 `400 INVALID_INPUT`이다.
 - 보안: `SecurityConfig`는 `POST /auth/signup` 외의 모든 요청에 인증을 요구한다. 공개 엔드포인트를 새로 만들면 여기에 `permitAll`을 추가해야 하고, 빠뜨리면 403이 난다. `ERROR` 디스패치(`/error` 포워드)도 허용해 둬야 한다. 막으면 415·500 같은 원래 응답이 모두 403으로 바뀐다. MockMvc는 이 포워드를 흉내 내지 않으므로 `ErrorDispatchTest`처럼 실제 서버로 확인한다. `PasswordEncoder`(BCrypt) 빈도 여기서 만든다.
+- CORS: `SecurityConfig`의 `cors { }`가 `corsConfigurationSource` 빈을 쓴다. 설정 값은 `global/cors/CorsProperties`에 있고, 허용 메서드는 GET/POST/PUT/PATCH/DELETE, 허용 헤더는 `Authorization`/`Content-Type`이다. 토큰을 헤더로 주고받으므로 credentials(쿠키)는 허용하지 않는다. preflight는 인증 검사보다 먼저 처리돼서 토큰 없이 통과한다.
 - Redis 저장소는 인터페이스(`EmailVerifiedTokenRepository`, `RefreshTokenRepository`) 뒤에 둔다. `SignupTest`는 `@TestConfiguration`의 `@Primary` 가짜 구현으로 바꿔 끼워서 Redis 없이 돈다.
 - Redis 키 형식은 다른 기능과 맞춰야 하는 계약이다:
   - `email_verified_token:{token}` → 이메일. 이메일 OTP 인증 API(아직 없음)가 TTL 600초로 저장하고, 회원가입이 읽은 뒤 지운다.
