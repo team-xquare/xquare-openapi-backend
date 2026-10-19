@@ -39,8 +39,9 @@ API 스펙이 있습니다.
 
 ## 구조와 규칙
 
-- 패키지 구성: 기능별 `domain/<기능>/{presentation, service, repository}`, 공통 기능은 `global/{error, jwt}`, Spring 설정은 `config/`.
-- 에러 처리: `BusinessException(ErrorCode.X)`를 던지면 `GlobalExceptionHandler`가 `{ "code", "message" }` 응답으로 바꾼다. 새 에러는 명세의 에러 코드 이름 그대로 `ErrorCode`에 추가한다. 입력 검증 실패와 JSON 파싱 실패는 모두 `400 INVALID_INPUT`이다.
+- 패키지 구성: 기능별 `domain/<기능>/{presentation, usecase, repository}`, 공통 기능은 `global/{error, jwt}`, Spring 설정은 `config/`.
+  - 비즈니스 로직은 API 하나당 UseCase 클래스 하나(`SignupUseCase.execute`)로 나눈다. OpenAPI 특성상 기능이 계속 늘어나서 서비스 하나에 몰리지 않게 하려는 것이다(PR #3 리뷰).
+- 에러 처리: `XquareException(ErrorCode.X)`를 던지면 `GlobalExceptionHandler`가 `{ "code", "message" }` 응답으로 바꾼다. 새 에러는 명세의 에러 코드 이름 그대로 `ErrorCode`에 추가한다. 입력 검증 실패와 JSON 파싱 실패는 모두 `400 INVALID_INPUT`이다.
 - 보안: `SecurityConfig`는 `POST /auth/signup` 외의 모든 요청에 인증을 요구한다. 공개 엔드포인트를 새로 만들면 여기에 `permitAll`을 추가해야 하고, 빠뜨리면 403이 난다. `PasswordEncoder`(BCrypt) 빈도 여기서 만든다.
 - Redis 저장소는 인터페이스(`EmailVerifiedTokenRepository`, `RefreshTokenRepository`) 뒤에 둔다. `SignupTest`는 `@TestConfiguration`의 `@Primary` 가짜 구현으로 바꿔 끼워서 Redis 없이 돈다.
 - Redis 키 형식은 다른 기능과 맞춰야 하는 계약이다:

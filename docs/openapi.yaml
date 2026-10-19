@@ -221,7 +221,7 @@ paths:
                     code: EMAIL_NOT_VERIFIED
                     message: 이메일 인증이 완료되지 않았습니다.
         '409':
-          description: 'USERNAME_ALREADY_EXISTS: 이미 사용 중인 아이디'
+          description: 'USERNAME_ALREADY_EXISTS: 이미 사용 중인 아이디 / EMAIL_ALREADY_EXISTS: 이미 가입된 이메일'
           content:
             application/json:
               schema:
@@ -231,6 +231,10 @@ paths:
                   value:
                     code: USERNAME_ALREADY_EXISTS
                     message: 이미 사용 중인 아이디입니다.
+                EMAIL_ALREADY_EXISTS:
+                  value:
+                    code: EMAIL_ALREADY_EXISTS
+                    message: 이미 사용 중인 이메일입니다.
   /students:
     get:
       tags:
@@ -2397,11 +2401,14 @@ components:
           example: 2315
         name:
           type: string
-          description: 이름
+          minLength: 1
+          maxLength: 10
+          description: 이름. 1~10자, 공백만으로는 불가
           example: 장윤호
         email:
           type: string
-          description: 인증을 완료한 이메일. `@dsm.hs.kr` 형식만 허용
+          format: email
+          description: 인증을 완료한 이메일. `@dsm.hs.kr` 형식만 허용. 이미 가입된 이메일이면 409 EMAIL_ALREADY_EXISTS
           example: example@dsm.hs.kr
         emailVerifiedToken:
           type: string
