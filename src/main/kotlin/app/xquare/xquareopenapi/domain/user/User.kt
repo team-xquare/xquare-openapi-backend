@@ -21,10 +21,10 @@ class User(
     @Column(nullable = false)
     val studentNumber: Int,
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 10)
     val name: String,
 
-    @Column(nullable = false)
+    @Column(nullable = false, unique = true)
     val email: String,
 
     @Enumerated(EnumType.STRING)

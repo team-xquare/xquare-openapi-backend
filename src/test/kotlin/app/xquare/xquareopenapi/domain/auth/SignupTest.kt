@@ -43,6 +43,7 @@ class SignupTest @Autowired constructor(
         userRepository.deleteAll()
         emailVerifiedTokens.tokens.clear()
         refreshTokens.tokens.clear()
+        refreshTokens.ttls.clear()
     }
 
     @Test
@@ -66,6 +67,7 @@ class SignupTest @Autowired constructor(
         assertEquals(Role.USER, user.role)
         assertTrue(passwordEncoder.matches("Password1!", user.password))
         assertTrue(response.contains(refreshTokens.tokens.getValue(user.id!!)))
+        assertEquals(jwtProperties.refreshExpiration, refreshTokens.ttls.getValue(user.id!!))
     }
 
     @Test
@@ -153,6 +155,36 @@ class SignupTest @Autowired constructor(
     }
 
     @Test
+    fun `이미 쓰는 이메일이면 EMAIL_ALREADY_EXISTS`() {
+        emailVerifiedTokens.tokens[TOKEN] = EMAIL
+        mockMvc.post("/auth/signup") {
+            contentType = MediaType.APPLICATION_JSON
+            content = body()
+        }
+        emailVerifiedTokens.tokens["other-token"] = EMAIL
+
+        mockMvc.post("/auth/signup") {
+            contentType = MediaType.APPLICATION_JSON
+            content = body(username = "other", emailVerifiedToken = "other-token")
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("EMAIL_ALREADY_EXISTS") }
+            jsonPath("$.message") { value("이미 사용 중인 이메일입니다.") }
+        }
+        assertEquals(1, userRepository.count())
+    }
+
+    @Test
+    fun `이름은 10자까지 받는다`() {
+        emailVerifiedTokens.tokens[TOKEN] = EMAIL
+
+        mockMvc.post("/auth/signup") {
+            contentType = MediaType.APPLICATION_JSON
+            content = body(name = "가".repeat(10))
+        }.andExpect { status { isCreated() } }
+    }
+
+    @Test
     fun `형식에 맞지 않는 입력은 400`() {
         emailVerifiedTokens.tokens[TOKEN] = EMAIL
         val invalidBodies = listOf(
@@ -163,7 +195,10 @@ class SignupTest @Autowired constructor(
             body(studentNumber = 999) to "studentNumber",
             body(studentNumber = 4000) to "studentNumber",
             body(name = " ") to "name",
+            body(name = "가".repeat(11)) to "name",
             body(email = "example@gmail.com") to "email",
+            body(email = "") to "email",
+            body(email = ".example@dsm.hs.kr") to "email",
             """{"username":"Jun227"}""" to "요청 값이 올바르지 않습니다.",
         )
 
@@ -221,9 +256,11 @@ class SignupTest @Autowired constructor(
 
     class FakeRefreshTokenRepository : RefreshTokenRepository {
         val tokens = mutableMapOf<Long, String>()
+        val ttls = mutableMapOf<Long, Duration>()
 
         override fun save(userId: Long, refreshToken: String, ttl: Duration) {
             tokens[userId] = refreshToken
+            ttls[userId] = ttl
         }
     }
 

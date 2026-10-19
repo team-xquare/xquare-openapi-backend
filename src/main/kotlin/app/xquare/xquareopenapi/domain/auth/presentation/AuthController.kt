@@ -2,7 +2,7 @@ package app.xquare.xquareopenapi.domain.auth.presentation
 
 import app.xquare.xquareopenapi.domain.auth.presentation.dto.SignupRequest
 import app.xquare.xquareopenapi.domain.auth.presentation.dto.TokenResponse
-import app.xquare.xquareopenapi.domain.auth.service.AuthService
+import app.xquare.xquareopenapi.domain.auth.usecase.SignupUseCase
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.PostMapping
@@ -14,11 +14,11 @@ import org.springframework.web.bind.annotation.RestController
 @RestController
 @RequestMapping("/auth")
 class AuthController(
-    private val authService: AuthService,
+    private val signupUseCase: SignupUseCase,
 ) {
 
     @PostMapping("/signup")
     @ResponseStatus(HttpStatus.CREATED)
     fun signup(@RequestBody @Valid request: SignupRequest): TokenResponse =
-        authService.signup(request)
+        signupUseCase.execute(request)
 }

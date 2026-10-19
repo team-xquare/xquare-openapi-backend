@@ -9,8 +9,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
 @RestControllerAdvice
 class GlobalExceptionHandler {
 
-    @ExceptionHandler(BusinessException::class)
-    fun handleBusinessException(e: BusinessException): ResponseEntity<ErrorResponse> =
+    @ExceptionHandler(XquareException::class)
+    fun handleXquareException(e: XquareException): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(e.errorCode.status).body(ErrorResponse.of(e.errorCode))
 
     @ExceptionHandler(MethodArgumentNotValidException::class)
