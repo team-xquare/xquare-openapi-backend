@@ -6,11 +6,12 @@ import app.xquare.xquareopenapi.domain.auth.repository.EmailVerifiedTokenReposit
 import app.xquare.xquareopenapi.domain.auth.repository.RefreshTokenRepository
 import app.xquare.xquareopenapi.domain.user.User
 import app.xquare.xquareopenapi.domain.user.UserRepository
+import app.xquare.xquareopenapi.domain.user.UserUniqueConstraint
 import app.xquare.xquareopenapi.global.error.ErrorCode
 import app.xquare.xquareopenapi.global.error.XquareException
-import app.xquare.xquareopenapi.global.jwt.JwtProperties
 import app.xquare.xquareopenapi.global.jwt.JwtProvider
 import org.slf4j.LoggerFactory
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -24,7 +25,6 @@ class SignupUseCase(
     private val refreshTokenRepository: RefreshTokenRepository,
     private val passwordEncoder: PasswordEncoder,
     private val jwtProvider: JwtProvider,
-    private val jwtProperties: JwtProperties,
 ) {
 
     @Transactional
@@ -40,7 +40,7 @@ class SignupUseCase(
             throw XquareException(ErrorCode.EMAIL_ALREADY_EXISTS)
         }
 
-        val user = userRepository.save(
+        val user = save(
             User(
                 username = request.username,
                 password = passwordEncoder.encode(request.password)!!,
@@ -53,6 +53,15 @@ class SignupUseCase(
 
         return issueTokens(user)
     }
+
+    // 위의 중복 검사와 저장 사이에 같은 값으로 먼저 가입한 요청이 있으면 unique 제약에 걸린다.
+    // 이때도 500이 아니라 중복 검사와 같은 409로 응답한다.
+    private fun save(user: User): User =
+        try {
+            userRepository.save(user)
+        } catch (e: DataIntegrityViolationException) {
+            throw XquareException(UserUniqueConstraint.violatedBy(e)?.errorCode ?: throw e)
+        }
 
     // 가입이 롤백되면 같은 토큰으로 다시 시도할 수 있도록 커밋된 뒤에 지운다.
     // 지우기에 실패해도 가입은 이미 끝났고, 남은 토큰은 이메일 중복 검사에 막혀 다시 쓸 수 없으므로 경고만 남긴다.
@@ -71,10 +80,10 @@ class SignupUseCase(
     private fun issueTokens(user: User): TokenResponse {
         val userId = user.id!!
         val refreshToken = jwtProvider.generateRefreshToken(userId)
-        refreshTokenRepository.save(userId, refreshToken, jwtProperties.refreshExpiration)
+        refreshTokenRepository.save(userId, refreshToken.value, refreshToken.ttl)
         return TokenResponse(
             accessToken = jwtProvider.generateAccessToken(userId, user.role),
-            refreshToken = refreshToken,
+            refreshToken = refreshToken.value,
         )
     }
 

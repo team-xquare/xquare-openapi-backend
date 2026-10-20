@@ -17,8 +17,11 @@ class JwtProvider(
     fun generateAccessToken(userId: Long, role: Role): String =
         generateToken(userId, jwtProperties.accessExpiration, mapOf(TYPE_CLAIM to ACCESS_TYPE, ROLE_CLAIM to role.name))
 
-    fun generateRefreshToken(userId: Long): String =
-        generateToken(userId, jwtProperties.refreshExpiration, mapOf(TYPE_CLAIM to REFRESH_TYPE))
+    fun generateRefreshToken(userId: Long): RefreshToken =
+        RefreshToken(
+            value = generateToken(userId, jwtProperties.refreshExpiration, mapOf(TYPE_CLAIM to REFRESH_TYPE)),
+            ttl = jwtProperties.refreshExpiration,
+        )
 
     private fun generateToken(userId: Long, expiration: Duration, claims: Map<String, String>): String {
         val now = Date()

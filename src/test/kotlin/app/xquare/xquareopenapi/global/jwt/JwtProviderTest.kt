@@ -32,12 +32,14 @@ class JwtProviderTest {
 
     @Test
     fun `리프레시 토큰에는 사용자 id와 만료시각만 담긴다`() {
-        val claims = parse(jwtProvider.generateRefreshToken(7L))
+        val refreshToken = jwtProvider.generateRefreshToken(7L)
+        val claims = parse(refreshToken.value)
 
         assertEquals("7", claims.subject)
         assertEquals("refresh", claims["type"])
         assertNull(claims["role"])
         assertEquals(properties.refreshExpiration.toMillis(), claims.expiration.time - claims.issuedAt.time)
+        assertEquals(properties.refreshExpiration, refreshToken.ttl)
     }
 
     @Test

@@ -3,6 +3,7 @@ package app.xquare.xquareopenapi.domain.auth
 import app.xquare.xquareopenapi.domain.auth.repository.EmailVerifiedTokenRepository
 import app.xquare.xquareopenapi.domain.auth.repository.RefreshTokenRepository
 import app.xquare.xquareopenapi.domain.user.Role
+import app.xquare.xquareopenapi.domain.user.User
 import app.xquare.xquareopenapi.domain.user.UserRepository
 import app.xquare.xquareopenapi.global.jwt.JwtProperties
 import com.jayway.jsonpath.JsonPath
@@ -11,6 +12,8 @@ import io.jsonwebtoken.security.Keys
 import org.hamcrest.Matchers.containsString
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentMatchers.anyString
+import org.mockito.Mockito.doReturn
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.context.TestConfiguration
@@ -19,6 +22,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
 import org.springframework.http.MediaType
 import org.springframework.security.crypto.password.PasswordEncoder
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
 import java.time.Duration
@@ -38,6 +42,9 @@ class SignupTest @Autowired constructor(
     private val refreshTokens: FakeRefreshTokenRepository,
     private val jwtProperties: JwtProperties,
 ) {
+    // 동시 가입을 흉내 내려고 중복 검사만 통과시킬 때 쓴다.
+    @MockitoSpyBean
+    private lateinit var spiedUserRepository: UserRepository
 
     @AfterEach
     fun tearDown() {
@@ -214,6 +221,37 @@ class SignupTest @Autowired constructor(
             contentType = MediaType.APPLICATION_JSON
             content = body(name = "가".repeat(10))
         }.andExpect { status { isCreated() } }
+    }
+
+    @Test
+    fun `동시 가입으로 중복 검사를 통과해도 같은 아이디는 USERNAME_ALREADY_EXISTS`() {
+        userRepository.save(User("Jun227", "encoded", 2316, "다른사람", "other@dsm.hs.kr"))
+        doReturn(false).`when`(spiedUserRepository).existsByUsername(anyString())
+        emailVerifiedTokens.tokens[TOKEN] = EMAIL
+
+        mockMvc.post("/auth/signup") {
+            contentType = MediaType.APPLICATION_JSON
+            content = body()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("USERNAME_ALREADY_EXISTS") }
+        }
+        assertEquals(EMAIL, emailVerifiedTokens.tokens[TOKEN])
+    }
+
+    @Test
+    fun `동시 가입으로 중복 검사를 통과해도 같은 이메일은 EMAIL_ALREADY_EXISTS`() {
+        userRepository.save(User("other", "encoded", 2316, "다른사람", EMAIL))
+        doReturn(false).`when`(spiedUserRepository).existsByEmail(anyString())
+        emailVerifiedTokens.tokens[TOKEN] = EMAIL
+
+        mockMvc.post("/auth/signup") {
+            contentType = MediaType.APPLICATION_JSON
+            content = body()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("EMAIL_ALREADY_EXISTS") }
+        }
     }
 
     @Test
