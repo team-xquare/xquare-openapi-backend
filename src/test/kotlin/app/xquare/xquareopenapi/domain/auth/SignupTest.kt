@@ -23,6 +23,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
 import java.time.Duration
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -42,8 +43,10 @@ class SignupTest @Autowired constructor(
     fun tearDown() {
         userRepository.deleteAll()
         emailVerifiedTokens.tokens.clear()
+        emailVerifiedTokens.failOnDelete = false
         refreshTokens.tokens.clear()
         refreshTokens.ttls.clear()
+        refreshTokens.failOnSave = false
     }
 
     @Test
@@ -108,6 +111,35 @@ class SignupTest @Autowired constructor(
         }.andExpect { status { isCreated() } }
 
         assertNull(emailVerifiedTokens.tokens[TOKEN])
+    }
+
+    @Test
+    fun `가입이 롤백되면 이메일 인증 토큰을 남겨 두어 다시 시도할 수 있다`() {
+        emailVerifiedTokens.tokens[TOKEN] = EMAIL
+        refreshTokens.failOnSave = true
+
+        assertFailsWith<Exception> {
+            mockMvc.post("/auth/signup") {
+                contentType = MediaType.APPLICATION_JSON
+                content = body()
+            }
+        }
+
+        assertEquals(0, userRepository.count())
+        assertEquals(EMAIL, emailVerifiedTokens.tokens[TOKEN])
+    }
+
+    @Test
+    fun `이메일 인증 토큰 삭제에 실패해도 가입은 성공한다`() {
+        emailVerifiedTokens.tokens[TOKEN] = EMAIL
+        emailVerifiedTokens.failOnDelete = true
+
+        mockMvc.post("/auth/signup") {
+            contentType = MediaType.APPLICATION_JSON
+            content = body()
+        }.andExpect { status { isCreated() } }
+
+        assertEquals(1, userRepository.count())
     }
 
     @Test
@@ -192,6 +224,9 @@ class SignupTest @Autowired constructor(
             body(username = "has space") to "username",
             body(password = "Password1") to "password",
             body(password = "Pw1!") to "password",
+            body(password = "Password1!한") to "password",
+            body(password = "Pass word1!") to "password",
+            body(password = "\uD83D\uDE00".repeat(20)) to "password",
             body(studentNumber = 999) to "studentNumber",
             body(studentNumber = 4000) to "studentNumber",
             body(name = " ") to "name",
@@ -249,7 +284,10 @@ class SignupTest @Autowired constructor(
 
         override fun findEmailByToken(token: String): String? = tokens[token]
 
+        var failOnDelete = false
+
         override fun delete(token: String) {
+            if (failOnDelete) throw IllegalStateException("Redis 장애")
             tokens.remove(token)
         }
     }
@@ -258,7 +296,10 @@ class SignupTest @Autowired constructor(
         val tokens = mutableMapOf<Long, String>()
         val ttls = mutableMapOf<Long, Duration>()
 
+        var failOnSave = false
+
         override fun save(userId: Long, refreshToken: String, ttl: Duration) {
+            if (failOnSave) throw IllegalStateException("Redis 장애")
             tokens[userId] = refreshToken
             ttls[userId] = ttl
         }

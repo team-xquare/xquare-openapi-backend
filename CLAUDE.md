@@ -22,7 +22,7 @@ API 스펙이 있습니다.
   - 메서드 이름이 한글 백틱 이름이라 메서드 단위는 와일드카드로 고른다: `--tests '*SignupTest.가입하면*'`
 - Gradle이 테스트 결과를 캐시한다. 코드 변경 없이 환경만 바뀌었으면(예: Docker를 켬) `--rerun`을 붙여야 다시 실행된다.
 - 뮤테이션 테스트: `./gradlew pitest` → 리포트는 `build/reports/pitest/index.html`
-  - `avoidCallsTo = kotlin.jvm.internal`: Kotlin 컴파일러가 넣는 null 체크를 지우는 뮤턴트는 동작이 바뀌지 않으므로 제외한다.
+  - `avoidCallsTo = kotlin.jvm.internal, org.slf4j`: Kotlin 컴파일러가 넣는 null 체크와 로그 호출을 지우는 뮤턴트는 동작이 바뀌지 않으므로 제외한다. 이 값을 지정하면 PIT의 기본 제외 목록(로깅 라이브러리)이 덮어써지므로, 로깅 라이브러리도 직접 넣어야 한다.
   - `config` 패키지는 대상에서 뺐다. Spring 컨텍스트가 뜰 때 한 번만 실행되고 PIT은 캐시된 컨텍스트를 재사용해서, 바뀐 코드가 실행되지 않아 가짜 생존자만 생긴다. 생성자에서 한 번만 도는 코드도 같은 이유로 Spring 테스트로는 못 잡으니 단위 테스트(`JwtProviderTest`처럼)로 검증한다.
 - `RedisAuthRepositoriesTest`는 Testcontainers로 Redis를 띄운다. Docker가 꺼져 있으면 실패하지 않고 건너뛴다.
 
@@ -42,7 +42,7 @@ API 스펙이 있습니다.
 - 패키지 구성: 기능별 `domain/<기능>/{presentation, usecase, repository}`, 공통 기능은 `global/{error, jwt}`, Spring 설정은 `config/`.
   - 비즈니스 로직은 API 하나당 UseCase 클래스 하나(`SignupUseCase.execute`)로 나눈다. OpenAPI 특성상 기능이 계속 늘어나서 서비스 하나에 몰리지 않게 하려는 것이다(PR #3 리뷰).
 - 에러 처리: `XquareException(ErrorCode.X)`를 던지면 `GlobalExceptionHandler`가 `{ "code", "message" }` 응답으로 바꾼다. 새 에러는 명세의 에러 코드 이름 그대로 `ErrorCode`에 추가한다. 입력 검증 실패와 JSON 파싱 실패는 모두 `400 INVALID_INPUT`이다.
-- 보안: `SecurityConfig`는 `POST /auth/signup` 외의 모든 요청에 인증을 요구한다. 공개 엔드포인트를 새로 만들면 여기에 `permitAll`을 추가해야 하고, 빠뜨리면 403이 난다. `PasswordEncoder`(BCrypt) 빈도 여기서 만든다.
+- 보안: `SecurityConfig`는 `POST /auth/signup` 외의 모든 요청에 인증을 요구한다. 공개 엔드포인트를 새로 만들면 여기에 `permitAll`을 추가해야 하고, 빠뜨리면 403이 난다. `ERROR` 디스패치(`/error` 포워드)도 허용해 둬야 한다. 막으면 415·500 같은 원래 응답이 모두 403으로 바뀐다. MockMvc는 이 포워드를 흉내 내지 않으므로 `ErrorDispatchTest`처럼 실제 서버로 확인한다. `PasswordEncoder`(BCrypt) 빈도 여기서 만든다.
 - Redis 저장소는 인터페이스(`EmailVerifiedTokenRepository`, `RefreshTokenRepository`) 뒤에 둔다. `SignupTest`는 `@TestConfiguration`의 `@Primary` 가짜 구현으로 바꿔 끼워서 Redis 없이 돈다.
 - Redis 키 형식은 다른 기능과 맞춰야 하는 계약이다:
   - `email_verified_token:{token}` → 이메일. 이메일 OTP 인증 API(아직 없음)가 TTL 600초로 저장하고, 회원가입이 읽은 뒤 지운다.

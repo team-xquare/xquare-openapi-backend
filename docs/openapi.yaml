@@ -2390,7 +2390,8 @@ components:
           type: string
           minLength: 8
           maxLength: 20
-          description: 비밀번호. 8~20자, 특수문자 1개 이상 포함. 서버에서 BCrypt로 인코딩해 저장
+          pattern: ^(?=.*[^A-Za-z0-9])[\x21-\x7E]{8,20}$
+          description: 비밀번호. 8~20자, 특수문자 1개 이상 포함. 공백을 뺀 ASCII 문자만 허용(BCrypt 72바이트 제한). 서버에서 BCrypt로 인코딩해 저장
           example: Password1!
         studentNumber:
           type: integer

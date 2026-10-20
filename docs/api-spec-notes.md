@@ -30,6 +30,7 @@
 - 회원가입 시 학번 중복 처리 규칙 및 에러 코드 미정 (이메일 중복은 PR #3 리뷰에서 `409 EMAIL_ALREADY_EXISTS`로 정함)
 - emailVerifiedToken 사용 후 삭제(1회용) 여부 미정
 - 회원가입 name 길이: 명세에 없어 PR #3 리뷰에서 1~10자로 정함
+- 회원가입 password 문자 종류: 명세에 없어 공백을 뺀 ASCII(`\x21-\x7E`)로 정함. BCrypt가 72바이트를 넘는 비밀번호를 거부하는데, 글자 수 제한만으로는 이모지 등 멀티바이트 문자를 막지 못하기 때문
 - 토큰 만료 시간(access/refresh TTL), 토큰 형식(JWT 클레임) 미정
 - 재발급 시 refreshToken 저장 방식(Redis/DB) 및 동시 요청 처리 미정
 - 오류 응답 500 EMAIL_SEND_FAILED 외 서버 내부 오류 공통 처리 미정
