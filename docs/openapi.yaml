@@ -105,8 +105,10 @@ paths:
       - 인증/인가
       summary: 로그인
       description: 'username으로 사용자를 조회하고 BCrypt로 비밀번호를 검증한 뒤 accessToken과 refreshToken을 발급한다. 아이디 존재 여부 노출을 막기 위해 아이디/비밀번호
-        오류는 구분하지 않고 INVALID_CREDENTIALS 하나로 응답한다(기능 명세서). 로그인 5회 실패 시 계정이 잠긴다(ACCOUNT_LOCKED, 잠금 해제 조건은 미정). 권한: ALL(비로그인
-        허용).'
+        오류는 구분하지 않고 INVALID_CREDENTIALS 하나로 응답한다(기능 명세서). 아이디가 없을 때도 비밀번호 비교를 거쳐 응답 시간으로도 아이디 존재 여부가 드러나지 않게 한다.
+        username·password가 비어 있으면 400 INVALID_INPUT이고, 형식(길이·문자 종류)은 검사하지 않아 형식이 틀린 값은 INVALID_CREDENTIALS가 된다(현재 구현 기준).
+        다시 로그인하면 이전에 발급한 refreshToken은 폐기된다(사용자당 세션 하나). 로그인 5회 실패 시 계정이 잠긴다(ACCOUNT_LOCKED, 잠금 해제 조건은 미정이라 아직 구현하지
+        않음). 권한: ALL(비로그인 허용).'
       operationId: login
       security: []
       requestBody:
@@ -122,6 +124,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthTokenResponse'
+        '400':
+          description: 'INVALID_INPUT: username 또는 password가 비어 있음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
         '401':
           description: 'INVALID_CREDENTIALS: 아이디 또는 비밀번호 불일치'
           content:
@@ -149,7 +162,9 @@ paths:
       tags:
       - 인증/인가
       summary: 토큰 재발급
-      description: '로그인 시 발급받은 refreshToken으로 새 accessToken과 refreshToken을 발급한다. 사용된 refreshToken은 폐기된다. 권한: ALL(비로그인 허용).'
+      description: '로그인 시 발급받은 refreshToken으로 새 accessToken과 refreshToken을 발급한다. 사용된 refreshToken은 폐기된다. 사용자당 가장 최근에 발급한 refreshToken
+        하나만 유효해서, 이미 재발급에 썼거나 그 뒤 다시 로그인한 refreshToken은 INVALID_REFRESH_TOKEN이다. refreshToken이 비어 있으면 400 INVALID_INPUT(현재 구현 기준).
+        권한: ALL(비로그인 허용).'
       operationId: reissueToken
       security: []
       requestBody:
@@ -165,6 +180,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthTokenResponse'
+        '400':
+          description: 'INVALID_INPUT: refreshToken이 비어 있음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
         '401':
           description: 'INVALID_REFRESH_TOKEN: 리프레시 토큰이 없거나 만료·폐기됨 (재로그인 필요)'
           content:

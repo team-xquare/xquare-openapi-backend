@@ -3,13 +3,11 @@ package app.xquare.xquareopenapi.domain.auth.usecase
 import app.xquare.xquareopenapi.domain.auth.presentation.dto.SignupRequest
 import app.xquare.xquareopenapi.domain.auth.presentation.dto.TokenResponse
 import app.xquare.xquareopenapi.domain.auth.repository.EmailVerifiedTokenRepository
-import app.xquare.xquareopenapi.domain.auth.repository.RefreshTokenRepository
 import app.xquare.xquareopenapi.domain.user.User
 import app.xquare.xquareopenapi.domain.user.UserRepository
 import app.xquare.xquareopenapi.domain.user.UserUniqueConstraint
 import app.xquare.xquareopenapi.global.error.ErrorCode
 import app.xquare.xquareopenapi.global.error.XquareException
-import app.xquare.xquareopenapi.global.jwt.JwtProvider
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -22,9 +20,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 class SignupUseCase(
     private val userRepository: UserRepository,
     private val emailVerifiedTokenRepository: EmailVerifiedTokenRepository,
-    private val refreshTokenRepository: RefreshTokenRepository,
     private val passwordEncoder: PasswordEncoder,
-    private val jwtProvider: JwtProvider,
+    private val tokenIssuer: TokenIssuer,
 ) {
 
     @Transactional
@@ -51,7 +48,7 @@ class SignupUseCase(
         )
         deleteEmailVerifiedTokenAfterCommit(request.emailVerifiedToken)
 
-        return issueTokens(user)
+        return tokenIssuer.issue(user)
     }
 
     // 위의 중복 검사와 저장 사이에 같은 값으로 먼저 가입한 요청이 있으면 unique 제약에 걸린다.
@@ -75,16 +72,6 @@ class SignupUseCase(
                 }
             }
         })
-    }
-
-    private fun issueTokens(user: User): TokenResponse {
-        val userId = user.id!!
-        val refreshToken = jwtProvider.generateRefreshToken(userId)
-        refreshTokenRepository.save(userId, refreshToken.value, refreshToken.ttl)
-        return TokenResponse(
-            accessToken = jwtProvider.generateAccessToken(userId, user.role),
-            refreshToken = refreshToken.value,
-        )
     }
 
     companion object {

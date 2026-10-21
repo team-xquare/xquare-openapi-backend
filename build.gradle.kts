@@ -63,6 +63,9 @@ pitest {
     // config는 Spring 컨텍스트 시작 시 한 번만 실행돼 캐시된 컨텍스트에서는 뮤턴트가 실행되지 않으므로 제외한다.
     targetClasses = listOf("app.xquare.xquareopenapi.domain.*", "app.xquare.xquareopenapi.global.*")
     threads = 4
+    // Testcontainers 테스트는 뮤턴트를 처음 실행할 때 컨테이너를 띄우느라 기본 제한 시간(4초)을 넘겨,
+    // 실제로 잡히는지와 상관없이 TIMED_OUT으로 끝난다. 판정이 나도록 여유를 준다.
+    timeoutConstInMillis = 30000
     // Kotlin 컴파일러가 넣는 null 체크 호출과 로그 호출을 지우는 뮤턴트는 동작이 바뀌지 않으므로 제외한다.
     // 이 값을 지정하면 PIT 기본값(로깅 라이브러리 제외)이 덮어써지므로 org.slf4j도 직접 넣는다.
     avoidCallsTo = setOf("kotlin.jvm.internal", "org.slf4j")

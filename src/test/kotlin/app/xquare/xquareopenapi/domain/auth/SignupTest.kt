@@ -1,7 +1,5 @@
 package app.xquare.xquareopenapi.domain.auth
 
-import app.xquare.xquareopenapi.domain.auth.repository.EmailVerifiedTokenRepository
-import app.xquare.xquareopenapi.domain.auth.repository.RefreshTokenRepository
 import app.xquare.xquareopenapi.domain.user.Role
 import app.xquare.xquareopenapi.domain.user.User
 import app.xquare.xquareopenapi.domain.user.UserRepository
@@ -16,16 +14,13 @@ import org.mockito.ArgumentMatchers.anyString
 import org.mockito.Mockito.doReturn
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
-import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.Primary
+import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
-import java.time.Duration
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
@@ -34,6 +29,7 @@ import kotlin.test.assertTrue
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(FakeAuthRepositories::class)
 class SignupTest @Autowired constructor(
     private val mockMvc: MockMvc,
     private val userRepository: UserRepository,
@@ -51,9 +47,7 @@ class SignupTest @Autowired constructor(
         userRepository.deleteAll()
         emailVerifiedTokens.tokens.clear()
         emailVerifiedTokens.failOnDelete = false
-        refreshTokens.tokens.clear()
-        refreshTokens.ttls.clear()
-        refreshTokens.failOnSave = false
+        refreshTokens.clear()
     }
 
     @Test
@@ -305,43 +299,6 @@ class SignupTest @Autowired constructor(
           "emailVerifiedToken": "$emailVerifiedToken"
         }
     """.trimIndent()
-
-    @TestConfiguration
-    class FakeRepositories {
-        @Bean
-        @Primary
-        fun fakeEmailVerifiedTokenRepository() = FakeEmailVerifiedTokenRepository()
-
-        @Bean
-        @Primary
-        fun fakeRefreshTokenRepository() = FakeRefreshTokenRepository()
-    }
-
-    class FakeEmailVerifiedTokenRepository : EmailVerifiedTokenRepository {
-        val tokens = mutableMapOf<String, String>()
-
-        override fun findEmailByToken(token: String): String? = tokens[token]
-
-        var failOnDelete = false
-
-        override fun delete(token: String) {
-            if (failOnDelete) throw IllegalStateException("Redis 장애")
-            tokens.remove(token)
-        }
-    }
-
-    class FakeRefreshTokenRepository : RefreshTokenRepository {
-        val tokens = mutableMapOf<Long, String>()
-        val ttls = mutableMapOf<Long, Duration>()
-
-        var failOnSave = false
-
-        override fun save(userId: Long, refreshToken: String, ttl: Duration) {
-            if (failOnSave) throw IllegalStateException("Redis 장애")
-            tokens[userId] = refreshToken
-            ttls[userId] = ttl
-        }
-    }
 
     companion object {
         private const val EMAIL = "example@dsm.hs.kr"
