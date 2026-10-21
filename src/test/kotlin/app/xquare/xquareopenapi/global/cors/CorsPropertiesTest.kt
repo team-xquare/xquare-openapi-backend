@@ -42,6 +42,13 @@ class CorsPropertiesTest {
         assertNull(configuration.allowCredentials)
     }
 
+    @Test
+    fun `생성 API가 돌려주는 Location 헤더를 브라우저가 읽을 수 있게 노출한다`() {
+        val configuration = CorsProperties(listOf("http://localhost:3000")).toCorsConfiguration()
+
+        assertEquals(listOf("Location"), configuration.exposedHeaders)
+    }
+
     private fun bind(allowedOrigins: String): CorsProperties =
         Binder(MapConfigurationPropertySource(mapOf("cors.allowed-origins" to allowedOrigins)))
             .bindOrCreate("cors", CorsProperties::class.java)
