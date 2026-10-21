@@ -3,6 +3,7 @@ package app.xquare.xquareopenapi.domain.auth.usecase
 import app.xquare.xquareopenapi.domain.auth.presentation.dto.SignupRequest
 import app.xquare.xquareopenapi.domain.auth.presentation.dto.TokenResponse
 import app.xquare.xquareopenapi.domain.auth.repository.EmailVerifiedTokenRepository
+import app.xquare.xquareopenapi.domain.user.Role
 import app.xquare.xquareopenapi.domain.user.User
 import app.xquare.xquareopenapi.domain.user.UserRepository
 import app.xquare.xquareopenapi.domain.user.UserUniqueConstraint
@@ -44,6 +45,7 @@ class SignupUseCase(
                 studentNumber = request.studentNumber,
                 name = request.name,
                 email = request.email,
+                role = Role.USER,
             ),
         )
         deleteEmailVerifiedTokenAfterCommit(request.emailVerifiedToken)
@@ -57,7 +59,8 @@ class SignupUseCase(
         try {
             userRepository.save(user)
         } catch (e: DataIntegrityViolationException) {
-            throw XquareException(UserUniqueConstraint.violatedBy(e)?.errorCode ?: throw e)
+            val constraint = UserUniqueConstraint.violatedBy(e) ?: throw e
+            throw XquareException(constraint.errorCode)
         }
 
     // 가입이 롤백되면 같은 토큰으로 다시 시도할 수 있도록 커밋된 뒤에 지운다.

@@ -7,15 +7,21 @@ import app.xquare.xquareopenapi.global.jwt.JwtProperties
 import com.jayway.jsonpath.JsonPath
 import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.security.Keys
+import jakarta.servlet.ServletException
 import org.hamcrest.Matchers.containsString
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentMatchers.anyString
 import org.mockito.Mockito.doReturn
+import org.mockito.Mockito.doThrow
+import org.mockito.Mockito.times
+import org.mockito.Mockito.verify
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.MediaType
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
@@ -25,6 +31,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 @SpringBootTest
@@ -185,6 +192,8 @@ class SignupTest @Autowired constructor(
             jsonPath("$.code") { value("USERNAME_ALREADY_EXISTS") }
             jsonPath("$.message") { value("이미 사용 중인 아이디입니다.") }
         }
+        // 중복 검사에서 막아야 운영 DB의 제약 이름이 달라도 409가 난다. 제약에 맡기면 이름을 구분하지 못해 500이 된다.
+        verify(spiedUserRepository, times(1)).save(any())
     }
 
     @Test
@@ -205,6 +214,7 @@ class SignupTest @Autowired constructor(
             jsonPath("$.message") { value("이미 사용 중인 이메일입니다.") }
         }
         assertEquals(1, userRepository.count())
+        verify(spiedUserRepository, times(1)).save(any())
     }
 
     @Test
@@ -246,6 +256,21 @@ class SignupTest @Autowired constructor(
             status { isConflict() }
             jsonPath("$.code") { value("EMAIL_ALREADY_EXISTS") }
         }
+    }
+
+    @Test
+    fun `어느 unique 제약인지 구분할 수 없는 무결성 위반은 원래 예외를 그대로 던진다`() {
+        val violation = DataIntegrityViolationException("다른 제약 위반")
+        doThrow(violation).`when`(spiedUserRepository).save(any())
+        emailVerifiedTokens.tokens[TOKEN] = EMAIL
+
+        val thrown = assertFailsWith<ServletException> {
+            mockMvc.post("/auth/signup") {
+                contentType = MediaType.APPLICATION_JSON
+                content = body()
+            }
+        }
+        assertSame(violation, thrown.cause)
     }
 
     @Test

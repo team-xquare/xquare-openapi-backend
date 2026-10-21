@@ -1,5 +1,6 @@
 package app.xquare.xquareopenapi.domain.auth
 
+import app.xquare.xquareopenapi.domain.auth.usecase.LoginUseCase
 import app.xquare.xquareopenapi.domain.user.User
 import app.xquare.xquareopenapi.domain.user.UserRepository
 import app.xquare.xquareopenapi.global.jwt.JwtProperties
@@ -92,6 +93,11 @@ class LoginTest @Autowired constructor(
         login(body(username = "nobody")).andExpectInvalidCredentials()
 
         verify(passwordEncoder).matches(eq(PASSWORD), startsWith("$2a$10$"))
+    }
+
+    @Test
+    fun `더미 해시와 일치하는 비밀번호여도 없는 아이디로는 로그인할 수 없다`() {
+        login(body(username = "nobody", password = LoginUseCase.DUMMY_PASSWORD)).andExpectInvalidCredentials()
     }
 
     @Test

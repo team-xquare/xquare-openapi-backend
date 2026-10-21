@@ -23,6 +23,12 @@ API 스펙이 있습니다.
 - Gradle이 테스트 결과를 캐시한다. 코드 변경 없이 환경만 바뀌었으면(예: Docker를 켬) `--rerun`을 붙여야 다시 실행된다.
 - 뮤테이션 테스트: `./gradlew pitest` → 리포트는 `build/reports/pitest/index.html`
   - `avoidCallsTo = kotlin.jvm.internal, org.slf4j`: Kotlin 컴파일러가 넣는 null 체크와 로그 호출을 지우는 뮤턴트는 동작이 바뀌지 않으므로 제외한다. 이 값을 지정하면 PIT의 기본 제외 목록(로깅 라이브러리)이 덮어써지므로, 로깅 라이브러리도 직접 넣어야 한다.
+  - `mutators = ALL, -EXPERIMENTAL_MEMBER_VARIABLE`: 가장 넓은 뮤테이터 그룹을 쓰되 생성자 필드 대입 제거만 뺀다. Spring 빈은 캐시된 컨텍스트에서 한 번만 생성되므로 바뀐 생성자가 실행되지 않아 가짜 생존자만 생긴다.
+  - Kotlin 컴파일러가 만든 바이트코드에서 나오는 등가 뮤턴트(테스트로 죽일 수 없음):
+    - 인라인 함수(`apply`, `firstOrNull` 등)의 마커 변수(`$i$f$...`, `$i$a$...`)를 0→1로 바꾸는 뮤턴트
+    - 기본 인자 비트마스크를 +1 하는 뮤턴트. 기본값이 없는 첫 번째 인자의 비트가 켜질 뿐이다.
+    - null이 될 수 없는 프로퍼티에 `a?.b ?: c`를 쓸 때 생기는 두 번째 null 검사를 바꾸는 뮤턴트
+    - 생존자로 나오면 `javap -c -l -p`로 해당 줄의 바이트코드를 보고 위 경우인지 확인한다. 핵심 로직에서는 `if (a != null) a.b else c`처럼 써서 피했다(`LoginUseCase`, `SignupUseCase.save`).
   - `timeoutConstInMillis = 30000`: Testcontainers 테스트가 뮤턴트를 처음 돌릴 때 컨테이너를 띄우느라 기본 제한 시간을 넘겨 TIMED_OUT이 난다. 30초로 늘려도 가끔 남는데, 같은 뮤턴트가 다른 회차에서 KILLED로 나오면 환경 문제로 본다.
   - `config` 패키지는 대상에서 뺐다. Spring 컨텍스트가 뜰 때 한 번만 실행되고 PIT은 캐시된 컨텍스트를 재사용해서, 바뀐 코드가 실행되지 않아 가짜 생존자만 생긴다. 생성자에서 한 번만 도는 코드도 같은 이유로 Spring 테스트로는 못 잡으니 단위 테스트(`JwtProviderTest`처럼)로 검증한다.
 - `RedisAuthRepositoriesTest`는 Redis를, `UserUniqueConstraintMySqlTest`는 MySQL을 Testcontainers로 띄운다. Docker가 꺼져 있으면 실패하지 않고 건너뛴다.
