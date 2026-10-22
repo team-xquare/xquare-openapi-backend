@@ -1,7 +1,5 @@
 package app.xquare.xquareopenapi.domain.auth
 
-import app.xquare.xquareopenapi.domain.auth.repository.EmailVerifiedTokenRepository
-import app.xquare.xquareopenapi.domain.auth.repository.RefreshTokenRepository
 import app.xquare.xquareopenapi.domain.user.Role
 import app.xquare.xquareopenapi.domain.user.User
 import app.xquare.xquareopenapi.domain.user.UserRepository
@@ -9,31 +7,36 @@ import app.xquare.xquareopenapi.global.jwt.JwtProperties
 import com.jayway.jsonpath.JsonPath
 import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.security.Keys
+import jakarta.servlet.ServletException
 import org.hamcrest.Matchers.containsString
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentMatchers.anyString
 import org.mockito.Mockito.doReturn
+import org.mockito.Mockito.doThrow
+import org.mockito.Mockito.times
+import org.mockito.Mockito.verify
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
-import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.Primary
+import org.springframework.context.annotation.Import
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.MediaType
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
-import java.time.Duration
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(FakeAuthRepositories::class)
 class SignupTest @Autowired constructor(
     private val mockMvc: MockMvc,
     private val userRepository: UserRepository,
@@ -51,9 +54,7 @@ class SignupTest @Autowired constructor(
         userRepository.deleteAll()
         emailVerifiedTokens.tokens.clear()
         emailVerifiedTokens.failOnDelete = false
-        refreshTokens.tokens.clear()
-        refreshTokens.ttls.clear()
-        refreshTokens.failOnSave = false
+        refreshTokens.clear()
     }
 
     @Test
@@ -191,6 +192,8 @@ class SignupTest @Autowired constructor(
             jsonPath("$.code") { value("USERNAME_ALREADY_EXISTS") }
             jsonPath("$.message") { value("이미 사용 중인 아이디입니다.") }
         }
+        // 중복 검사에서 막아야 운영 DB의 제약 이름이 달라도 409가 난다. 제약에 맡기면 이름을 구분하지 못해 500이 된다.
+        verify(spiedUserRepository, times(1)).save(any())
     }
 
     @Test
@@ -211,6 +214,7 @@ class SignupTest @Autowired constructor(
             jsonPath("$.message") { value("이미 사용 중인 이메일입니다.") }
         }
         assertEquals(1, userRepository.count())
+        verify(spiedUserRepository, times(1)).save(any())
     }
 
     @Test
@@ -252,6 +256,21 @@ class SignupTest @Autowired constructor(
             status { isConflict() }
             jsonPath("$.code") { value("EMAIL_ALREADY_EXISTS") }
         }
+    }
+
+    @Test
+    fun `어느 unique 제약인지 구분할 수 없는 무결성 위반은 원래 예외를 그대로 던진다`() {
+        val violation = DataIntegrityViolationException("다른 제약 위반")
+        doThrow(violation).`when`(spiedUserRepository).save(any())
+        emailVerifiedTokens.tokens[TOKEN] = EMAIL
+
+        val thrown = assertFailsWith<ServletException> {
+            mockMvc.post("/auth/signup") {
+                contentType = MediaType.APPLICATION_JSON
+                content = body()
+            }
+        }
+        assertSame(violation, thrown.cause)
     }
 
     @Test
@@ -305,43 +324,6 @@ class SignupTest @Autowired constructor(
           "emailVerifiedToken": "$emailVerifiedToken"
         }
     """.trimIndent()
-
-    @TestConfiguration
-    class FakeRepositories {
-        @Bean
-        @Primary
-        fun fakeEmailVerifiedTokenRepository() = FakeEmailVerifiedTokenRepository()
-
-        @Bean
-        @Primary
-        fun fakeRefreshTokenRepository() = FakeRefreshTokenRepository()
-    }
-
-    class FakeEmailVerifiedTokenRepository : EmailVerifiedTokenRepository {
-        val tokens = mutableMapOf<String, String>()
-
-        override fun findEmailByToken(token: String): String? = tokens[token]
-
-        var failOnDelete = false
-
-        override fun delete(token: String) {
-            if (failOnDelete) throw IllegalStateException("Redis 장애")
-            tokens.remove(token)
-        }
-    }
-
-    class FakeRefreshTokenRepository : RefreshTokenRepository {
-        val tokens = mutableMapOf<Long, String>()
-        val ttls = mutableMapOf<Long, Duration>()
-
-        var failOnSave = false
-
-        override fun save(userId: Long, refreshToken: String, ttl: Duration) {
-            if (failOnSave) throw IllegalStateException("Redis 장애")
-            tokens[userId] = refreshToken
-            ttls[userId] = ttl
-        }
-    }
 
     companion object {
         private const val EMAIL = "example@dsm.hs.kr"

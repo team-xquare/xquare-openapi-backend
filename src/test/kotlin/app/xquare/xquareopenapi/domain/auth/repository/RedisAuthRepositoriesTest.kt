@@ -12,6 +12,7 @@ import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.time.Duration
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -53,6 +54,28 @@ class RedisAuthRepositoriesTest @Autowired constructor(
         assertEquals("refresh-token", redisTemplate.opsForValue().get("refresh_token:7"))
         val ttl = redisTemplate.getExpire("refresh_token:7")
         assertTrue(ttl in 1..Duration.ofDays(14).seconds, "ttl=$ttl")
+    }
+
+    @Test
+    fun `저장된 리프레시 토큰이 기대한 값이면 새 토큰과 TTL로 바꾼다`() {
+        redisTemplate.opsForValue().set("refresh_token:7", "old-token")
+
+        assertTrue(refreshTokenRepository.replace(7L, "old-token", "new-token", Duration.ofDays(14)))
+
+        assertEquals("new-token", redisTemplate.opsForValue().get("refresh_token:7"))
+        val ttl = redisTemplate.getExpire("refresh_token:7")
+        assertTrue(ttl in Duration.ofDays(14).seconds - 10..Duration.ofDays(14).seconds, "ttl=$ttl")
+    }
+
+    @Test
+    fun `저장된 리프레시 토큰이 기대한 값과 다르면 바꾸지 않는다`() {
+        redisTemplate.opsForValue().set("refresh_token:7", "newer-token")
+
+        assertFalse(refreshTokenRepository.replace(7L, "old-token", "new-token", Duration.ofDays(14)))
+        assertFalse(refreshTokenRepository.replace(8L, "old-token", "new-token", Duration.ofDays(14)))
+
+        assertEquals("newer-token", redisTemplate.opsForValue().get("refresh_token:7"))
+        assertEquals(false, redisTemplate.hasKey("refresh_token:8"))
     }
 
     companion object {
