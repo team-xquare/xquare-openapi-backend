@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.time.Duration
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
 class JwtProviderTest {
@@ -40,6 +41,38 @@ class JwtProviderTest {
         assertNull(claims["role"])
         assertEquals(properties.refreshExpiration.toMillis(), claims.expiration.time - claims.issuedAt.time)
         assertEquals(properties.refreshExpiration, refreshToken.ttl)
+    }
+
+    @Test
+    fun `같은 순간에 발급해도 리프레시 토큰은 매번 다르다`() {
+        // 같은 초에 재발급하면 iat·exp가 같아 새 토큰이 이전 토큰과 똑같아지고, 폐기한 토큰이 계속 통한다.
+        assertNotEquals(jwtProvider.generateRefreshToken(7L).value, jwtProvider.generateRefreshToken(7L).value)
+    }
+
+    @Test
+    fun `리프레시 토큰을 검증하면 사용자 id를 돌려준다`() {
+        assertEquals(7L, jwtProvider.parseRefreshToken(jwtProvider.generateRefreshToken(7L).value))
+    }
+
+    @Test
+    fun `액세스 토큰은 리프레시 토큰으로 인정하지 않는다`() {
+        assertNull(jwtProvider.parseRefreshToken(jwtProvider.generateAccessToken(7L, Role.USER)))
+    }
+
+    @Test
+    fun `만료된 리프레시 토큰은 인정하지 않는다`() {
+        val expired = JwtProvider(properties.copy(refreshExpiration = Duration.ofSeconds(-1))).generateRefreshToken(7L)
+
+        assertNull(jwtProvider.parseRefreshToken(expired.value))
+    }
+
+    @Test
+    fun `다른 키로 서명했거나 형식이 깨진 토큰은 인정하지 않는다`() {
+        val otherKey = JwtProvider(properties.copy(secret = "another-secret-key-must-be-32-bytes-long!"))
+
+        assertNull(jwtProvider.parseRefreshToken(otherKey.generateRefreshToken(7L).value))
+        assertNull(jwtProvider.parseRefreshToken("not-a-jwt"))
+        assertNull(jwtProvider.parseRefreshToken(""))
     }
 
     @Test
