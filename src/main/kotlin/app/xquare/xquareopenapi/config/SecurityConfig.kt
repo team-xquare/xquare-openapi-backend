@@ -29,6 +29,8 @@ class SecurityConfig {
                 sessionCreationPolicy = SessionCreationPolicy.STATELESS
             }
             authorizeHttpRequests {
+                authorize(HttpMethod.POST, "/auth/email/otp", permitAll)
+                authorize(HttpMethod.POST, "/auth/email/otp/verify", permitAll)
                 authorize(HttpMethod.POST, "/auth/signup", permitAll)
                 authorize(HttpMethod.POST, "/auth/login", permitAll)
                 authorize(HttpMethod.POST, "/auth/reissue", permitAll)

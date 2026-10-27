@@ -39,12 +39,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
         '400':
-          description: 'INVALID_EMAIL_FORMAT: @dsm.hs.kr 형식이 아님'
+          description: 'INVALID_EMAIL_FORMAT: 빈 이메일 또는 @dsm.hs.kr 형식이 아님 / INVALID_INPUT: 필드 누락·null 또는 JSON 파싱 실패'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
                 INVALID_EMAIL_FORMAT:
                   value:
                     code: INVALID_EMAIL_FORMAT
@@ -65,7 +69,7 @@ paths:
       tags:
       - 인증/인가
       summary: 이메일 OTP 검증
-      description: '이메일로 받은 6자리 인증코드를 검증하고 회원가입용 emailVerifiedToken을 발급한다. 검증 성공 시 기존 OTP는 삭제되며, 토큰은 600초 TTL로 저장되어 회원가입 요청에
+      description: '이메일로 받은 6자리 인증코드를 검증하고 회원가입용 emailVerifiedToken을 발급한다. 같은 코드를 5회 틀리면 코드가 폐기되어 재발송이 필요하다. 검증 성공 시 기존 OTP는 삭제되며, 토큰은 600초 TTL로 저장되어 회원가입 요청에
         사용된다. 권한: ALL(비로그인 허용).'
       operationId: verifyEmailOtp
       security: []
@@ -86,11 +90,21 @@ paths:
           description: |-
             OTP_NOT_FOUND: 발송된 인증코드가 없거나 만료됨 (재발송 필요)
             OTP_MISMATCH: 인증코드 불일치
+            INVALID_EMAIL_FORMAT: 빈 이메일 또는 @dsm.hs.kr 형식이 아님
+            INVALID_INPUT: 빈 OTP, 필드 누락·null 또는 JSON 파싱 실패
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
+                INVALID_EMAIL_FORMAT:
+                  value:
+                    code: INVALID_EMAIL_FORMAT
+                    message: '@dsm.hs.kr 형식이 아닙니다.'
                 OTP_NOT_FOUND:
                   value:
                     code: OTP_NOT_FOUND

@@ -18,3 +18,10 @@ jwt:
 
 cors:
   allowed-origins: http://localhost:3000
+
+resend:
+  api-key: test-api-key
+  from: XQUARE <noreply@dsm.hs.kr>
+  base-url: https://api.resend.com
+  connect-timeout: 5s
+  read-timeout: 10s
