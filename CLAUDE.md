@@ -28,6 +28,8 @@ API 스펙이 있습니다.
     - 인라인 함수(`apply`, `firstOrNull` 등)의 마커 변수(`$i$f$...`, `$i$a$...`)를 0→1로 바꾸는 뮤턴트
     - 기본 인자 비트마스크를 +1 하는 뮤턴트. 기본값이 없는 첫 번째 인자의 비트가 켜질 뿐이다.
     - null이 될 수 없는 프로퍼티에 `a?.b ?: c`를 쓸 때 생기는 두 번째 null 검사를 바꾸는 뮤턴트
+    - vararg 배열 크기를 +1 하는 뮤턴트(`redisTemplate.execute(script, keys, *args)`, `RestClient.uri("/emails")`). 끝에 null 칸이 하나 생길 뿐이고, Lua 스크립트는 정해진 `KEYS`/`ARGV` 인덱스만 읽으며 URI에는 치환 변수가 없다.
+    - Lua가 항상 정수를 돌려주는데 `execute(...) == 1L`의 nullable `Long` null 검사를 바꾸는 뮤턴트(`RedisRefreshTokenRepository.replace`)
     - 생존자로 나오면 `javap -c -l -p`로 해당 줄의 바이트코드를 보고 위 경우인지 확인한다. 핵심 로직에서는 `if (a != null) a.b else c`처럼 써서 피했다(`LoginUseCase`, `SignupUseCase.save`).
   - `timeoutConstInMillis = 30000`: Testcontainers 테스트가 뮤턴트를 처음 돌릴 때 컨테이너를 띄우느라 기본 제한 시간을 넘겨 TIMED_OUT이 난다. 30초로 늘려도 가끔 남는데, 같은 뮤턴트가 다른 회차에서 KILLED로 나오면 환경 문제로 본다.
   - `config` 패키지는 대상에서 뺐다. Spring 컨텍스트가 뜰 때 한 번만 실행되고 PIT은 캐시된 컨텍스트를 재사용해서, 바뀐 코드가 실행되지 않아 가짜 생존자만 생긴다. 생성자에서 한 번만 도는 코드도 같은 이유로 Spring 테스트로는 못 잡으니 단위 테스트(`JwtProviderTest`처럼)로 검증한다.
@@ -36,7 +38,7 @@ API 스펙이 있습니다.
 
 ## 로컬 실행에 필요한 환경변수
 
-`DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `REDIS_HOST`, `REDIS_PORT`, `JWT_SECRET`(32바이트 이상이어야 하고, 짧으면 앱이 뜨지 않음).
+`RESEND_API_KEY`(빈 값이면 기동은 가능하나 메일 발송 실패), `MAIL_FROM`(예: `XQUARE <noreply@example.com>`), `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `REDIS_HOST`, `REDIS_PORT`, `JWT_SECRET`(32바이트 이상이어야 하고, 짧으면 앱이 뜨지 않음).
 `CORS_ALLOWED_ORIGINS`는 쉼표로 구분한 허용 origin 목록이다(예: `http://localhost:3000,https://example.com`). 비워 두면 브라우저의 다른 origin 요청이 모두 막힌다.
 `JPA_DDL_AUTO`는 기본값이 `validate`다. 마이그레이션 도구가 없으므로 빈 DB에서는 테이블이 먼저 있어야 한다.
 
@@ -50,15 +52,19 @@ API 스펙이 있습니다.
 
 - 패키지 구성: 기능별 `domain/<기능>/{presentation, usecase, repository}`, 공통 기능은 `global/{error, jwt}`, Spring 설정은 `config/`.
   - 비즈니스 로직은 API 하나당 UseCase 클래스 하나(`SignupUseCase.execute`)로 나눈다. OpenAPI 특성상 기능이 계속 늘어나서 서비스 하나에 몰리지 않게 하려는 것이다(PR #3 리뷰).
-- 에러 처리: `XquareException(ErrorCode.X)`를 던지면 `GlobalExceptionHandler`가 `{ "code", "message" }` 응답으로 바꾼다. 새 에러는 명세의 에러 코드 이름 그대로 `ErrorCode`에 추가한다. 입력 검증 실패와 JSON 파싱 실패는 모두 `400 INVALID_INPUT`이다.
-- 보안: `SecurityConfig`는 `POST /auth/signup`, `/auth/login`, `/auth/reissue` 외의 모든 요청에 인증을 요구한다. 공개 엔드포인트를 새로 만들면 여기에 `permitAll`을 추가해야 하고, 빠뜨리면 403이 난다. `ERROR` 디스패치(`/error` 포워드)도 허용해 둬야 한다. 막으면 415·500 같은 원래 응답이 모두 403으로 바뀐다. MockMvc는 이 포워드를 흉내 내지 않으므로 `ErrorDispatchTest`처럼 실제 서버로 확인한다. `PasswordEncoder`(BCrypt) 빈도 여기서 만든다.
+- 에러 처리: `XquareException(ErrorCode.X)`를 던지면 `GlobalExceptionHandler`가 `{ "code", "message" }` 응답으로 바꾼다. 새 에러는 명세의 에러 코드 이름 그대로 `ErrorCode`에 추가한다. 일반 입력 검증 실패와 JSON 파싱 실패는 `400 INVALID_INPUT`이다. OTP 발송·검증의 이메일 형식 오류(빈 문자열 포함)는 `400 INVALID_EMAIL_FORMAT`이다.
+- 보안: `SecurityConfig`는 `POST /auth/signup`, `/auth/login`, `/auth/reissue`, `/auth/email/otp`, `/auth/email/otp/verify` 외의 모든 요청에 인증을 요구한다. 공개 엔드포인트를 새로 만들면 여기에 `permitAll`을 추가해야 하고, 빠뜨리면 403이 난다. `ERROR` 디스패치(`/error` 포워드)도 허용해 둬야 한다. 막으면 415·500 같은 원래 응답이 모두 403으로 바뀐다. MockMvc는 이 포워드를 흉내 내지 않으므로 `ErrorDispatchTest`처럼 실제 서버로 확인한다. `PasswordEncoder`(BCrypt) 빈도 여기서 만든다.
 - CORS: `SecurityConfig`의 `cors { }`가 `corsConfigurationSource` 빈을 쓴다. 설정 값은 `global/cors/CorsProperties`에 있고, 허용 메서드는 GET/POST/PUT/PATCH/DELETE, 허용 헤더는 `Authorization`/`Content-Type`이다. 토큰을 헤더로 주고받으므로 credentials(쿠키)는 허용하지 않는다. preflight는 인증 검사보다 먼저 처리돼서 토큰 없이 통과한다.
 - Redis 저장소는 인터페이스(`EmailVerifiedTokenRepository`, `RefreshTokenRepository`) 뒤에 둔다. 인증 API 테스트(`SignupTest`, `LoginTest`, `ReissueTest`)는 `FakeAuthRepositories`를 `@Import`해 `@Primary` 가짜 구현으로 바꿔 끼워서 Redis 없이 돈다. 저장소 인터페이스에 메서드를 추가하면 가짜 구현에도 넣는다.
 - Redis 키 형식은 다른 기능과 맞춰야 하는 계약이다:
-  - `email_verified_token:{token}` → 이메일. 이메일 OTP 인증 API(아직 없음)가 TTL 600초로 저장하고, 회원가입이 읽은 뒤 지운다.
+  - `email_otp:{email}` → 6자리 OTP. TTL 300초이며 재발송은 덮어쓴다. 검증은 Lua 스크립트로 비교·삭제를 원자적으로 수행한다. 발송 실패 시 저장값이 해당 발송의 OTP와 같을 때만 Lua로 OTP와 횟수 키를 삭제하고 삭제 실패는 로그만 남긴다.
+  - `email_otp_attempts:{email}` → OTP 불일치 횟수. 검증 Lua에서 증가시키며 TTL은 OTP의 남은 PTTL과 맞춘다. 5회 불일치하면 OTP와 횟수 키를 폐기한다(5번째는 OTP_MISMATCH, 이후는 OTP_NOT_FOUND). 성공·재발송 시 횟수 키를 삭제하며 재발송 저장과 횟수 초기화도 원자적으로 처리한다.
+  - `email_verified_token:{token}` → 이메일. 이메일 OTP 인증 API가 TTL 600초로 저장하고, 회원가입이 읽은 뒤 지운다.
   - `refresh_token:{userId}` → 리프레시 토큰. TTL은 `jwt.refresh-expiration`. 사용자당 하나라 다시 로그인하면 이전 토큰은 폐기된다(사용자가 정함). 재발급은 저장값이 요청 토큰과 같을 때만 Lua 스크립트로 한 번에 바꾼다(`replace`). GET과 SET을 따로 하면 동시 재발급이나 그 사이의 재로그인 때 폐기된 토큰이 새 토큰을 덮어쓴다.
 - `users`의 unique 제약 이름(`uk_users_username`, `uk_users_email`)도 계약이다. 동시 가입으로 중복 검사를 통과한 요청이 제약에 걸리면, `UserUniqueConstraint`가 이 이름으로 어떤 값이 겹쳤는지 구분해 409로 바꾼다. 운영 DB의 제약 이름이 다르면 구분하지 못하고 500이 난다.
 - JWT: `sub`=userId, `type`=`access`/`refresh`, 액세스 토큰에만 `role`을 넣는다. 모든 토큰에 `jti`(UUID)를 넣는다. 빼면 같은 초에 발급한 토큰이 똑같아져, 재발급 직후에도 폐기한 토큰이 통한다. `generateRefreshToken`은 토큰과 TTL을 함께 돌려주며, Redis에 저장할 때 이 TTL을 그대로 쓴다. `parseRefreshToken`은 서명 오류·만료·액세스 토큰이면 예외 대신 null을 돌려준다.
+
+- 메일: `OtpMailSender` 뒤의 `ResendOtpMailSender`가 Thymeleaf `email/otp` 템플릿을 렌더링해 Resend HTTP API로 보낸다. `resend.base-url`은 기본 `https://api.resend.com`이며 테스트에서는 로컬 HTTP 서버로 바꾼다. 연결 제한은 `resend.connect-timeout`(기본 5초), 읽기 제한은 `resend.read-timeout`(기본 10초)이며 초과 시 EMAIL_SEND_FAILED로 처리한다. SMTP 설정은 사용하지 않는다.
 
 ## 버전별 주의점
 
