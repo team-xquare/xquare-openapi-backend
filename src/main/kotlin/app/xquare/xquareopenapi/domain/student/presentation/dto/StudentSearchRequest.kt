@@ -8,7 +8,9 @@ data class StudentSearchRequest(
     val grade: Int? = null,
     val classNum: Int? = null,
 
+    // page × size(최대 100)가 int를 넘으면 Spring Data가 offset을 만들지 못하고 500을 낸다.
     @field:Min(0)
+    @field:Max(Int.MAX_VALUE / 100L)
     val page: Int = 0,
 
     @field:Min(1)

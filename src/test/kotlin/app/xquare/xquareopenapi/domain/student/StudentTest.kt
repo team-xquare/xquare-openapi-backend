@@ -290,6 +290,8 @@ class StudentTest @Autowired constructor(
             "grade=abc" to "grade: 형식이 올바르지 않습니다.",
             "classNum=abc" to "classNum: 형식이 올바르지 않습니다.",
             "page=abc" to "page: 형식이 올바르지 않습니다.",
+            // page × size가 int를 넘으면 Spring Data가 offset을 만들지 못해 500이 났다.
+            "page=21474837&size=100" to "page: ",
         ).forEach { (query, expectedMessage) ->
             mockMvc.get("/students?$query") {
                 bearer(userToken)
@@ -302,12 +304,14 @@ class StudentTest @Autowired constructor(
     }
 
     @Test
-    fun `size는 100까지 받는다`() {
-        mockMvc.get("/students?size=100") {
+    fun `size는 100까지, page는 offset이 int를 넘지 않는 데까지 받는다`() {
+        mockMvc.get("/students?page=21474836&size=100") {
             bearer(userToken)
         }.andExpect {
             status { isOk() }
+            jsonPath("$.page") { value(21474836) }
             jsonPath("$.size") { value(100) }
+            jsonPath("$.content") { isEmpty() }
         }
     }
 

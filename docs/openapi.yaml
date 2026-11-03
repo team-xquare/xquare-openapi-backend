@@ -299,12 +299,13 @@ paths:
         name: page
         in: query
         required: false
-        description: 페이지 번호. 0부터 시작하며 생략하면 0.
+        description: 페이지 번호. 0부터 시작하며 생략하면 0. 최대 21474836(page × size가 int 범위를 넘지 않도록).
         schema:
           type: integer
           format: int32
           default: 0
           minimum: 0
+          maximum: 21474836
           example: 0
       - &id003
         name: size
