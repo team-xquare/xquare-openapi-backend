@@ -76,6 +76,28 @@ class JwtProviderTest {
     }
 
     @Test
+    fun `액세스 토큰을 검증하면 사용자 id와 권한을 돌려준다`() {
+        assertEquals(AccessTokenPayload(7L, Role.USER), jwtProvider.parseAccessToken(jwtProvider.generateAccessToken(7L, Role.USER)))
+        assertEquals(AccessTokenPayload(8L, Role.ADMIN), jwtProvider.parseAccessToken(jwtProvider.generateAccessToken(8L, Role.ADMIN)))
+    }
+
+    @Test
+    fun `리프레시 토큰은 액세스 토큰으로 인정하지 않는다`() {
+        assertNull(jwtProvider.parseAccessToken(jwtProvider.generateRefreshToken(7L).value))
+    }
+
+    @Test
+    fun `만료됐거나 다른 키로 서명했거나 형식이 깨진 액세스 토큰은 인정하지 않는다`() {
+        val expired = JwtProvider(properties.copy(accessExpiration = Duration.ofSeconds(-1))).generateAccessToken(7L, Role.USER)
+        val otherKey = JwtProvider(properties.copy(secret = "another-secret-key-must-be-32-bytes-long!"))
+
+        assertNull(jwtProvider.parseAccessToken(expired))
+        assertNull(jwtProvider.parseAccessToken(otherKey.generateAccessToken(7L, Role.USER)))
+        assertNull(jwtProvider.parseAccessToken("not-a-jwt"))
+        assertNull(jwtProvider.parseAccessToken(""))
+    }
+
+    @Test
     fun `secret이 256비트보다 짧으면 생성되지 않는다`() {
         assertThrows<WeakKeyException> {
             JwtProvider(properties.copy(secret = "short-secret"))

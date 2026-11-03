@@ -31,7 +31,7 @@ class ErrorDispatchTest {
     fun `인증이 필요한 경로는 여전히 토큰 없이 접근할 수 없다`() {
         val response = send(HttpRequest.newBuilder(uri("/students")).GET())
 
-        assertEquals(403, response.statusCode())
+        assertEquals(401, response.statusCode())
     }
 
     private fun uri(path: String) = URI("http://localhost:$port$path")

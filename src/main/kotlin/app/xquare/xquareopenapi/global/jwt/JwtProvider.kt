@@ -1,6 +1,7 @@
 package app.xquare.xquareopenapi.global.jwt
 
 import app.xquare.xquareopenapi.domain.user.Role
+import io.jsonwebtoken.Claims
 import io.jsonwebtoken.JwtException
 import io.jsonwebtoken.JwtParser
 import io.jsonwebtoken.Jwts
@@ -27,8 +28,19 @@ class JwtProvider(
             ttl = jwtProperties.refreshExpiration,
         )
 
+    // 서명이 틀리거나 만료됐거나 액세스 토큰이 아니면 null을 돌려준다.
+    fun parseAccessToken(token: String): AccessTokenPayload? {
+        val claims = parseClaims(token, ACCESS_TYPE) ?: return null
+        return AccessTokenPayload(claims.subject.toLong(), Role.valueOf(claims.get(ROLE_CLAIM, String::class.java)))
+    }
+
     // 서명이 틀리거나 만료됐거나 리프레시 토큰이 아니면 null을 돌려준다.
     fun parseRefreshToken(token: String): Long? {
+        val claims = parseClaims(token, REFRESH_TYPE) ?: return null
+        return claims.subject.toLong()
+    }
+
+    private fun parseClaims(token: String, type: String): Claims? {
         val claims = try {
             parser.parseSignedClaims(token).payload
         } catch (e: JwtException) {
@@ -36,8 +48,8 @@ class JwtProvider(
         } catch (e: IllegalArgumentException) {
             return null
         }
-        if (claims[TYPE_CLAIM] != REFRESH_TYPE) return null
-        return claims.subject.toLong()
+        if (claims[TYPE_CLAIM] != type) return null
+        return claims
     }
 
     private fun generateToken(userId: Long, expiration: Duration, claims: Map<String, String>): String {
