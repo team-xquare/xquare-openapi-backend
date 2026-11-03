@@ -98,11 +98,32 @@ class JwtProviderTest {
     }
 
     @Test
+    fun `같은 키로 서명했어도 sub나 role이 올바르지 않은 액세스 토큰은 인정하지 않는다`() {
+        assertNull(jwtProvider.parseAccessToken(sign(mapOf("type" to "access", "role" to "USER"))))
+        assertNull(jwtProvider.parseAccessToken(sign(mapOf("type" to "access", "sub" to "abc", "role" to "USER"))))
+        assertNull(jwtProvider.parseAccessToken(sign(mapOf("type" to "access", "sub" to "7"))))
+        assertNull(jwtProvider.parseAccessToken(sign(mapOf("type" to "access", "sub" to "7", "role" to "OWNER"))))
+        assertNull(jwtProvider.parseAccessToken(sign(mapOf("type" to "access", "sub" to "7", "role" to 1))))
+    }
+
+    @Test
+    fun `같은 키로 서명했어도 sub가 올바르지 않은 리프레시 토큰은 인정하지 않는다`() {
+        assertNull(jwtProvider.parseRefreshToken(sign(mapOf("type" to "refresh"))))
+        assertNull(jwtProvider.parseRefreshToken(sign(mapOf("type" to "refresh", "sub" to "abc"))))
+    }
+
+    @Test
     fun `secret이 256비트보다 짧으면 생성되지 않는다`() {
         assertThrows<WeakKeyException> {
             JwtProvider(properties.copy(secret = "short-secret"))
         }
     }
+
+    private fun sign(claims: Map<String, Any>): String =
+        Jwts.builder()
+            .claims(claims)
+            .signWith(Keys.hmacShaKeyFor(properties.secret.toByteArray()))
+            .compact()
 
     private fun parse(token: String): Claims =
         Jwts.parser()

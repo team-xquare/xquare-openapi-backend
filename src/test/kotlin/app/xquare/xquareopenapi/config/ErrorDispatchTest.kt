@@ -17,7 +17,7 @@ class ErrorDispatchTest {
     private var port: Int = 0
 
     @Test
-    fun `처리하지 못한 오류는 403으로 가리지 않고 원래 상태 코드로 응답한다`() {
+    fun `처리하지 못한 오류는 401로 가리지 않고 원래 상태 코드로 응답한다`() {
         val response = send(
             HttpRequest.newBuilder(uri("/auth/signup"))
                 .header("Content-Type", "text/plain")
