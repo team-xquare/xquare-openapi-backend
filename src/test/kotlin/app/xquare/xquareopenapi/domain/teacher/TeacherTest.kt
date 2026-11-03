@@ -246,6 +246,25 @@ class TeacherTest @Autowired constructor(
     }
 
     @Test
+    fun `교무실의 %, _, !는 와일드카드가 아닌 글자 그대로 찾는다`() {
+        save(name = "가", office = "100%교무실")
+        save(name = "나", office = "3_교무실")
+        save(name = "다", office = "!교무실")
+        save(name = "라", office = "3층 교무실")
+
+        // URI 문자열에 %를 넣으면 MockMvc가 다시 인코딩하므로 param으로 넘긴다.
+        listOf("%" to "가", "_" to "나", "!" to "다").forEach { (office, expected) ->
+            mockMvc.get("/teachers") {
+                bearer(userToken)
+                param("office", office)
+            }.andExpect {
+                jsonPath("$.content[*].name") { value(contains(expected)) }
+            }
+        }
+        expectNames("office=교무실", "가", "나", "다", "라")
+    }
+
+    @Test
     fun `조건을 여러 개 주면 모두 만족하는 교직원만 준다`() {
         save(name = "홍길동", grade = 1, classNum = 2, office = "3층 교무실")
         save(name = "홍길동", grade = 2, classNum = 2, office = "3층 교무실")

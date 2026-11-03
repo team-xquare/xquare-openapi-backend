@@ -4,6 +4,7 @@ import app.xquare.xquareopenapi.domain.teacher.TeacherRepository
 import app.xquare.xquareopenapi.domain.teacher.presentation.dto.TeacherResponse
 import app.xquare.xquareopenapi.domain.teacher.presentation.dto.TeacherSearchRequest
 import app.xquare.xquareopenapi.global.dto.PageResponse
+import app.xquare.xquareopenapi.global.jpa.escapeLike
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
@@ -23,7 +24,7 @@ class GetTeachersUseCase(
             request.grade,
             request.classNum,
             request.subject,
-            request.office,
+            request.office?.escapeLike(),
             pageable,
         )
         return PageResponse.of(teachers.map(TeacherResponse::from))

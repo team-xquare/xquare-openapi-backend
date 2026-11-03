@@ -681,7 +681,7 @@ paths:
       - name: office
         in: query
         required: false
-        description: 근무하는 교무실. 부분 일치 검색.
+        description: 근무하는 교무실. 부분 일치 검색. `%`, `_`도 와일드카드가 아닌 글자 그대로 찾는다.
         schema:
           type: string
           example: 3층 교무실
