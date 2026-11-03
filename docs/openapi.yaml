@@ -324,6 +324,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StudentPageResponse'
+        '400':
+          description: '`INVALID_INPUT`: page가 0보다 작거나 size가 1~100을 벗어남, 또는 숫자 조건에 숫자가 아닌 값'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
         '401':
           description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
           content:
@@ -373,7 +384,7 @@ paths:
               example:
                 message: 생성되었습니다.
         '400':
-          description: '`INVALID_STUDENT_NUMBER`: 1000~3999 범위를 벗어난 학번'
+          description: '`INVALID_STUDENT_NUMBER`: 1000~3999 범위를 벗어난 학번 / `INVALID_INPUT`: 필수 값 누락, 이름 공백·10자 초과, `@dsm.hs.kr`이 아닌 이메일, 날짜 형식 오류'
           content:
             application/json:
               schema:
@@ -383,6 +394,10 @@ paths:
                   value:
                     code: INVALID_STUDENT_NUMBER
                     message: 1000~3999 범위를 벗어난 학번
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
         '401':
           description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
           content:
@@ -468,7 +483,7 @@ paths:
       tags:
       - 학생
       summary: 학생 정보 수정
-      description: '학생 정보를 수정한다. 학번은 1000~3999 범위의 4자리(앞 1자리 학년, 다음 1자리 반, 마지막 2자리 번호)이며 중복될 수 없다. 이메일은 `@dsm.hs.kr` 형식만 허용된다.
+      description: '학생 정보를 수정한다. 등록과 같은 모든 필드를 보내야 하며, 보낸 값으로 통째로 바꾼다. 학번은 1000~3999 범위의 4자리(앞 1자리 학년, 다음 1자리 반, 마지막 2자리 번호)이며 중복될 수 없다. 이메일은 `@dsm.hs.kr` 형식만 허용된다.
         소속 동아리는 이 API에서 다루지 않으며 동아리 등록·수정의 `member`로만 변경된다. 권한: ADMIN.'
       operationId: updateStudent
       security:
@@ -500,7 +515,7 @@ paths:
               example:
                 message: 수정되었습니다.
         '400':
-          description: '`INVALID_STUDENT_NUMBER`: 1000~3999 범위를 벗어난 학번'
+          description: '`INVALID_STUDENT_NUMBER`: 1000~3999 범위를 벗어난 학번 / `INVALID_INPUT`: 필수 값 누락, 이름 공백·10자 초과, `@dsm.hs.kr`이 아닌 이메일, 날짜 형식 오류'
           content:
             application/json:
               schema:
@@ -510,6 +525,10 @@ paths:
                   value:
                     code: INVALID_STUDENT_NUMBER
                     message: 1000~3999 범위를 벗어난 학번
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
         '401':
           description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
           content:
@@ -2501,6 +2520,11 @@ components:
       - email
     StudentUpdateRequest:
       type: object
+      required:
+      - studentNumber
+      - name
+      - birthDate
+      - email
       properties:
         studentNumber:
           type: integer
