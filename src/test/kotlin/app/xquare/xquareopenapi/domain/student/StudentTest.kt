@@ -7,9 +7,12 @@ import org.hamcrest.Matchers.contains
 import org.hamcrest.Matchers.containsString
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentMatchers.anyInt
 import org.mockito.Mockito.doReturn
 import org.mockito.Mockito.doThrow
+import org.mockito.Mockito.never
+import org.mockito.Mockito.verify
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
@@ -100,6 +103,8 @@ class StudentTest @Autowired constructor(
             json(body(studentNumber = 2315))
         }.andExpectStudentNumberConflict()
         assertEquals(1, studentRepository.count())
+        // 중복 검사에서 막아야 운영 DB의 제약 이름이 달라도 409가 난다. 제약에 맡기면 이름을 구분하지 못해 500이 된다.
+        verify(spiedStudentRepository, never()).saveAndFlush(any())
     }
 
     @Test
@@ -116,7 +121,7 @@ class StudentTest @Autowired constructor(
     @Test
     fun `학번 제약이 아닌 무결성 위반은 원래 예외를 그대로 던진다`() {
         val violation = DataIntegrityViolationException("다른 제약 위반")
-        doThrow(violation).`when`(spiedStudentRepository).saveAndFlush(org.mockito.ArgumentMatchers.any())
+        doThrow(violation).`when`(spiedStudentRepository).saveAndFlush(any())
 
         val thrown = assertFailsWith<ServletException> {
             mockMvc.post("/students") {
@@ -177,6 +182,19 @@ class StudentTest @Autowired constructor(
             jsonPath("$.email") { value("s2315@dsm.hs.kr") }
             // 키가 없으면 PathNotFound로 실패하므로, null 값으로 들어 있는지까지 확인된다.
             jsonPath("$.club") { value(null as Any?) }
+        }
+    }
+
+    @Test
+    fun `반이 0인 학번도 학년, 반, 번호를 나눠 준다`() {
+        val student = save(3001)
+
+        mockMvc.get("/students/${student.id}") {
+            bearer(userToken)
+        }.andExpect {
+            jsonPath("$.grade") { value(3) }
+            jsonPath("$.classNum") { value(0) }
+            jsonPath("$.number") { value(1) }
         }
     }
 
@@ -336,6 +354,7 @@ class StudentTest @Autowired constructor(
             json(body(studentNumber = 2316))
         }.andExpectStudentNumberConflict()
         assertEquals(2315, studentRepository.findById(student.id!!).get().studentNumber)
+        verify(spiedStudentRepository, never()).flush()
     }
 
     @Test
