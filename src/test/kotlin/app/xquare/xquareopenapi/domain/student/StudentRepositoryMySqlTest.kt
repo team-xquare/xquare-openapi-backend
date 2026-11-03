@@ -1,6 +1,7 @@
 package app.xquare.xquareopenapi.domain.student
 
 import app.xquare.xquareopenapi.global.error.violates
+import app.xquare.xquareopenapi.global.jpa.escapeLike
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest
@@ -47,6 +48,24 @@ class StudentRepositoryMySqlTest @Autowired constructor(
         assertEquals(listOf(1999, 2199, 2200, 3101), search(name = "민준"))
         assertEquals(listOf(2199), search(name = "민준", grade = 2, classNum = 1))
         assertEquals(6, search().size)
+    }
+
+    @Test
+    fun `이름의 %, _, !는 글자 그대로 찾는다`() {
+        listOf(1101 to "김%준", 1102 to "김_준", 1103 to "김!준", 1104 to "김민준")
+            .forEach { (studentNumber, name) -> studentRepository.save(student(studentNumber, name)) }
+
+        assertEquals(listOf(1101), search(name = "%".escapeLike()))
+        assertEquals(listOf(1102), search(name = "_".escapeLike()))
+        assertEquals(listOf(1103), search(name = "!".escapeLike()))
+    }
+
+    @Test
+    fun `id로 지우고 지운 행 수를 돌려준다`() {
+        val id = studentRepository.save(student(2315)).id!!
+
+        assertEquals(1, studentRepository.deleteByIdReturningCount(id))
+        assertEquals(0, studentRepository.deleteByIdReturningCount(id))
     }
 
     private fun search(name: String? = null, grade: Int? = null, classNum: Int? = null) =

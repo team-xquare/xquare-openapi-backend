@@ -4,6 +4,7 @@ import app.xquare.xquareopenapi.domain.student.StudentRepository
 import app.xquare.xquareopenapi.domain.student.presentation.dto.StudentResponse
 import app.xquare.xquareopenapi.domain.student.presentation.dto.StudentSearchRequest
 import app.xquare.xquareopenapi.global.dto.PageResponse
+import app.xquare.xquareopenapi.global.jpa.escapeLike
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
@@ -18,7 +19,7 @@ class GetStudentsUseCase(
     @Transactional(readOnly = true)
     fun execute(request: StudentSearchRequest): PageResponse<StudentResponse> {
         val pageable = PageRequest.of(request.page, request.size, Sort.by("studentNumber"))
-        val students = studentRepository.search(request.name, request.grade, request.classNum, pageable)
+        val students = studentRepository.search(request.name?.escapeLike(), request.grade, request.classNum, pageable)
         return PageResponse.of(students.map(StudentResponse::from))
     }
 }

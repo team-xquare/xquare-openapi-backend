@@ -270,6 +270,33 @@ class StudentTest @Autowired constructor(
         expectStudentNumbers("classNum=1", 2101, 2199, 3101)
         expectStudentNumbers("grade=2&classNum=1", 2101, 2199)
         expectStudentNumbers("grade=1&classNum=9", 1999)
+        expectStudentNumbers("grade=3", 3000, 3101)
+        expectStudentNumbers("classNum=0", 2000, 3000)
+    }
+
+    @Test
+    fun `이름의 %, _, !는 와일드카드가 아닌 글자 그대로 찾는다`() {
+        save(1101, name = "김%준")
+        save(1102, name = "김_준")
+        save(1103, name = "김!준")
+        save(1104, name = "김민준")
+
+        // URI 문자열에 %를 넣으면 MockMvc가 다시 인코딩하므로 param으로 넘긴다.
+        listOf("%" to 1101, "_" to 1102, "!" to 1103).forEach { (name, expected) ->
+            mockMvc.get("/students") {
+                bearer(userToken)
+                param("name", name)
+            }.andExpect {
+                jsonPath("$.content[*].studentNumber") { value(contains(expected)) }
+            }
+        }
+        mockMvc.get("/students") {
+            bearer(userToken)
+            param("name", "!%")
+        }.andExpect {
+            jsonPath("$.content") { isEmpty() }
+        }
+        expectStudentNumbers("name=김", 1101, 1102, 1103, 1104)
     }
 
     @Test
@@ -287,6 +314,12 @@ class StudentTest @Autowired constructor(
             "page=-1" to "page: ",
             "size=0" to "size: ",
             "size=101" to "size: ",
+            "grade=0" to "grade: ",
+            "grade=4" to "grade: ",
+            // 범위를 막기 전에는 쿼리의 grade * 1000이 int를 넘어 500이 났다.
+            "grade=2147483647" to "grade: ",
+            "classNum=-1" to "classNum: ",
+            "classNum=10" to "classNum: ",
             "grade=abc" to "grade: 형식이 올바르지 않습니다.",
             "classNum=abc" to "classNum: 형식이 올바르지 않습니다.",
             "page=abc" to "page: 형식이 올바르지 않습니다.",

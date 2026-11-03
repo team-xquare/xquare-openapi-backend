@@ -275,25 +275,29 @@ paths:
       - name: name
         in: query
         required: false
-        description: 검색할 학생의 이름. 부분 일치 검색.
+        description: 검색할 학생의 이름. 부분 일치 검색. `%`, `_`도 와일드카드가 아닌 글자 그대로 찾는다.
         schema:
           type: string
           example: 민
       - name: grade
         in: query
         required: false
-        description: 검색할 학년.
+        description: 검색할 학년. 1~3.
         schema:
           type: integer
           format: int32
+          minimum: 1
+          maximum: 3
           example: 2
       - name: classNum
         in: query
         required: false
-        description: 검색할 반.
+        description: 검색할 반. 0~9 (학번 1000~3999에서 나올 수 있는 반).
         schema:
           type: integer
           format: int32
+          minimum: 0
+          maximum: 9
           example: 3
       - &id002
         name: page
@@ -326,7 +330,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/StudentPageResponse'
         '400':
-          description: '`INVALID_INPUT`: page가 0보다 작거나 size가 1~100을 벗어남, 또는 숫자 조건에 숫자가 아닌 값'
+          description: '`INVALID_INPUT`: page가 0보다 작거나 size가 1~100을 벗어남, grade가 1~3·classNum이 0~9를 벗어남, 또는 숫자 조건에 숫자가 아닌 값'
           content:
             application/json:
               schema:

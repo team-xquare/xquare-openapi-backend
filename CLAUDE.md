@@ -57,6 +57,9 @@ API 스펙이 있습니다.
 - 권한: `/students` 등록·수정·삭제처럼 ADMIN 전용 API는 `SecurityConfig`에 `hasRole(ADMIN)`으로 메서드와 경로를 적는다. 나머지는 `authenticated`라서 USER와 ADMIN 모두 통과한다. ADMIN 계정을 만드는 API는 없어서 DB에서 `users.role`을 직접 바꿔야 한다.
 - 수정 API(PATCH)는 등록과 같은 요청 DTO로 모든 필드를 받아 통째로 바꾼다(`StudentRequest`).
 - 목록 조회는 `@ModelAttribute` 검색 DTO로 받는다. `page`(0 이상)·`size`(1~100)는 Bean Validation으로 검사하고, 응답은 `global/dto/PageResponse`. 쿼리 값의 타입이 틀리면 `GlobalExceptionHandler`가 `형식이 올바르지 않습니다.`로 바꿔 400을 준다.
+  - 부분 일치 검색은 `like concat('%', :x, '%') escape '!'`로 쓰고, 값은 `escapeLike()`(`global/jpa`)를 거쳐 넘긴다. 그래야 입력의 `%`·`_`가 글자 그대로 찾아진다. MySQL은 문자열 안의 `\`를 이스케이프로 읽으므로 이스케이프 문자로 쓰지 않는다.
+  - 쿼리에서 산술에 쓰는 검색 값(학생 `grade * 1000` 등)은 DTO에서 범위를 막는다. 막지 않으면 큰 값에서 넘쳐 500이 난다.
+- 삭제는 조회 후 `delete(entity)`가 아니라 `@Modifying` JPQL delete로 지우고, 지운 행 수가 0이면 404를 던진다. 조회 후 삭제하면 동시 삭제 때 늦은 쪽이 커밋하며 0행 삭제로 500이 난다(`DeleteStudentConcurrencyTest`).
 - `students`의 unique 제약 이름 `uk_students_student_number`도 계약이다. 동시 등록·수정으로 중복 검사를 통과한 요청이 제약에 걸리면 이 이름으로 구분해 409로 바꾼다(`DataIntegrityViolationException.violates`).
 - Redis 저장소는 인터페이스(`EmailVerifiedTokenRepository`, `RefreshTokenRepository`) 뒤에 둔다. 인증 API 테스트(`SignupTest`, `LoginTest`, `ReissueTest`)는 `FakeAuthRepositories`를 `@Import`해 `@Primary` 가짜 구현으로 바꿔 끼워서 Redis 없이 돈다. 저장소 인터페이스에 메서드를 추가하면 가짜 구현에도 넣는다.
 - Redis 키 형식은 다른 기능과 맞춰야 하는 계약이다:

@@ -20,6 +20,7 @@ class DataIntegrityViolationsTest {
         assertFalse(violation("users.uk_users_email").violates("uk_students_student_number"))
         assertFalse(violation(null).violates("uk_students_student_number"))
         assertFalse(DataIntegrityViolationException("원인 없음").violates("uk_students_student_number"))
+        assertFalse(DataIntegrityViolationException("다른 원인", SQLException()).violates("uk_students_student_number"))
     }
 
     private fun violation(constraintName: String?) =
