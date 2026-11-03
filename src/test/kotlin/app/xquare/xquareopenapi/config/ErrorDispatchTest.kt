@@ -17,7 +17,7 @@ class ErrorDispatchTest {
     private var port: Int = 0
 
     @Test
-    fun `처리하지 못한 오류는 403으로 가리지 않고 원래 상태 코드로 응답한다`() {
+    fun `처리하지 못한 오류는 401로 가리지 않고 원래 상태 코드로 응답한다`() {
         val response = send(
             HttpRequest.newBuilder(uri("/auth/signup"))
                 .header("Content-Type", "text/plain")
@@ -31,7 +31,7 @@ class ErrorDispatchTest {
     fun `인증이 필요한 경로는 여전히 토큰 없이 접근할 수 없다`() {
         val response = send(HttpRequest.newBuilder(uri("/students")).GET())
 
-        assertEquals(403, response.statusCode())
+        assertEquals(401, response.statusCode())
     }
 
     private fun uri(path: String) = URI("http://localhost:$port$path")
