@@ -233,6 +233,9 @@ class TeacherTest @Autowired constructor(
         expectNames("grade=1&classNum=2", "가")
         expectNames("subject=MATH", "가", "다")
         expectNames("subject=MUSIC", "라")
+        // 교직원 검색은 정확히 일치만 보므로 범위 밖 값이나 아주 큰 값도 넘치지 않고 빈 목록이다.
+        expectNames("grade=4")
+        expectNames("grade=2147483647&classNum=2147483647")
     }
 
     @Test
@@ -280,6 +283,7 @@ class TeacherTest @Autowired constructor(
             "size=0" to "size: ",
             "size=101" to "size: ",
             "grade=abc" to "grade: 형식이 올바르지 않습니다.",
+            "classNum=abc" to "classNum: 형식이 올바르지 않습니다.",
             "subject=PHYSICS" to "subject: 형식이 올바르지 않습니다.",
             "page=21474837&size=100" to "page: ",
         ).forEach { (query, expectedMessage) ->
