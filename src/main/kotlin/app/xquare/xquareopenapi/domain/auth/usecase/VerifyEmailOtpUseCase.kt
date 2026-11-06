@@ -17,14 +17,14 @@ class VerifyEmailOtpUseCase(
     private val emailVerifiedTokenRepository: EmailVerifiedTokenRepository,
 ) {
     fun execute(request: EmailOtpVerifyRequest): EmailVerifiedTokenResponse {
-        validateOtpEmail(request.email)
-        when (emailOtpRepository.consume(request.email, request.otp)) {
+        val email = normalizeOtpEmail(request.email)
+        when (emailOtpRepository.consume(email, request.otp)) {
             OtpVerification.NOT_FOUND -> throw XquareException(ErrorCode.OTP_NOT_FOUND)
             OtpVerification.MISMATCH -> throw XquareException(ErrorCode.OTP_MISMATCH)
             OtpVerification.MATCHED -> Unit
         }
         val token = UUID.randomUUID().toString()
-        emailVerifiedTokenRepository.save(token, request.email, Duration.ofSeconds(600))
+        emailVerifiedTokenRepository.save(token, email, Duration.ofSeconds(600))
         return EmailVerifiedTokenResponse(token)
     }
 }

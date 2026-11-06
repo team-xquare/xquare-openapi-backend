@@ -19,12 +19,12 @@ class SendEmailOtpUseCase(
     private val random: SecureRandom,
 ) {
     fun execute(request: EmailOtpSendRequest, ip: String): MessageResponse {
-        validateOtpEmail(request.email)
+        val email = normalizeOtpEmail(request.email)
         val otp = random.nextInt(100000, 1000000).toString()
         val limit = try {
-            emailOtpRepository.save(request.email, ip, otp, Duration.ofSeconds(300))
+            emailOtpRepository.save(email, ip, otp, Duration.ofSeconds(300))
         } catch (e: Exception) {
-            throw sendFailed(request.email, otp, e)
+            throw sendFailed(email, otp, e)
         }
         if (limit != null) {
             val errorCode = when (limit.reason) {
@@ -35,9 +35,9 @@ class SendEmailOtpUseCase(
             throw XquareException(errorCode, limit.retryAfter)
         }
         try {
-            mailSender.send(request.email, otp)
+            mailSender.send(email, otp)
         } catch (e: Exception) {
-            throw sendFailed(request.email, otp, e)
+            throw sendFailed(email, otp, e)
         }
         return MessageResponse("인증코드를 발송했습니다.")
     }

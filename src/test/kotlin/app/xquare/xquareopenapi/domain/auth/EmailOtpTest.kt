@@ -59,7 +59,7 @@ class EmailOtpTest @Autowired constructor(
 
     @Test
     fun `두 API 모두 잘못된 이메일과 빈 이메일은 INVALID_EMAIL_FORMAT`() {
-        for (email in listOf("", " ", "a@gmail.com", "a@dsmXhs.kr", "a@@dsm.hs.kr", "a b@dsm.hs.kr", "a@dsm.hs.kr.other")) {
+        for (email in listOf("", " ", "a@gmail.com", "a@dsmXhs.kr", "a@@dsm.hs.kr", "a b@dsm.hs.kr", "a@dsm.hs.kr.other", "victim+1@dsm.hs.kr", "+@dsm.hs.kr")) {
             for (path in listOf("/auth/email/otp", "/auth/email/otp/verify")) {
                 request(path, """{"email":"$email","otp":"123456"}""").andExpect {
                     status { isBadRequest() }
@@ -282,13 +282,68 @@ class EmailOtpTest @Autowired constructor(
         send().andExpect { status { isOk() } }
     }
 
+    @Test
+    fun `대소문자와 앞뒤 공백이 달라도 같은 이메일로 보고 쿨다운과 발송 상한을 함께 센다`() {
+        send(email = VICTIM).andExpect { status { isOk() } }
+        for (variant in listOf("Victim@dsm.hs.kr", "VICTIM@DSM.HS.KR")) {
+            send(email = variant).andExpect {
+                status { isTooManyRequests() }
+                jsonPath("$.code") { value("OTP_RESEND_TOO_SOON") }
+            }
+        }
+        otps.now = at(60_000)
+        send(email = "Victim@dsm.hs.kr").andExpect { status { isOk() } }
+        otps.now = at(120_000)
+        send(email = " VICTIM@dsm.hs.kr ").andExpect { status { isOk() } }
+        otps.now = at(180_000)
+        send(email = "Victim@Dsm.Hs.Kr").andExpect {
+            status { isTooManyRequests() }
+            jsonPath("$.code") { value("OTP_SEND_LIMIT_EXCEEDED") }
+        }
+        assertEquals(listOf(VICTIM, VICTIM, VICTIM), mail.messages.map { it.first })
+        assertEquals(setOf(VICTIM), otps.otps.keys)
+    }
+
+    @Test
+    fun `대소문자가 달라도 오입력 횟수를 함께 센다`() {
+        send(email = "Victim@dsm.hs.kr").andExpect { status { isOk() } }
+        val otp = mail.messages.single().second
+        for (variant in listOf(VICTIM, "Victim@dsm.hs.kr", "VICTIM@dsm.hs.kr", "victim@DSM.HS.KR", "vIcTiM@dsm.hs.kr")) {
+            verify("wrong", variant).andExpect { jsonPath("$.code") { value("OTP_MISMATCH") } }
+        }
+        assertEquals(5, otps.attempts(VICTIM))
+        verify(otp, VICTIM).andExpect { jsonPath("$.code") { value("OTP_NOT_FOUND") } }
+        otps.now = at(60_000)
+        send(email = "VICTIM@dsm.hs.kr").andExpect {
+            status { isTooManyRequests() }
+            jsonPath("$.code") { value("OTP_ATTEMPTS_EXCEEDED") }
+        }
+    }
+
+    @Test
+    fun `대문자로 받은 인증 토큰으로 소문자 이메일은 가입되고 다른 이메일은 가입되지 않는다`() {
+        send(email = "Victim@DSM.HS.KR").andExpect { status { isOk() } }
+        val token = verifiedToken(mail.messages.single().second, email = "VICTIM@dsm.hs.kr")
+        assertEquals(VICTIM, tokens.tokens[token])
+        signup("victim+1@dsm.hs.kr", token).andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_INPUT") }
+        }
+        signup("other@dsm.hs.kr", token).andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("EMAIL_NOT_VERIFIED") }
+        }
+        signup(VICTIM, token).andExpect { status { isCreated() } }
+        assertEquals(VICTIM, users.findAll().single().email)
+    }
+
     private fun sendFailed() = send().andExpect {
         status { isInternalServerError() }
         jsonPath("$.code") { value("EMAIL_SEND_FAILED") }
         jsonPath("$.message") { value("메일 발송 또는 인증코드 저장에 실패했습니다.") }
     }
-    private fun verifiedToken(otp: String = "123456"): String {
-        val response = verify(otp).andExpect { status { isOk() } }.andReturn().response.contentAsString
+    private fun verifiedToken(otp: String = "123456", email: String = EMAIL): String {
+        val response = verify(otp, email).andExpect { status { isOk() } }.andReturn().response.contentAsString
         return JsonPath.read(response, "$.emailVerifiedToken")
     }
     private fun mismatch() = verify("wrong").andExpect { jsonPath("$.code") { value("OTP_MISMATCH") } }
@@ -300,12 +355,17 @@ class EmailOtpTest @Autowired constructor(
             with { it.apply { remoteAddr = ip } }
             if (forwardedFor != null) header("X-Forwarded-For", forwardedFor)
         }
-    private fun verify(otp: String) = request("/auth/email/otp/verify", """{"email":"$EMAIL","otp":"$otp"}""")
+    private fun verify(otp: String, email: String = EMAIL) = request("/auth/email/otp/verify", """{"email":"$email","otp":"$otp"}""")
+    private fun signup(email: String, token: String) = request(
+        "/auth/signup",
+        """{"username":"otpuser","password":"Password1!","studentNumber":2315,"name":"홍길동","email":"$email","emailVerifiedToken":"$token"}""",
+    )
     private fun request(path: String, body: String) = mockMvc.post(path) {
         contentType = MediaType.APPLICATION_JSON
         content = body
     }
     companion object {
         private const val EMAIL = "example@dsm.hs.kr"
+        private const val VICTIM = "victim@dsm.hs.kr"
     }
 }
