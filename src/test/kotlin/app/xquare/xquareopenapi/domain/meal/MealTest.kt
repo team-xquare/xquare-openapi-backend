@@ -1,5 +1,8 @@
 package app.xquare.xquareopenapi.domain.meal
 
+import app.xquare.xquareopenapi.domain.meal.neis.NeisMeal
+import app.xquare.xquareopenapi.domain.meal.usecase.MealSyncResult
+import app.xquare.xquareopenapi.domain.meal.usecase.SyncNeisMealsUseCase
 import app.xquare.xquareopenapi.domain.user.Role
 import app.xquare.xquareopenapi.global.jwt.JwtProvider
 import jakarta.servlet.ServletException
@@ -39,6 +42,7 @@ import kotlin.test.assertTrue
 class MealTest @Autowired constructor(
     private val mockMvc: MockMvc,
     private val mealRepository: MealRepository,
+    private val syncNeisMealsUseCase: SyncNeisMealsUseCase,
     jwtProvider: JwtProvider,
 ) {
     // 동시 등록·수정을 흉내 내려고 중복 검사만 통과시킬 때 쓴다.
@@ -133,7 +137,7 @@ class MealTest @Autowired constructor(
     @Test
     fun `중복 검사를 통과해도 같은 날짜가 먼저 저장됐으면 MEAL_ALREADY_EXISTS`() {
         save(date = LocalDate.of(2026, 9, 1))
-        doReturn(false).`when`(spiedMealRepository).existsByDate(anyDate())
+        doReturn(null).`when`(spiedMealRepository).findByDate(anyDate())
 
         mockMvc.post("/meals") {
             bearer(adminToken)
@@ -165,7 +169,6 @@ class MealTest @Autowired constructor(
             """{"date":"2026-09-01","lunch":["백미밥"],"dinner":[]}""" to "요청 값이 올바르지 않습니다.",
             body(breakfast = "null") to "요청 값이 올바르지 않습니다.",
             body(breakfast = "\"볶음밥\"") to "요청 값이 올바르지 않습니다.",
-            body(breakfast = "[]", lunch = "[]", dinner = "[]") to "breakfast, lunch, dinner 중 하나에는 메뉴가 있어야 합니다.",
             body(breakfast = """[" "]""") to "breakfast[0]",
             body(lunch = """["백미밥", null]""") to "요청 값이 올바르지 않습니다.",
             body(dinner = jsonArray(listOf("가".repeat(51)))) to "dinner[0]",
@@ -360,7 +363,7 @@ class MealTest @Autowired constructor(
     fun `중복 검사를 통과해도 수정한 날짜가 겹치면 MEAL_ALREADY_EXISTS`() {
         val meal = save(date = LocalDate.of(2026, 9, 1))
         save(date = LocalDate.of(2026, 9, 2))
-        doReturn(false).`when`(spiedMealRepository).existsByDate(anyDate())
+        doReturn(null).`when`(spiedMealRepository).findByDate(anyDate())
 
         mockMvc.patch("/meals/${meal.id}") {
             bearer(adminToken)
@@ -398,12 +401,141 @@ class MealTest @Autowired constructor(
 
         mockMvc.patch("/meals/${meal.id}") {
             bearer(adminToken)
-            json(body(breakfast = "[]", lunch = "[]", dinner = "[]"))
+            json(body(lunch = """[" "]"""))
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("INVALID_INPUT") }
         }
         assertEquals(listOf("백미밥", "된장찌개", "잡채"), mealRepository.findById(meal.id!!).get().lunch)
+    }
+
+    // 급식 없음 표시: 세 끼가 모두 빈 행. 관리자가 나이스 급식을 없앨 때 쓴다.
+
+    @Test
+    fun `세 끼를 모두 비워 수정하면 급식 없음으로 바뀌어 조회에서 빠지고 단건 조회는 MEAL_NOT_FOUND`() {
+        val meal = save(date = LocalDate.of(2026, 9, 1), editedByAdmin = false)
+        save(date = LocalDate.of(2026, 9, 2))
+
+        mockMvc.patch("/meals/${meal.id}") {
+            bearer(adminToken)
+            json(body(breakfast = "[]", lunch = "[]", dinner = "[]"))
+        }.andExpect { status { isOk() } }
+
+        mockMvc.get("/meals/${meal.id}").andExpectMealNotFound()
+        mockMvc.get("/meals?startDate=2026-09-01&finishDate=2026-09-30").andExpect {
+            status { isOk() }
+            jsonPath("$.meals[*].date") { value(contains("2026-09-02")) }
+            jsonPath("$.totalCount") { value(1) }
+        }
+        val marked = mealRepository.findById(meal.id!!).get()
+        assertTrue(marked.isNoMeal)
+        assertTrue(marked.editedByAdmin)
+    }
+
+    @Test
+    fun `급식 없음으로 바꾼 날짜는 나이스 동기화가 다시 만들지 않는다`() {
+        val meal = save(date = LocalDate.of(2026, 9, 1), editedByAdmin = false)
+        mockMvc.patch("/meals/${meal.id}") {
+            bearer(adminToken)
+            json(body(breakfast = "[]", lunch = "[]", dinner = "[]"))
+        }.andExpect { status { isOk() } }
+
+        val result = syncNeisMealsUseCase.execute(listOf(neisMeal(LocalDate.of(2026, 9, 1))))
+
+        assertEquals(MealSyncResult(created = 0, updated = 0, skipped = 1), result)
+        assertEquals(1, mealRepository.count())
+        assertTrue(mealRepository.findById(meal.id!!).get().isNoMeal)
+        mockMvc.get("/meals?startDate=2026-09-01&finishDate=2026-09-30").andExpect { jsonPath("$.totalCount") { value(0) } }
+    }
+
+    @Test
+    fun `날짜를 옮기면 원래 날짜에 급식 없음 표시를 남겨 나이스 동기화가 다시 만들지 않는다`() {
+        val meal = save(date = LocalDate.of(2026, 9, 2), editedByAdmin = false)
+
+        mockMvc.patch("/meals/${meal.id}") {
+            bearer(adminToken)
+            json(body(date = "2026-09-01"))
+        }.andExpect { status { isOk() } }
+        val result = syncNeisMealsUseCase.execute(listOf(neisMeal(LocalDate.of(2026, 9, 2))))
+
+        assertEquals(MealSyncResult(created = 0, updated = 0, skipped = 1), result)
+        val marker = mealRepository.findAll().single { it.id != meal.id }
+        assertEquals(LocalDate.of(2026, 9, 2), marker.date)
+        assertTrue(marker.isNoMeal)
+        assertTrue(marker.editedByAdmin)
+        mockMvc.get("/meals?startDate=2026-09-01&finishDate=2026-09-30").andExpect {
+            jsonPath("$.meals[*].id") { value(contains(meal.id!!.toInt())) }
+            jsonPath("$.meals[0].date") { value("2026-09-01") }
+            jsonPath("$.totalCount") { value(1) }
+        }
+    }
+
+    @Test
+    fun `세 끼를 모두 비워 등록하면 급식 없음으로 미리 막아 두고 조회에서는 빠진다`() {
+        mockMvc.post("/meals") {
+            bearer(adminToken)
+            json(body(breakfast = "[]", lunch = "[]", dinner = "[]"))
+        }.andExpect { status { isCreated() } }
+
+        val marker = mealRepository.findAll().single()
+        assertTrue(marker.isNoMeal)
+        assertTrue(marker.editedByAdmin)
+        mockMvc.get("/meals/${marker.id}").andExpectMealNotFound()
+        mockMvc.get("/meals?startDate=2026-09-01&finishDate=2026-09-30").andExpect { jsonPath("$.totalCount") { value(0) } }
+        assertEquals(
+            MealSyncResult(created = 0, updated = 0, skipped = 1),
+            syncNeisMealsUseCase.execute(listOf(neisMeal(LocalDate.of(2026, 9, 1)))),
+        )
+    }
+
+    @Test
+    fun `급식 없음 날짜에 등록하면 그 표시를 새 급식으로 바꾼다`() {
+        val marker = mealRepository.save(Meal.noMeal(LocalDate.of(2026, 9, 1)))
+
+        mockMvc.post("/meals") {
+            bearer(adminToken)
+            json(body())
+        }.andExpect {
+            status { isCreated() }
+            header { string("Location", "/meals/${marker.id}") }
+        }
+
+        val meal = mealRepository.findAll().single()
+        assertEquals(marker.id, meal.id)
+        assertEquals(listOf("볶음밥", "미역국", "계란말이"), meal.breakfast)
+        assertEquals(listOf("백미밥", "된장찌개", "잡채"), meal.lunch)
+        assertEquals(listOf("카레라이스", "김치전"), meal.dinner)
+        assertTrue(meal.editedByAdmin)
+        mockMvc.get("/meals/${marker.id}").andExpect { status { isOk() } }
+    }
+
+    @Test
+    fun `급식 없음 날짜로 옮길 수 있다`() {
+        val meal = save(date = LocalDate.of(2026, 9, 1))
+        val marker = mealRepository.save(Meal.noMeal(LocalDate.of(2026, 9, 2)))
+
+        mockMvc.patch("/meals/${meal.id}") {
+            bearer(adminToken)
+            json(body(date = "2026-09-02"))
+        }.andExpect { status { isOk() } }
+
+        assertFalse(mealRepository.existsById(marker.id!!))
+        val meals = mealRepository.findAll().sortedBy(Meal::date)
+        assertEquals(listOf(LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 2)), meals.map(Meal::date))
+        assertTrue(meals[0].isNoMeal)
+        assertEquals(meal.id, meals[1].id)
+        assertEquals(listOf("백미밥", "된장찌개", "잡채"), meals[1].lunch)
+    }
+
+    @Test
+    fun `급식 없음 표시는 수정할 수 없어 MEAL_NOT_FOUND`() {
+        val marker = mealRepository.save(Meal.noMeal(LocalDate.of(2026, 9, 1)))
+
+        mockMvc.patch("/meals/${marker.id}") {
+            bearer(adminToken)
+            json(body())
+        }.andExpectMealNotFound()
+        assertTrue(mealRepository.findById(marker.id!!).get().isNoMeal)
     }
 
     // 권한
@@ -466,6 +598,8 @@ class MealTest @Autowired constructor(
         editedByAdmin: Boolean = true,
     ) = mealRepository.save(Meal(date, breakfast, lunch, dinner, editedByAdmin))
 
+    private fun neisMeal(date: LocalDate) = NeisMeal(date, listOf("죽"), listOf("나이스밥"), listOf("카레"))
+
     private fun expectRange(query: String, startDate: String, finishDate: String) {
         mockMvc.get("/meals?$query").andExpect {
             status { isOk() }
@@ -474,7 +608,7 @@ class MealTest @Autowired constructor(
         }
     }
 
-    // existsByDate는 Kotlin에서 LocalDate(non-null)로 선언돼 any()의 null을 받지 못한다. 매처를 등록한 뒤 null 대신 아무 날짜나 넘긴다.
+    // findByDate는 Kotlin에서 LocalDate(non-null)로 선언돼 any()의 null을 받지 못한다. 매처를 등록한 뒤 null 대신 아무 날짜나 넘긴다.
     private fun anyDate(): LocalDate = any(LocalDate::class.java) ?: LocalDate.MIN
 
     private fun otherViolation() =

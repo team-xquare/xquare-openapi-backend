@@ -107,6 +107,36 @@ class NeisMealClientTest {
     }
 
     @Test
+    fun `결과 코드도 급식 목록도 없는 응답이면 NeisApiException`() {
+        listOf(
+            "{}",
+            """{"mealServiceDietInfo":[]}""",
+            // head는 정상인데 row가 없다.
+            """{"mealServiceDietInfo":[{"head":[{"list_total_count":0},{"RESULT":{"CODE":"INFO-000","MESSAGE":"정상 처리되었습니다."}}]}]}""",
+            // row는 있는데 head의 결과 코드가 없다.
+            """{"mealServiceDietInfo":[{"head":[{"list_total_count":1}]},{"row":[${row("20261006", "2", "백미밥")}]}]}""",
+            """{"mealServiceDietInfo":[{"head":[{"list_total_count":1},{"RESULT":{"CODE":"INFO-000"}}]},{"row":{}}]}""",
+        ).forEach { body ->
+            server.reset()
+            respond(body)
+
+            val thrown = assertFailsWith<NeisApiException>(body) { client.fetchMonth(YearMonth.of(2026, 10)) }
+            assertEquals("UNEXPECTED_RESPONSE 나이스 급식 응답 형식이 예상과 다릅니다.", thrown.message)
+        }
+    }
+
+    @Test
+    fun `head의 결과 코드가 INFO-000이 아니면 NeisApiException`() {
+        respond(
+            """{"mealServiceDietInfo":[{"head":[{"list_total_count":1},{"RESULT":{"CODE":"INFO-300","MESSAGE":"관리자에 의해 인증키 사용이 제한되었습니다."}}]},""" +
+                """{"row":[${row("20261006", "2", "백미밥")}]}]}""",
+        )
+
+        val thrown = assertFailsWith<NeisApiException> { client.fetchMonth(YearMonth.of(2026, 10)) }
+        assertEquals("INFO-300 관리자에 의해 인증키 사용이 제한되었습니다.", thrown.message)
+    }
+
+    @Test
     fun `HTTP 오류는 그대로 던진다`() {
         server.expect(requestTo(org.hamcrest.Matchers.startsWith("https://open.neis.go.kr/hub/mealServiceDietInfo?")))
             .andRespond(withServerError())

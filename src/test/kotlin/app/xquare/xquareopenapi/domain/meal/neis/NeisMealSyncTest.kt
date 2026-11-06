@@ -9,13 +9,25 @@ import app.xquare.xquareopenapi.domain.meal.usecase.MealSyncResult
 import app.xquare.xquareopenapi.domain.meal.usecase.SyncNeisMealsUseCase
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentMatchers.anyCollection
+import org.mockito.Mockito.doAnswer
+import org.mockito.Mockito.mockingDetails
+import org.mockito.Mockito.doThrow
+import org.mockito.Mockito.mock
+import org.mockito.Mockito.times
+import org.mockito.Mockito.verify
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.MediaType
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import org.springframework.test.web.client.MockRestServiceServer
 import org.springframework.test.web.client.match.MockRestRequestMatchers.queryParam
 import org.springframework.test.web.client.response.MockRestResponseCreators.withServerError
 import org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.TransactionDefinition
+import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.web.client.RestClient
 import java.time.Clock
 import java.time.Instant
@@ -29,7 +41,13 @@ import kotlin.test.assertTrue
 class NeisMealSyncTest @Autowired constructor(
     private val mealRepository: MealRepository,
     private val syncNeisMealsUseCase: SyncNeisMealsUseCase,
+    private val transactionManager: PlatformTransactionManager,
 ) {
+    // 동기화가 기존 급식을 읽은 직후 관리자 등록이 끼어든 상황을 만들 때 쓴다.
+    // 저장소는 JDK 프록시라 진짜 스파이가 아니라 실제 빈에 위임하는 목이다. 실제 동작은 callRealMethod 대신 기본 응답(위임)으로 부른다.
+    @MockitoSpyBean
+    private lateinit var spiedMealRepository: MealRepository
+
     private val builder = RestClient.builder().baseUrl("https://open.neis.go.kr")
     private val server = MockRestServiceServer.bindTo(builder).build()
     private val restClient = builder.build()
@@ -134,6 +152,53 @@ class NeisMealSyncTest @Autowired constructor(
     }
 
     @Test
+    fun `동기화 중 비어 있던 날짜에 관리자 등록이 먼저 커밋되면 그 달을 한 번 더 동기화하고 관리자 급식은 남긴다`() {
+        expectMonth("20261201", "20261231", rows(row("20261230", "2", "떡국"), row("20261231", "2", "만두국")))
+        expectMonth("20270101", "20270131", NO_DATA)
+        val newTransaction = TransactionTemplate(transactionManager).apply {
+            propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW
+        }
+        var interrupted = false
+        doAnswer { invocation ->
+            val found = mockingDetails(spiedMealRepository).mockCreationSettings.defaultAnswer.answer(invocation)
+            // 처음 한 번만: 동기화가 12/31이 비어 있다고 읽은 뒤, 관리자가 12/31을 등록해 먼저 커밋한다.
+            if (!interrupted) {
+                interrupted = true
+                newTransaction.executeWithoutResult {
+                    mealRepository.save(Meal(LocalDate.of(2026, 12, 31), emptyList(), listOf("관리자밥"), emptyList(), editedByAdmin = true))
+                }
+            }
+            found
+        }.`when`(spiedMealRepository).findAllByDateIn(anyCollection())
+
+        scheduler().sync()
+
+        server.verify()
+        val meals = mealRepository.findAll().sortedBy(Meal::date)
+        assertEquals(listOf(LocalDate.of(2026, 12, 30), LocalDate.of(2026, 12, 31)), meals.map(Meal::date))
+        assertEquals(listOf("떡국"), meals[0].lunch)
+        assertFalse(meals[0].editedByAdmin)
+        assertEquals(listOf("관리자밥"), meals[1].lunch)
+        assertTrue(meals[1].editedByAdmin)
+    }
+
+    @Test
+    fun `다시 동기화해도 겹치면 그 달은 한 번만 다시 하고 다음 달은 동기화한다`() {
+        expectMonth("20261201", "20261231", rows(row("20261231", "2", "만두국")))
+        expectMonth("20270101", "20270131", rows(row("20270104", "2", "백미밥")))
+        val december = listOf(NeisMeal(LocalDate.of(2026, 12, 31), emptyList(), listOf("만두국"), emptyList()))
+        val january = listOf(NeisMeal(LocalDate.of(2027, 1, 4), emptyList(), listOf("백미밥"), emptyList()))
+        val useCase = mock(SyncNeisMealsUseCase::class.java)
+        doThrow(DataIntegrityViolationException("uk_meals_meal_date")).`when`(useCase).execute(december)
+
+        scheduler(useCase = useCase).sync()
+
+        server.verify()
+        verify(useCase, times(2)).execute(december)
+        verify(useCase, times(1)).execute(january)
+    }
+
+    @Test
     fun `데이터가 없는 달은 건너뛴다`() {
         expectMonth("20261201", "20261231", NO_DATA)
         expectMonth("20270101", "20270131", NO_DATA)
@@ -155,9 +220,9 @@ class NeisMealSyncTest @Autowired constructor(
         assertEquals(0, mealRepository.count())
     }
 
-    private fun scheduler(apiKey: String = "test-key"): NeisMealSyncScheduler {
+    private fun scheduler(apiKey: String = "test-key", useCase: SyncNeisMealsUseCase = syncNeisMealsUseCase): NeisMealSyncScheduler {
         val properties = NeisProperties(apiKey, "G10", "7430310")
-        return NeisMealSyncScheduler(NeisMealClient(restClient, properties), syncNeisMealsUseCase, properties, clock)
+        return NeisMealSyncScheduler(NeisMealClient(restClient, properties), useCase, properties, clock)
     }
 
     private fun expectMonth(from: String, to: String, body: String) {

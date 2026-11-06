@@ -52,7 +52,12 @@ class Meal(
     var editedByAdmin: Boolean = editedByAdmin
         protected set
 
-    // 관리자가 수정한다. 이후 나이스 동기화가 이 급식을 덮어쓰지 않는다.
+    // 세 끼가 모두 비면 '급식 없음' 표시다. 관리자가 나이스 급식을 없애려고 남긴 행이라 조회에서 빼고 없는 급식으로 본다.
+    // editedByAdmin이 true라서 나이스 동기화가 그 날짜를 다시 만들지 않는다. 나이스 동기화는 세 끼가 모두 빈 날을 저장하지 않는다.
+    val isNoMeal: Boolean
+        get() = breakfast.isEmpty() && lunch.isEmpty() && dinner.isEmpty()
+
+    // 관리자가 수정한다. 이후 나이스 동기화가 이 급식을 덮어쓰지 않는다. 세 끼를 모두 비우면 '급식 없음' 표시가 된다.
     fun update(date: LocalDate, breakfast: List<String>, lunch: List<String>, dinner: List<String>) {
         this.date = date
         this.breakfast = breakfast
@@ -70,6 +75,8 @@ class Meal(
 
     companion object {
         const val DATE_UNIQUE_CONSTRAINT = "uk_meals_meal_date"
+
+        fun noMeal(date: LocalDate) = Meal(date, emptyList(), emptyList(), emptyList(), editedByAdmin = true)
 
         // 메뉴 50자 × 20개를 JSON으로 바꿔도 들어가는 길이다(MealRequest 참고).
         private const val MENU_COLUMN_LENGTH = 3000

@@ -15,7 +15,7 @@ class NeisMealClient(
     private val neisProperties: NeisProperties,
 ) {
 
-    // 그 달의 급식을 날짜 순으로 준다. 데이터가 없으면(INFO-200) 빈 목록이다.
+    // 그 달의 급식을 날짜 순으로 준다. 데이터가 없으면(INFO-200) 빈 목록이고, 그 밖의 결과 코드나 예상과 다른 응답이면 NeisApiException.
     fun fetchMonth(month: YearMonth): List<NeisMeal> {
         val response = neisRestClient.get()
             .uri {
@@ -39,8 +39,16 @@ class NeisMealClient(
             if (code == NO_DATA) return emptyList()
             throw NeisApiException(code, result.path("MESSAGE").asString())
         }
-        // 정상이면 {"mealServiceDietInfo":[{"head":[...]},{"row":[...]}]}로 온다.
-        val rows = response.path(SERVICE).path(1).path("row").values()
+        // 정상이면 {"mealServiceDietInfo":[{"head":[{"list_total_count":N},{"RESULT":{"CODE":"INFO-000",...}}]},{"row":[...]}]}로 온다.
+        // 형식이 바뀌었거나 점검 안내 같은 다른 응답이면 0건으로 성공 처리하지 않고 예외를 던져 경고 로그로 드러낸다.
+        val service = response.path(SERVICE)
+        val headResult = service.path(0).path("head").path(1).path("RESULT")
+        if (headResult.isMissingNode || !service.path(1).path("row").isArray) {
+            throw NeisApiException(UNEXPECTED_RESPONSE, "나이스 급식 응답 형식이 예상과 다릅니다.")
+        }
+        val code = headResult.path("CODE").asString()
+        if (code != OK) throw NeisApiException(code, headResult.path("MESSAGE").asString())
+        val rows = service.path(1).path("row").values()
         return rows.groupBy { LocalDate.parse(it.path("MLSV_YMD").asString(), DATE_FORMAT) }
             .map { (date, dayRows) ->
                 NeisMeal(date, dishes(dayRows, BREAKFAST), dishes(dayRows, LUNCH), dishes(dayRows, DINNER))
@@ -57,7 +65,9 @@ class NeisMealClient(
     companion object {
         private const val PATH = "/hub/mealServiceDietInfo"
         private const val SERVICE = "mealServiceDietInfo"
+        private const val OK = "INFO-000"
         private const val NO_DATA = "INFO-200"
+        private const val UNEXPECTED_RESPONSE = "UNEXPECTED_RESPONSE"
 
         // 한 달은 많아야 31일 × 3끼 = 93건이라 한 번에 다 받는다.
         private const val PAGE_SIZE = 100

@@ -6,8 +6,9 @@ import org.springframework.data.jpa.repository.Lock
 import java.time.LocalDate
 
 interface MealRepository : JpaRepository<Meal, Long> {
-    fun existsByDate(date: LocalDate): Boolean
+    fun findByDate(date: LocalDate): Meal?
 
+    // '급식 없음' 표시도 함께 나오므로 호출하는 쪽에서 뺀다.
     fun findAllByDateBetweenOrderByDateAsc(startDate: LocalDate, finishDate: LocalDate): List<Meal>
 
     // 나이스 동기화가 쓴다. 관리자 수정과 겹쳐도 관리자 수정이 지워지지 않게 행을 잠그고 읽는다.
