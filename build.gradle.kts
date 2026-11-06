@@ -47,7 +47,9 @@ dependencies {
 
 kotlin {
     compilerOptions {
-        freeCompilerArgs.addAll("-Xjsr305=strict", "-Xannotation-default-target=param-property")
+        // -Xemit-jvm-type-annotations: List<@NotBlank String>처럼 타입 인자에 붙인 검증 어노테이션을 바이트코드에 남긴다.
+        // 빼면 Bean Validation이 목록 요소를 검사하지 못한다(MealRequest).
+        freeCompilerArgs.addAll("-Xjsr305=strict", "-Xannotation-default-target=param-property", "-Xemit-jvm-type-annotations")
     }
 }
 
