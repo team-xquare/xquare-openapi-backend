@@ -26,4 +26,5 @@ enum class ErrorCode(
     MANAGER_NOT_IN_MEMBER(HttpStatus.BAD_REQUEST, "팀장은 구성원에 포함돼야 합니다."),
     STUDENT_ALREADY_IN_CLUB(HttpStatus.CONFLICT, "이미 다른 동아리에 속한 학생입니다."),
     TEACHER_ALREADY_IN_CLUB(HttpStatus.CONFLICT, "이미 다른 동아리를 담당하는 교직원입니다."),
+    CONCURRENT_UPDATE(HttpStatus.CONFLICT, "동시에 수정되어 처리하지 못했습니다. 다시 시도해 주세요."),
 }
