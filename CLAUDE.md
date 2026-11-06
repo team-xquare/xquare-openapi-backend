@@ -39,6 +39,7 @@ API 스펙이 있습니다.
 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `REDIS_HOST`, `REDIS_PORT`, `JWT_SECRET`(32바이트 이상이어야 하고, 짧으면 앱이 뜨지 않음).
 `CORS_ALLOWED_ORIGINS`는 쉼표로 구분한 허용 origin 목록이다(예: `http://localhost:3000,https://example.com`). 비워 두면 브라우저의 다른 origin 요청이 모두 막힌다.
 `JPA_DDL_AUTO`는 기본값이 `validate`다. 마이그레이션 도구가 없으므로 빈 DB에서는 테이블이 먼저 있어야 한다.
+나이스 급식 동기화: `NEIS_API_KEY`(없으면 동기화를 건너뛰고 경고 로그만 남김), `NEIS_OFFICE_CODE`(기본 `G10`), `NEIS_SCHOOL_CODE`(기본 `7430310`, 대덕소프트웨어마이스터고), `NEIS_MEAL_SYNC_CRON`(기본 `0 0 4 * * *`, 서울 시간, `-`이면 끔).
 
 `src/test/resources/application.yaml`은 main 설정을 덮는 게 아니라 통째로 대신한다(H2, 테스트용 JWT secret). 새 설정 키를 추가하면 두 파일 모두에 넣는다.
 
@@ -54,13 +55,18 @@ API 스펙이 있습니다.
 - 보안: `SecurityConfig`는 `POST /auth/signup`, `/auth/login`, `/auth/reissue` 외의 모든 요청에 인증을 요구한다. 공개 엔드포인트를 새로 만들면 여기에 `permitAll`을 추가해야 하고, 빠뜨리면 토큰 없는 요청이 `401 INVALID_TOKEN`이 된다. `ERROR` 디스패치(`/error` 포워드)도 허용해 둬야 한다. 막으면 415·500 같은 원래 응답이 모두 401로 바뀐다. MockMvc는 이 포워드를 흉내 내지 않으므로 `ErrorDispatchTest`처럼 실제 서버로 확인한다. `PasswordEncoder`(BCrypt) 빈도 여기서 만든다.
 - 인증: `JwtAuthenticationFilter`가 `Authorization: Bearer {accessToken}`을 검증해 principal=userId, 권한=`ROLE_{Role}`로 인증한다. 토큰이 없거나 유효하지 않으면 인증하지 않고 넘기고, 인증이 필요한 경로면 `SecurityErrorResponder`가 `401 INVALID_TOKEN`, 권한이 부족하면 `403 FORBIDDEN`으로 응답한다. 이 둘은 Security 필터에서 막히므로 `GlobalExceptionHandler`를 거치지 않는다. 필터는 빈으로 등록하지 않는다(Spring Boot가 서블릿 필터로도 등록해 두 번 실행된다).
 - CORS: `SecurityConfig`의 `cors { }`가 `corsConfigurationSource` 빈을 쓴다. 설정 값은 `global/cors/CorsProperties`에 있고, 허용 메서드는 GET/POST/PUT/PATCH/DELETE, 허용 헤더는 `Authorization`/`Content-Type`이다. 토큰을 헤더로 주고받으므로 credentials(쿠키)는 허용하지 않는다. preflight는 인증 검사보다 먼저 처리돼서 토큰 없이 통과한다.
+- 공개(ALL) API: `GET /meals`, `GET /meals/*`는 `permitAll`이다. 유효하지 않은 토큰을 보내도 필터가 인증 없이 넘기므로 401 없이 200이다.
 - 권한: `/students`, `/teachers` 등록·수정·삭제처럼 ADMIN 전용 API는 `SecurityConfig`에 `hasRole(ADMIN)`으로 메서드와 경로를 적는다. 나머지는 `authenticated`라서 USER와 ADMIN 모두 통과한다. ADMIN 계정을 만드는 API는 없어서 DB에서 `users.role`을 직접 바꿔야 한다.
 - 수정 API(PATCH)는 등록과 같은 요청 DTO로 모든 필드를 받아 통째로 바꾼다(`StudentRequest`, `TeacherRequest`). 그래서 교직원의 nullable 필드(`grade`, `classNum`)를 null로 보내면 값을 지운다.
 - 목록 조회는 `@ModelAttribute` 검색 DTO로 받는다. `page`(0 이상)·`size`(1~100)는 Bean Validation으로 검사하고, 응답은 `global/dto/PageResponse`. 쿼리 값의 타입이 틀리면 `GlobalExceptionHandler`가 `형식이 올바르지 않습니다.`로 바꿔 400을 준다.
   - 부분 일치 검색은 `like concat('%', :x, '%') escape '!'`로 쓰고, 값은 `escapeLike()`(`global/jpa`)를 거쳐 넘긴다. 그래야 입력의 `%`·`_`가 글자 그대로 찾아진다. MySQL은 문자열 안의 `\`를 이스케이프로 읽으므로 이스케이프 문자로 쓰지 않는다.
   - 쿼리에서 산술에 쓰는 검색 값(학생 `grade * 1000` 등)은 DTO에서 범위를 막는다. 막지 않으면 큰 값에서 넘쳐 500이 난다.
 - 삭제는 조회 후 `delete(entity)`가 아니라 `@Modifying` JPQL delete로 지우고, 지운 행 수가 0이면 404를 던진다. 조회 후 삭제하면 동시 삭제 때 늦은 쪽이 커밋하며 0행 삭제로 500이 난다(`DeleteStudentConcurrencyTest`).
+- `meals`의 unique 제약 이름 `uk_meals_meal_date`도 같은 방식으로 409(`MEAL_ALREADY_EXISTS`)로 바꾸는 데 쓴다.
 - `students`의 unique 제약 이름 `uk_students_student_number`도 계약이다. 동시 등록·수정으로 중복 검사를 통과한 요청이 제약에 걸리면 이 이름으로 구분해 409로 바꾼다(`DataIntegrityViolationException.violates`).
+- 나이스 급식 동기화(`domain/meal/neis`): `NeisMealSyncScheduler`가 cron마다 이번 달·다음 달을 `NeisMealClient`(RestClient, `config/NeisConfig`의 `neisRestClient`)로 가져와 `SyncNeisMealsUseCase`로 저장한다. `Meal.editedByAdmin`이 true(관리자가 등록·수정)인 날짜는 덮어쓰지 않는다. 동기화는 `findAllByDateIn`으로 행을 잠그고 읽어 관리자 수정과 겹쳐도 관리자 수정을 지우지 않는다.
+  - 테스트는 실제 나이스를 부르지 않는다. `MockRestServiceServer.bindTo(RestClient.builder())`로 만든 RestClient를 넣어 클라이언트·스케줄러를 직접 만든다(`NeisMealClientTest`, `NeisMealSyncTest`). 테스트 설정은 `neis.meal-sync-cron: "-"`로 스케줄을 끈다.
+  - "이번 달" 같은 날짜 계산은 `Clock` 빈(`config/ClockConfig`, Asia/Seoul)을 주입받아 한다. 테스트는 `Clock.fixed`를 넣는다.
 - Redis 저장소는 인터페이스(`EmailVerifiedTokenRepository`, `RefreshTokenRepository`) 뒤에 둔다. 인증 API 테스트(`SignupTest`, `LoginTest`, `ReissueTest`)는 `FakeAuthRepositories`를 `@Import`해 `@Primary` 가짜 구현으로 바꿔 끼워서 Redis 없이 돈다. 저장소 인터페이스에 메서드를 추가하면 가짜 구현에도 넣는다.
 - Redis 키 형식은 다른 기능과 맞춰야 하는 계약이다:
   - `email_verified_token:{token}` → 이메일. 이메일 OTP 인증 API(아직 없음)가 TTL 600초로 저장하고, 회원가입이 읽은 뒤 지운다.
@@ -72,6 +78,8 @@ API 스펙이 있습니다.
 
 - Spring Boot 4이고 Jackson 3를 쓴다(`tools.jackson.*` 패키지). 테스트용 자동 설정 패키지도 옮겨졌다. 예: `org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc`, `org.springframework.boot.data.redis.test.autoconfigure.DataRedisTest`.
 - Kotlin DTO의 Bean Validation 어노테이션은 `@field:`를 붙여야 검증이 적용된다.
+- 목록 요소 검증(`List<@NotBlank String>`)은 컴파일 옵션 `-Xemit-jvm-type-annotations`가 있어야 바이트코드에 남아 동작한다(`build.gradle.kts`). 빼면 요소 검증이 조용히 사라진다(`MealTest`가 잡는다).
+- Kotlin에서 non-null 파라미터로 선언한 저장소 메서드(`existsByDate(LocalDate)`)를 Mockito로 스텁할 때 `any()`는 null을 돌려줘 NPE가 난다. `any(LocalDate::class.java) ?: LocalDate.MIN`처럼 매처 등록 후 아무 값이나 넘긴다.
 - JPA 엔티티는 `build.gradle.kts`의 `allOpen` 설정으로 자동 open 처리된다. Hibernate 지연 로딩 프록시 때문에 필요하다.
 
 ## 협업

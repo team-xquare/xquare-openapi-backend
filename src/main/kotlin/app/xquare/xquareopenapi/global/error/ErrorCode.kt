@@ -18,4 +18,7 @@ enum class ErrorCode(
     STUDENT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 학생입니다."),
     STUDENT_NUMBER_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 사용 중인 학번입니다."),
     TEACHER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 교직원입니다."),
+    INVALID_DATE_RANGE(HttpStatus.BAD_REQUEST, "조회 기간이 올바르지 않습니다."),
+    MEAL_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 급식 정보입니다."),
+    MEAL_ALREADY_EXISTS(HttpStatus.CONFLICT, "해당 날짜의 급식 정보가 이미 존재합니다."),
 }
