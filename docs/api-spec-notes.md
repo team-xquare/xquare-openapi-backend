@@ -170,7 +170,7 @@
   - `NEIS_API_KEY`가 없으면 동기화를 건너뛰고 경고 로그만 남긴다(앱은 뜬다). 키 없이 부르면 나이스가 샘플 5건만 주기 때문이다.
 
 ### 구현하면서 정한 것 (동아리, #25)
-- `room` 값: 명세에 예시(`ROOM_2_1`, `ROOM_2_2`)만 있어서 같은 형식 `ROOM_{층}_{실 번호}`로 1~5층, 1~9실(45개)을 뒀다. 실제 실 목록이 정해지면 `ClubRoom` enum만 고치면 된다(DB에는 이름 문자열로 저장). 목록에 없는 값은 `400 INVALID_INPUT`.
+- `room` 값: 명세에 예시(`ROOM_2_1`, `ROOM_2_2`)만 있어서 같은 형식 `ROOM_{층}_{실 번호}`로 1~5층, 1~9실(45개)을 뒀다. 목록에 없는 값은 `400 INVALID_INPUT`. DB `clubs.room` 컬럼은 MySQL enum이라(`docs/schema/clubs.sql`) 값을 더하거나 바꾸면 `ClubRoom`과 함께 `ALTER TABLE`로 컬럼 목록도 맞춰야 한다. 이미 저장된 값을 지우거나 이름을 바꾸면 그 행을 읽을 때 500이 나므로, 운영 데이터가 생기기 전에 실제 실 목록을 확정해야 한다.
 - 등록·수정 요청의 `name`, `logo`, `room`, `manager`, `member`는 필수이고 `teacher`만 생략·null 가능. `name`은 1~20자, `logo`는 1~255자, `member`는 최대 50개. 어기면 `400 INVALID_INPUT`. `member`에 null이 섞여도 `400 INVALID_INPUT`.
 - 동아리 이름 중복은 막지 않는다. 명세에 에러 코드가 없다.
 - `logo`는 파일 업로드 API가 없어서 키가 실제로 있는지는 보지 않는다.
