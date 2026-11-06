@@ -30,7 +30,7 @@ create table clubs (
     constraint uk_clubs_teacher unique (teacher_id),
     constraint fk_clubs_manager foreign key (manager_id) references students (id) on delete set null,
     constraint fk_clubs_teacher foreign key (teacher_id) references teachers (id) on delete set null
-) engine = InnoDB;
+) engine = InnoDB default charset = utf8mb4;
 
 -- 학생의 소속 동아리. 동아리를 지우면 null이 된다.
 alter table students add column club_id bigint;
