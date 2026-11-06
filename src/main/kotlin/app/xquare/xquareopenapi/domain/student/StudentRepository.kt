@@ -27,9 +27,14 @@ interface StudentRepository : JpaRepository<Student, Long> {
     fun search(name: String?, grade: Int?, classNum: Int?, pageable: Pageable): Page<Student>
 
     // 동아리 등록·수정이 쓴다. 다른 동아리 등록·수정이 같은 학생을 동시에 넣지 못하게 행을 잠그고 읽는다.
+    // 요청마다 잠글 학생을 이 메서드 한 번으로 id 순으로 잠가야 서로 엇갈려 기다리는 데드락이 나지 않는다.
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select s from Student s where s.id in :ids")
+    @Query("select s from Student s where s.id in :ids order by s.id")
     fun findAllByIdInForUpdate(ids: Collection<Long>): List<Student>
+
+    // 동아리 수정이 기존 구성원을 잠그기 전에 id만 읽는다. 엔티티를 읽지 않아야 잠근 뒤 읽은 값을 쓴다.
+    @Query("select s.id from Student s where s.club.id = :clubId")
+    fun findIdsByClubId(clubId: Long): List<Long>
 
     // 동아리 구성원을 학번 순으로 읽는다.
     @Query("select s from Student s where s.club.id in :clubIds order by s.studentNumber")
