@@ -1,10 +1,14 @@
 package app.xquare.xquareopenapi.domain.club
 
 import app.xquare.xquareopenapi.domain.club.presentation.dto.ClubRequest
+import app.xquare.xquareopenapi.domain.club.usecase.CreateClubUseCase
 import app.xquare.xquareopenapi.domain.club.usecase.UpdateClubUseCase
 import app.xquare.xquareopenapi.domain.student.Student
 import app.xquare.xquareopenapi.domain.student.StudentRepository
+import app.xquare.xquareopenapi.global.error.ErrorCode
+import app.xquare.xquareopenapi.global.error.XquareException
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.RepeatedTest
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -12,6 +16,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.LocalDate
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.CyclicBarrier
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
@@ -20,6 +25,7 @@ import kotlin.test.assertNull
 // 학생 행 잠금을 실제 스레드 여러 개로 겹쳐 본다. ClubTest는 스파이로 중복 검사만 통과시켜 unique 제약을 확인한다.
 @SpringBootTest
 class ClubConcurrencyTest @Autowired constructor(
+    private val createClubUseCase: CreateClubUseCase,
     private val updateClubUseCase: UpdateClubUseCase,
     private val clubRepository: ClubRepository,
     private val studentRepository: StudentRepository,
@@ -31,6 +37,33 @@ class ClubConcurrencyTest @Autowired constructor(
     fun tearDown() {
         clubRepository.deleteAll()
         studentRepository.deleteAll()
+    }
+
+    // 같은 학생이 두 동아리에 들어가는 것은 DB 제약 없이 학생 행 잠금으로만 막는다. 잠금을 빼면 동아리가 여러 개 생긴다.
+    @RepeatedTest(3)
+    fun `같은 학생을 동시에 여러 동아리에 넣으면 하나만 등록되고 나머지는 STUDENT_ALREADY_IN_CLUB`() {
+        val studentId = student(2315).id!!
+        val rooms = listOf(ClubRoom.ROOM_2_1, ClubRoom.ROOM_2_2, ClubRoom.ROOM_2_3, ClubRoom.ROOM_2_4)
+        val barrier = CyclicBarrier(rooms.size)
+        val executor = Executors.newFixedThreadPool(rooms.size)
+
+        val results = rooms.map { room ->
+            executor.submit<ErrorCode?> {
+                barrier.await()
+                try {
+                    createClubUseCase.execute(ClubRequest("DMS", "logo.png", room, studentId, listOf(studentId)))
+                    null
+                } catch (e: XquareException) {
+                    e.errorCode
+                }
+            }
+        }.map { it.get() }
+        executor.shutdown()
+
+        assertEquals(1, results.count { it == null })
+        assertEquals(rooms.size - 1, results.count { it == ErrorCode.STUDENT_ALREADY_IN_CLUB })
+        val club = clubRepository.findAll().single()
+        assertEquals(listOf(studentId), studentRepository.findAllByClubIdIn(listOf(club.id!!)).map { it.id })
     }
 
     // 빠지는 기존 구성원을 새 구성원보다 늦게 잠그던 때는 데드락이 났다(#26 리뷰).
