@@ -215,7 +215,7 @@
 - 최신순은 `createdAt` 내림차순, 같은 시각이면 `id` 내림차순(나중에 등록한 것 먼저). 수정해도 순서는 바뀌지 않는다. page/size 범위는 학생·교직원과 같다(page 0~21474836, size 1~100, 어기면 `400 INVALID_INPUT`). 결과가 없으면 빈 `notices`.
 - 목록 필드 이름은 명세대로 `notices`라서 공통 `PageResponse`(`content`) 대신 같은 모양의 `NoticeListResponse`를 쓴다. `page`·`size`·`totalCount`·`totalPage`는 같다.
 - 수정·삭제는 작성자가 아니어도 ADMIN이면 누구나 할 수 있다. 수정해도 작성자는 처음 작성한 사람 그대로다.
-- 수정은 두 필드를 모두 받아 통째로 바꾼다. 수정·삭제 모두 조회하지 않고 JPQL 한 번으로 처리하고, 바뀐 행이 0이면 `404 NOTICE_NOT_FOUND`. 그래서 동시 삭제나 삭제와 겹친 수정도 500 없이 404로 끝난다(`NoticeConcurrencyTest`).
+- 수정은 두 필드를 모두 받아 통째로 바꾼다. 수정·삭제 모두 조회하지 않고 JPQL 한 번으로 처리하고, 바뀐 행이 0이면 `404 NOTICE_NOT_FOUND`. 그래서 동시 삭제나 삭제와 겹친 수정도 500 없이 404로 끝난다(`NoticeConcurrencyTest`). 행 하나만 잠그므로 데드락은 없고, 잠금 대기 시간을 넘기면 공통 처리대로 `409 CONCURRENT_UPDATE`(#26)다.
 - 삭제는 실제로 지운다(하드 삭제).
 - 작성자 사용자를 지우면 공지는 남고 `author`가 null이 된다(`notices.author_id` 외래 키 `ON DELETE SET NULL`). 사용자 삭제 API는 아직 없지만 DB에서 지우는 경우를 위해서다. 그래서 응답의 `author`는 nullable이다.
 - `NOTICE_NOT_FOUND` 메시지는 조회·수정·삭제 모두 `이미 삭제되었거나 존재하지 않는 공지입니다.` 하나다(명세는 수정만 `존재하지 않는 공지 id`).

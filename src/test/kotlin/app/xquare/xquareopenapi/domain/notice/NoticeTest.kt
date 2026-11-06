@@ -11,13 +11,19 @@ import org.hibernate.SessionFactory
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentMatchers.any
+import org.mockito.ArgumentMatchers.anyLong
+import org.mockito.ArgumentMatchers.anyString
+import org.mockito.Mockito.doThrow
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
+import org.springframework.dao.CannotAcquireLockException
 import org.springframework.http.MediaType
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import org.springframework.test.web.servlet.MockHttpServletRequestDsl
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActionsDsl
@@ -45,6 +51,10 @@ class NoticeTest @Autowired constructor(
     private val clock: MutableClock,
     private val jwtProvider: JwtProvider,
 ) {
+    // 잠금 충돌로 DB가 트랜잭션을 되돌리는 경우를 흉내 낼 때 쓴다.
+    @MockitoSpyBean
+    private lateinit var spiedNoticeRepository: NoticeRepository
+
     private lateinit var admin: User
     private lateinit var otherAdmin: User
     private lateinit var adminToken: String
@@ -408,6 +418,29 @@ class NoticeTest @Autowired constructor(
         }.andExpect { status { isOk() } }
 
         assertEquals(LocalDateTime.of(2026, 9, 1, 9, 0), noticeRepository.findAll().single().updatedAt)
+    }
+
+    @Test
+    fun `수정이나 삭제 중 잠금 충돌로 DB가 트랜잭션을 되돌리면 CONCURRENT_UPDATE이고 바꾸지 않는다`() {
+        val notice = saveNotice()
+        doThrow(CannotAcquireLockException("Lock wait timeout")).`when`(spiedNoticeRepository)
+            .updateByIdReturningCount(anyLong(), anyString(), anyString(), any(LocalDateTime::class.java) ?: LocalDateTime.MIN)
+        doThrow(CannotAcquireLockException("Lock wait timeout")).`when`(spiedNoticeRepository).deleteByIdReturningCount(anyLong())
+
+        listOf(
+            mockMvc.patch("/notices/${notice.id}") { bearer(adminToken); json(body(title = "바뀐 제목")) },
+            mockMvc.delete("/notices/${notice.id}") { bearer(adminToken) },
+        ).forEach {
+            it.andExpect {
+                status { isConflict() }
+                jsonPath("$.code") { value("CONCURRENT_UPDATE") }
+                jsonPath("$.message") { value("동시에 수정되어 처리하지 못했습니다. 다시 시도해 주세요.") }
+            }
+        }
+
+        val saved = noticeRepository.findAll().single()
+        assertEquals("제목", saved.title)
+        assertNull(saved.updatedAt)
     }
 
     @Test

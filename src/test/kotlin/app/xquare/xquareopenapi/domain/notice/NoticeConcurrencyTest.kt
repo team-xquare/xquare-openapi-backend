@@ -11,6 +11,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.RepeatedTest
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.dao.PessimisticLockingFailureException
 import java.time.LocalDateTime
 import java.util.concurrent.CyclicBarrier
 import java.util.concurrent.Executors
@@ -45,14 +46,15 @@ class NoticeConcurrencyTest @Autowired constructor(
     }
 
     @RepeatedTest(3)
-    fun `수정과 삭제가 겹쳐도 500 없이 수정은 성공하거나 NOTICE_NOT_FOUND`() {
+    fun `수정과 삭제가 겹쳐도 500 없이 수정은 성공하거나 NOTICE_NOT_FOUND, CONCURRENT_UPDATE`() {
         val id = saveNotice()
 
         val results = runConcurrently(THREADS) { index ->
             if (index == 0) deleteNoticeUseCase.execute(id) else updateNoticeUseCase.execute(id, NoticeRequest("바뀐 제목", "바뀐 본문"))
         }
 
-        assertTrue(results.all { it == null || it == ErrorCode.NOTICE_NOT_FOUND })
+        // 잠금 대기 시간이 넘으면 HTTP에서는 GlobalExceptionHandler가 409 CONCURRENT_UPDATE로 바꾼다. 둘 다 500이 아니다.
+        assertTrue(results.all { it == null || it == ErrorCode.NOTICE_NOT_FOUND || it == ErrorCode.CONCURRENT_UPDATE })
         assertEquals(null, results[0])
         assertFalse(noticeRepository.existsById(id))
     }
@@ -64,6 +66,7 @@ class NoticeConcurrencyTest @Autowired constructor(
     }
 
     // 모든 스레드가 모인 뒤 한꺼번에 실행하고, 스레드마다 성공이면 null, XquareException이면 그 에러 코드를 돌려준다.
+    // 잠금 충돌(PessimisticLockingFailureException)은 GlobalExceptionHandler가 주는 CONCURRENT_UPDATE로 센다. 그 밖의 예외는 테스트를 실패시킨다.
     private fun runConcurrently(threads: Int, action: (Int) -> Unit): List<ErrorCode?> {
         val barrier = CyclicBarrier(threads)
         val executor = Executors.newFixedThreadPool(threads)
@@ -75,6 +78,8 @@ class NoticeConcurrencyTest @Autowired constructor(
                     null
                 } catch (e: XquareException) {
                     e.errorCode
+                } catch (e: PessimisticLockingFailureException) {
+                    ErrorCode.CONCURRENT_UPDATE
                 }
             }
         }.map { it.get() }
