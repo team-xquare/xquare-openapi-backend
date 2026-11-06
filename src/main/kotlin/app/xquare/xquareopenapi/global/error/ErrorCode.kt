@@ -28,4 +28,5 @@ enum class ErrorCode(
     TEACHER_ALREADY_IN_CLUB(HttpStatus.CONFLICT, "이미 다른 동아리를 담당하는 교직원입니다."),
     SUPERVISION_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 자습 감독 정보입니다."),
     SUPERVISION_ALREADY_EXISTS(HttpStatus.CONFLICT, "해당 날짜의 자습 감독 정보가 이미 존재합니다."),
+    NOTICE_NOT_FOUND(HttpStatus.NOT_FOUND, "이미 삭제되었거나 존재하지 않는 공지입니다."),
 }
