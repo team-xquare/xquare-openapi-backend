@@ -17,4 +17,4 @@ create table meals (
     edited_by_admin bit           not null,
     primary key (id),
     constraint uk_meals_meal_date unique (meal_date)
-) engine = InnoDB;
+) engine = InnoDB default charset = utf8mb4;
