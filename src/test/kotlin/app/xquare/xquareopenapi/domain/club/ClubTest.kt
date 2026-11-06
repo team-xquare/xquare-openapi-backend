@@ -24,6 +24,7 @@ import org.mockito.Mockito.verify
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
+import org.springframework.dao.CannotAcquireLockException
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.MediaType
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
@@ -607,6 +608,21 @@ class ClubTest @Autowired constructor(
             }
         }
         assertSame(violation, thrown.cause)
+    }
+
+    @Test
+    fun `잠금 충돌로 DB가 트랜잭션을 되돌리면 CONCURRENT_UPDATE`() {
+        val club = club()
+        doThrow(CannotAcquireLockException("Deadlock detected")).`when`(spiedClubRepository).findByIdForUpdate(anyLong())
+
+        mockMvc.patch("/clubs/${club.id}") {
+            bearer(adminToken)
+            json(body(manager = club.manager!!.id!!, member = memberIds(club)))
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("CONCURRENT_UPDATE") }
+            jsonPath("$.message") { value("동시에 수정되어 처리하지 못했습니다. 다시 시도해 주세요.") }
+        }
     }
 
     @Test

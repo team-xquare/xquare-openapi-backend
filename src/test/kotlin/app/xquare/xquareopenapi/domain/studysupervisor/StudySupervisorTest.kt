@@ -23,6 +23,7 @@ import org.mockito.Mockito.verify
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
+import org.springframework.dao.CannotAcquireLockException
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.MediaType
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
@@ -464,6 +465,24 @@ class StudySupervisorTest @Autowired constructor(
             }
         }
         assertSame(violation, thrown.cause)
+    }
+
+    @Test
+    fun `수정 중 잠금 충돌로 DB가 트랜잭션을 되돌리면 CONCURRENT_UPDATE이고 바꾸지 않는다`() {
+        val teacher = teacher("이진경")
+        val supervision = supervision(LocalDate.of(2026, 9, 14), 2 to teacher)
+        doThrow(CannotAcquireLockException("Deadlock detected")).`when`(spiedStudySupervisorRepository).findByIdForUpdate(anyLong())
+
+        mockMvc.patch("/study-supervisors/${supervision.id}") {
+            bearer(adminToken)
+            json(body(date = "2026-09-15", assignments = listOf(3 to teacher.id!!)))
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("CONCURRENT_UPDATE") }
+            jsonPath("$.message") { value("동시에 수정되어 처리하지 못했습니다. 다시 시도해 주세요.") }
+        }
+
+        expectDayTeachers("2026-09-14", "이진경", null, null)
     }
 
     @Test
