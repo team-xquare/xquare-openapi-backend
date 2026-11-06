@@ -18,7 +18,7 @@ create table study_supervisors (
     supervision_date date   not null,
     primary key (id),
     constraint uk_study_supervisors_supervision_date unique (supervision_date)
-) engine = InnoDB;
+) engine = InnoDB default charset = utf8mb4;
 
 create table study_supervisor_assignments (
     id                  bigint  not null auto_increment,
@@ -31,4 +31,4 @@ create table study_supervisor_assignments (
     constraint uk_study_supervisor_assignments_floor unique (study_supervisor_id, floor_number),
     constraint fk_study_supervisor_assignments_study_supervisor foreign key (study_supervisor_id) references study_supervisors (id) on delete cascade,
     constraint fk_study_supervisor_assignments_teacher foreign key (teacher_id) references teachers (id) on delete cascade
-) engine = InnoDB;
+) engine = InnoDB default charset = utf8mb4;
