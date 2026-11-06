@@ -54,6 +54,9 @@ class SecurityConfig {
                 authorize(HttpMethod.DELETE, "/teachers/*", hasRole(ADMIN))
                 authorize(HttpMethod.POST, "/meals", hasRole(ADMIN))
                 authorize(HttpMethod.PATCH, "/meals/*", hasRole(ADMIN))
+                authorize(HttpMethod.POST, "/clubs", hasRole(ADMIN))
+                authorize(HttpMethod.PATCH, "/clubs/*", hasRole(ADMIN))
+                authorize(HttpMethod.DELETE, "/clubs/*", hasRole(ADMIN))
                 // 나머지는 로그인만 하면 된다(USER, ADMIN).
                 authorize(anyRequest, authenticated)
             }

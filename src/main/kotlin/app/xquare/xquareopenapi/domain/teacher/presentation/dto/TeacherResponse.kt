@@ -1,5 +1,7 @@
 package app.xquare.xquareopenapi.domain.teacher.presentation.dto
 
+import app.xquare.xquareopenapi.domain.club.Club
+import app.xquare.xquareopenapi.domain.club.presentation.dto.ClubSummaryResponse
 import app.xquare.xquareopenapi.domain.teacher.Teacher
 import app.xquare.xquareopenapi.domain.teacher.TeacherPosition
 import app.xquare.xquareopenapi.domain.teacher.TeacherSubject
@@ -13,14 +15,12 @@ data class TeacherResponse(
     val office: String,
     val isManager: Boolean,
     val position: TeacherPosition,
+    // 담당 동아리가 없으면 null이다.
+    val club: ClubSummaryResponse?,
 ) {
-    // 동아리 기능이 아직 없어서 항상 null이다. 동아리를 만들 때 타입을 바꾼다.
-    // getter가 있으면 "null 대신 null을 돌려주는" 죽일 수 없는 뮤턴트가 생겨서, getter 없이 필드로 직렬화한다.
-    @JvmField
-    val club: Nothing? = null
-
     companion object {
-        fun from(teacher: Teacher) = TeacherResponse(
+        // club은 이 교직원이 담당하는 동아리다. 동아리 쪽(clubs.teacher_id)에 저장돼 있어서 호출하는 쪽이 찾아 넘긴다.
+        fun from(teacher: Teacher, club: Club?) = TeacherResponse(
             id = teacher.id!!,
             name = teacher.name,
             grade = teacher.grade,
@@ -29,6 +29,7 @@ data class TeacherResponse(
             office = teacher.office,
             isManager = teacher.isManager,
             position = teacher.position,
+            club = ClubSummaryResponse.from(club),
         )
     }
 }
