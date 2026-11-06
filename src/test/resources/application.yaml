@@ -11,6 +11,9 @@ spring:
     hibernate:
       ddl-auto: create-drop
 
+server:
+  forward-headers-strategy: none
+
 jwt:
   secret: test-secret-key-must-be-at-least-32-bytes-long
   access-expiration: PT1H
@@ -25,3 +28,12 @@ resend:
   base-url: https://api.resend.com
   connect-timeout: 5s
   read-timeout: 10s
+
+# 이메일 상한과 IP 상한을 다른 값으로 둬서 어느 쪽에 걸렸는지 테스트에서 구분한다.
+otp:
+  resend-cooldown: 60s
+  send-window: 1h
+  max-sends-per-email: 3
+  max-sends-per-ip: 4
+  attempt-window: 1h
+  max-attempts: 5

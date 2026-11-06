@@ -8,6 +8,10 @@ import org.springframework.context.annotation.Primary
 import java.time.Duration
 import app.xquare.xquareopenapi.domain.auth.repository.EmailOtpRepository
 import app.xquare.xquareopenapi.domain.auth.repository.OtpVerification
+import app.xquare.xquareopenapi.domain.auth.repository.OtpSendLimit
+import app.xquare.xquareopenapi.domain.auth.repository.OtpSendRejection
+import app.xquare.xquareopenapi.global.otp.OtpProperties
+import java.time.Instant
 import app.xquare.xquareopenapi.domain.auth.mail.OtpMailSender
 
 // Redis 없이 인증 API를 테스트하려고 Redis 저장소 대신 끼운다.
@@ -15,7 +19,7 @@ import app.xquare.xquareopenapi.domain.auth.mail.OtpMailSender
 class FakeAuthRepositories {
     @Bean
     @Primary
-    fun fakeEmailOtpRepository() = FakeEmailOtpRepository()
+    fun fakeEmailOtpRepository(properties: OtpProperties) = FakeEmailOtpRepository(properties)
 
     @Bean
     @Primary
@@ -75,43 +79,79 @@ class FakeRefreshTokenRepository : RefreshTokenRepository {
     }
 }
 
-class FakeEmailOtpRepository : EmailOtpRepository {
+// Spring 없이 FakeEmailOtpRepository를 만들 때 쓴다. 값은 운영 기본값과 같다.
+val TEST_OTP_PROPERTIES = OtpProperties(Duration.ofSeconds(60), Duration.ofHours(1), 5, 30, Duration.ofHours(1), 5)
+
+// RedisEmailOtpRepository와 같은 규칙으로 동작한다. 키 이름도 Redis 키와 맞췄다.
+// 창 만료를 기다리지 않도록 테스트가 now를 직접 움직인다. OTP 자체의 TTL 만료는 흉내 내지 않는다.
+class FakeEmailOtpRepository(private val properties: OtpProperties) : EmailOtpRepository {
     val otps = mutableMapOf<String, String>()
-    val attempts = mutableMapOf<String, Int>()
     val ttls = mutableMapOf<String, Duration>()
     var failOnSave = false
     var failOnDelete = false
-    override fun save(email: String, otp: String, ttl: Duration) {
-        attempts.remove(email)
+    var now: Instant = Instant.EPOCH
+    private val counters = mutableMapOf<String, Pair<Int, Instant>>()
+
+    override fun save(email: String, ip: String, otp: String, ttl: Duration): OtpSendLimit? {
+        val limit = when {
+            count("email_otp_attempts:$email") >= properties.maxAttempts ->
+                limit(OtpSendRejection.ATTEMPTS_EXCEEDED, "email_otp_attempts:$email")
+            count("email_otp_send_count:$email") >= properties.maxSendsPerEmail ->
+                limit(OtpSendRejection.EMAIL_LIMIT, "email_otp_send_count:$email")
+            count("email_otp_ip_send_count:$ip") >= properties.maxSendsPerIp ->
+                limit(OtpSendRejection.IP_LIMIT, "email_otp_ip_send_count:$ip")
+            count("email_otp_cooldown:$email") > 0 -> limit(OtpSendRejection.COOLDOWN, "email_otp_cooldown:$email")
+            else -> null
+        }
+        if (limit != null) return limit
+        increment("email_otp_send_count:$email", properties.sendWindow)
+        increment("email_otp_ip_send_count:$ip", properties.sendWindow)
+        counters["email_otp_cooldown:$email"] = 1 to now.plus(properties.resendCooldown)
         otps[email] = otp
         ttls[email] = ttl
         if (failOnSave) throw IllegalStateException("Redis 저장 실패")
+        return null
     }
+
     override fun consume(email: String, otp: String): OtpVerification {
         val current = otps[email] ?: return OtpVerification.NOT_FOUND
         if (current != otp) {
-            attempts[email] = (attempts[email] ?: 0) + 1
-            if (attempts.getValue(email) >= 5) {
+            if (increment("email_otp_attempts:$email", properties.attemptWindow) >= properties.maxAttempts) {
                 otps.remove(email)
-                attempts.remove(email)
             }
             return OtpVerification.MISMATCH
         }
-        attempts.remove(email)
+        counters.remove("email_otp_attempts:$email")
         otps.remove(email)
         return OtpVerification.MATCHED
     }
+
     override fun delete(email: String, otp: String) {
         if (failOnDelete) throw IllegalStateException("Redis 삭제 실패")
-        if (otps[email] == otp) {
-            otps.remove(email)
-            attempts.remove(email)
-        }
+        if (otps[email] == otp) otps.remove(email)
     }
+
+    fun attempts(email: String) = count("email_otp_attempts:$email")
+
+    private fun live(key: String) = counters[key]?.takeIf { it.second > now }
+
+    private fun count(key: String) = live(key)?.first ?: 0
+
+    private fun increment(key: String, window: Duration): Int {
+        val current = live(key)
+        val next = (current?.first ?: 0) + 1
+        counters[key] = next to (current?.second ?: now.plus(window))
+        return next
+    }
+
+    private fun limit(reason: OtpSendRejection, key: String) =
+        OtpSendLimit(reason, Duration.between(now, counters.getValue(key).second))
+
     fun clear() {
         otps.clear()
-        attempts.clear()
         ttls.clear()
+        counters.clear()
+        now = Instant.EPOCH
         failOnSave = false
         failOnDelete = false
     }

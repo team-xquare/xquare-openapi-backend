@@ -43,10 +43,10 @@ class CorsPropertiesTest {
     }
 
     @Test
-    fun `생성 API가 돌려주는 Location 헤더를 브라우저가 읽을 수 있게 노출한다`() {
+    fun `Location 헤더와 OTP 발송 제한의 Retry-After 헤더를 브라우저가 읽을 수 있게 노출한다`() {
         val configuration = CorsProperties(listOf("http://localhost:3000")).toCorsConfiguration()
 
-        assertEquals(listOf("Location"), configuration.exposedHeaders)
+        assertEquals(listOf("Location", "Retry-After"), configuration.exposedHeaders)
     }
 
     private fun bind(allowedOrigins: String): CorsProperties =
