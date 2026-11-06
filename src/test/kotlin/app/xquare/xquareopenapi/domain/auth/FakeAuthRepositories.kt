@@ -90,9 +90,12 @@ class FakeEmailOtpRepository(private val properties: OtpProperties) : EmailOtpRe
     var failOnSave = false
     var failOnDelete = false
     var now: Instant = Instant.EPOCH
+    // 저장소에 넘어온 IP 키. 실제 서버를 띄운 테스트에서 어떤 IP로 셌는지 확인할 때 쓴다.
+    val ips = mutableListOf<String>()
     private val counters = mutableMapOf<String, Pair<Int, Instant>>()
 
     override fun save(email: String, ip: String, otp: String, ttl: Duration): OtpSendLimit? {
+        ips.add(ip)
         val limit = when {
             count("email_otp_attempts:$email") >= properties.maxAttempts ->
                 limit(OtpSendRejection.ATTEMPTS_EXCEEDED, "email_otp_attempts:$email")
@@ -151,6 +154,7 @@ class FakeEmailOtpRepository(private val properties: OtpProperties) : EmailOtpRe
         otps.clear()
         ttls.clear()
         counters.clear()
+        ips.clear()
         now = Instant.EPOCH
         failOnSave = false
         failOnDelete = false

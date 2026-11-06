@@ -15,10 +15,12 @@ spring:
       host: ${REDIS_HOST}
       port: ${REDIS_PORT}
 
-# 프록시 뒤에서 X-Forwarded-For를 remoteAddr에 반영하려면 native로 바꾼다.
-# Tomcat RemoteIpValve가 내부망 프록시(server.tomcat.remoteip.internal-proxies)가 보낸 값만 믿는다.
+# 프록시 뒤에서 X-Forwarded-For를 remoteAddr에 반영한다. Tomcat RemoteIpValve는 직접 연결한 쪽이
+# 내부망 대역(server.tomcat.remoteip.internal-proxies 기본값: 10/8, 172.16/12, 192.168/16, 169.254/16,
+# 100.64/10, 127/8, fc00::/7, fe80::/10, ::1)일 때만 헤더를 믿으므로, 공인 IP에서 직접 붙은 요청의 헤더는 무시된다.
+# 앞에 Cloudflare처럼 외부 프록시가 더 있으면 그 대역을 server.tomcat.remoteip.trusted-proxies에 넣어야 한다.
 server:
-  forward-headers-strategy: ${SERVER_FORWARD_HEADERS_STRATEGY:none}
+  forward-headers-strategy: ${SERVER_FORWARD_HEADERS_STRATEGY:native}
 
 jwt:
   secret: ${JWT_SECRET}

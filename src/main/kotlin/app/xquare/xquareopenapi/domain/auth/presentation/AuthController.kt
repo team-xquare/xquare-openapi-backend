@@ -33,8 +33,8 @@ class AuthController(
 ) {
 
     @PostMapping("/email/otp")
-    // IP는 X-Forwarded-For를 직접 읽지 않고 remoteAddr를 쓴다. 프록시 뒤라면
-    // server.forward-headers-strategy=native로 켜서 신뢰하는 프록시가 준 값만 remoteAddr에 반영되게 한다.
+    // IP는 X-Forwarded-For를 직접 읽지 않고 remoteAddr를 쓴다. server.forward-headers-strategy=native(기본값)이면
+    // Tomcat이 내부망 프록시가 준 값만 remoteAddr에 반영한다.
     fun sendEmailOtp(@RequestBody @Valid request: EmailOtpSendRequest, httpRequest: HttpServletRequest): MessageResponse =
         sendEmailOtpUseCase.execute(request, httpRequest.remoteAddr)
 
