@@ -22,7 +22,7 @@ class SendEmailOtpUseCase(
         val email = normalizeOtpEmail(request.email)
         val otp = random.nextInt(100000, 1000000).toString()
         val limit = try {
-            emailOtpRepository.save(email, ip, otp, Duration.ofSeconds(300))
+            emailOtpRepository.save(email, otpIpKey(ip), otp, Duration.ofSeconds(300))
         } catch (e: Exception) {
             throw sendFailed(email, otp, e)
         }

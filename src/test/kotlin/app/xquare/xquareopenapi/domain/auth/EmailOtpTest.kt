@@ -273,6 +273,23 @@ class EmailOtpTest @Autowired constructor(
     }
 
     @Test
+    fun `IPv6는 같은 64비트 접두사를 한 IP로 보고 발송 상한을 함께 센다`() {
+        for (i in 1..4) {
+            send(email = "user$i@dsm.hs.kr", ip = "2001:db8:1:2::$i").andExpect { status { isOk() } }
+        }
+        send(email = "user5@dsm.hs.kr", ip = "2001:DB8:1:2:ffff:0:0:5").andExpect {
+            status { isTooManyRequests() }
+            jsonPath("$.code") { value("OTP_SEND_LIMIT_EXCEEDED") }
+        }
+        send(email = "user5@dsm.hs.kr", ip = "2001:db8:1:3::5").andExpect { status { isOk() } }
+        send(email = "user6@dsm.hs.kr", ip = "::ffff:10.0.0.1").andExpect { status { isOk() } }
+        assertEquals(
+            listOf("2001:db8:1:2:0:0:0:0/64", "2001:db8:1:3:0:0:0:0/64", "10.0.0.1"),
+            otps.ips.distinct(),
+        )
+    }
+
+    @Test
     fun `발송에 실패해도 쿨다운은 풀지 않는다`() {
         mail.failOnSend = true
         sendFailed().andExpect { header { doesNotExist("Retry-After") } }

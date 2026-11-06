@@ -36,6 +36,7 @@
   - 429 응답에는 `Retry-After` 헤더(초, 올림)를 붙임. 여러 제한에 동시에 걸리면 오입력 → 이메일 상한 → IP 상한 → 쿨다운 순으로 먼저 걸린 제한의 남은 시간임. 브라우저가 읽을 수 있게 CORS `Access-Control-Expose-Headers`에도 추가함.
   - 발송 실패(500)여도 쿨다운과 발송 횟수는 되돌리지 않음. 타임아웃이면 메일이 실제로 나갔을 수 있고, 메일 서비스 장애 중에 재시도가 몰리는 것도 막기 위함. 사용자는 최대 60초 뒤 다시 요청하면 됨.
   - IP는 `request.remoteAddr` 기준이며 앱 코드는 `X-Forwarded-For`를 직접 읽지 않음. `server.forward-headers-strategy`(`SERVER_FORWARD_HEADERS_STRATEGY`) 기본값을 `native`로 둠(#22 리뷰). `none`이면 프록시(Ingress) 뒤에서 모든 요청이 프록시 IP 하나로 세져 IP 상한(30회)이 전체 사용자에게 걸리기 때문. `native`면 Tomcat RemoteIpValve가 직접 연결한 쪽이 내부망 대역(Spring Boot 4.1.1의 `server.tomcat.remoteip.internal-proxies` 기본값: 10/8, 172.16/12, 192.168/16, 169.254/16, 100.64/10, 127/8, fc00::/7, fe80::/10, ::1)일 때만 `X-Forwarded-For`를 반영하고, 그중 오른쪽부터 처음 나오는 내부망·신뢰 프록시가 아닌 IP를 remoteAddr로 씀. 공인 IP에서 직접 붙은 요청의 헤더는 무시됨. 앞에 Cloudflare 같은 외부 프록시가 더 있으면 그 대역을 `server.tomcat.remoteip.trusted-proxies`에 넣어야 함.
+  - IP 상한 키는 IPv4면 주소 그대로, IPv6면 /64 접두사로 묶음(#22 리뷰). IPv6는 보통 /64 하나를 한 사용자가 받아 주소를 바꿔 가며 상한을 우회할 수 있기 때문. IPv4-mapped IPv6(`::ffff:a.b.c.d`)는 IPv4로 보고, 압축 표기·대소문자 차이는 주소를 파싱해 없앰. IP로 해석되지 않는 값은 그대로 키로 씀.
 - Resend 연결 타임아웃은 기본 5초(`resend.connect-timeout`), 읽기 타임아웃은 기본 10초(`resend.read-timeout`)로 정함. 타임아웃도 `500 EMAIL_SEND_FAILED`로 처리함.
 - 메일 제공자는 Resend HTTP API로 정함. API 키가 비어 있어도 기동은 허용하고 발송 시 실패 처리함. 인증 완료 토큰은 UUID, TTL 600초이며 기존 회원가입 계약을 사용함.
 - 회원가입 시 학번 중복 처리 규칙 및 에러 코드 미정 (이메일 중복은 PR #3 리뷰에서 `409 EMAIL_ALREADY_EXISTS`로 정함)
