@@ -375,6 +375,7 @@ class StudySupervisorTest @Autowired constructor(
         val first = teacher("이진경")
         val second = teacher("박성준")
         val supervision = supervision(LocalDate.of(2026, 9, 14), 2 to first, 3 to first)
+        val previousAssignmentIds = assignmentRepository.findAll().map { it.id }
 
         mockMvc.patch("/study-supervisors/${supervision.id}") {
             bearer(adminToken)
@@ -385,7 +386,10 @@ class StudySupervisorTest @Autowired constructor(
         }
 
         assertEquals(LocalDate.of(2026, 9, 15), studySupervisorRepository.findAll().single().date)
-        assertEquals(2, assignmentRepository.count())
+        // 기존 배정을 지우고 새로 넣는다. 남은 행은 모두 새 id다.
+        val assignmentIds = assignmentRepository.findAll().map { it.id }
+        assertEquals(2, assignmentIds.toSet().size)
+        assertEquals(emptyList(), assignmentIds.filter { it in previousAssignmentIds })
         mockMvc.get("/study-supervisors?startDate=2026-09-14&finishDate=2026-09-15") {
             bearer(userToken)
         }.andExpect {
