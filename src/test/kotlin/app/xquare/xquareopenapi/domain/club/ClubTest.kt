@@ -19,6 +19,8 @@ import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentMatchers.anyLong
 import org.mockito.Mockito.doReturn
 import org.mockito.Mockito.doThrow
+import org.mockito.Mockito.never
+import org.mockito.Mockito.verify
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
@@ -180,6 +182,8 @@ class ClubTest @Autowired constructor(
             json(body(name = "새 동아리", room = "ROOM_2_1", manager = manager.id!!, member = listOf(manager.id!!)))
         }.andExpectRoomInUse()
         assertEquals(1, clubRepository.count())
+        // 검사에서 막아야 운영 DB의 제약 이름이 달라도 400이 난다. 제약에 맡기면 이름을 구분하지 못해 500이 된다.
+        verify(spiedClubRepository, never()).saveAndFlush(any())
     }
 
     @Test
@@ -199,6 +203,7 @@ class ClubTest @Autowired constructor(
         }.andExpectTeacherInClub()
         assertEquals(1, clubRepository.count())
         expectMemberNames(other.id!!, "박성준", "김준서")
+        verify(spiedClubRepository, never()).saveAndFlush(any())
     }
 
     @Test
@@ -566,6 +571,8 @@ class ClubTest @Autowired constructor(
             jsonPath("$.teacher") { value(null as Any?) }
         }
         expectStudentClub(other.manager!!.id!!, other.id!!)
+        // 교실·교직원은 unique 제약에 맡기지 않고 검사에서 막는다.
+        verify(spiedClubRepository, never()).flush()
     }
 
     @Test

@@ -22,9 +22,8 @@ class UpdateClubUseCase(
     fun execute(clubId: Long, request: ClubRequest) {
         val club = clubRepository.findByIdForUpdate(clubId) ?: throw XquareException(ErrorCode.CLUB_NOT_FOUND)
         val relations = clubRelationLoader.load(request, clubId)
-        for (previous in studentRepository.findAllByClubIdIn(listOf(clubId))) {
-            if (previous !in relations.members) previous.leaveClub()
-        }
+        // 기존 구성원을 모두 빼고 새 목록을 넣는다. 계속 남는 학생은 값이 그대로라 UPDATE가 나가지 않는다.
+        for (previous in studentRepository.findAllByClubIdIn(listOf(clubId))) previous.leaveClub()
         for (member in relations.members) member.joinClub(club)
         club.update(request.name, request.logo, request.room, relations.manager, relations.teacher)
         // 커밋할 때 반영하면 unique 제약 위반이 이 메서드 밖에서 나므로, 여기서 반영해 에러 코드로 바꾼다.
