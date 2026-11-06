@@ -21,4 +21,4 @@ create table notices (
     updated_at datetime(6),
     primary key (id),
     constraint fk_notices_author foreign key (author_id) references users (id) on delete set null
-) engine = InnoDB;
+) engine = InnoDB default charset = utf8mb4;
