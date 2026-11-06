@@ -1,5 +1,6 @@
 package app.xquare.xquareopenapi.domain.student.presentation.dto
 
+import app.xquare.xquareopenapi.domain.club.presentation.dto.ClubSummaryResponse
 import app.xquare.xquareopenapi.domain.student.Student
 import java.time.LocalDate
 
@@ -12,12 +13,9 @@ data class StudentResponse(
     val name: String,
     val birthDate: LocalDate,
     val email: String,
+    // 소속 동아리가 없으면 null이다.
+    val club: ClubSummaryResponse?,
 ) {
-    // 동아리 기능이 아직 없어서 항상 null이다. 동아리를 만들 때 타입을 바꾼다.
-    // getter가 있으면 "null 대신 null을 돌려주는" 죽일 수 없는 뮤턴트가 생겨서, getter 없이 필드로 직렬화한다.
-    @JvmField
-    val club: Nothing? = null
-
     companion object {
         fun from(student: Student) = StudentResponse(
             id = student.id!!,
@@ -28,6 +26,7 @@ data class StudentResponse(
             name = student.name,
             birthDate = student.birthDate,
             email = student.email,
+            club = ClubSummaryResponse.from(student.club),
         )
     }
 }
