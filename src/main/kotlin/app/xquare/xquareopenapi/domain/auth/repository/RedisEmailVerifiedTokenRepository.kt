@@ -2,6 +2,7 @@ package app.xquare.xquareopenapi.domain.auth.repository
 
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Repository
+import java.time.Duration
 
 /**
  * 이메일 OTP 인증 API가 `email_verified_token:{token}` -> email 형태로 600초 TTL로 저장한 값을 읽는다.
@@ -10,6 +11,10 @@ import org.springframework.stereotype.Repository
 class RedisEmailVerifiedTokenRepository(
     private val redisTemplate: StringRedisTemplate,
 ) : EmailVerifiedTokenRepository {
+
+    override fun save(token: String, email: String, ttl: Duration) {
+        redisTemplate.opsForValue().set(key(token), email, ttl)
+    }
 
     override fun findEmailByToken(token: String): String? =
         redisTemplate.opsForValue().get(key(token))
