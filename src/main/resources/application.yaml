@@ -15,6 +15,13 @@ spring:
       host: ${REDIS_HOST}
       port: ${REDIS_PORT}
 
+# 프록시 뒤에서 X-Forwarded-For를 remoteAddr에 반영한다. Tomcat RemoteIpValve는 직접 연결한 쪽이
+# 내부망 대역(server.tomcat.remoteip.internal-proxies 기본값: 10/8, 172.16/12, 192.168/16, 169.254/16,
+# 100.64/10, 127/8, fc00::/7, fe80::/10, ::1)일 때만 헤더를 믿으므로, 공인 IP에서 직접 붙은 요청의 헤더는 무시된다.
+# 앞에 Cloudflare처럼 외부 프록시가 더 있으면 그 대역을 server.tomcat.remoteip.trusted-proxies에 넣어야 한다.
+server:
+  forward-headers-strategy: ${SERVER_FORWARD_HEADERS_STRATEGY:native}
+
 jwt:
   secret: ${JWT_SECRET}
   access-expiration: ${JWT_ACCESS_EXPIRATION:PT1H}
@@ -30,3 +37,12 @@ resend:
   base-url: https://api.resend.com
   connect-timeout: 5s
   read-timeout: 10s
+
+# 이메일 OTP 발송 제한. 횟수 창은 첫 발송(오입력)부터 세는 고정 창이다.
+otp:
+  resend-cooldown: ${OTP_RESEND_COOLDOWN:60s}
+  send-window: ${OTP_SEND_WINDOW:1h}
+  max-sends-per-email: ${OTP_MAX_SENDS_PER_EMAIL:5}
+  max-sends-per-ip: ${OTP_MAX_SENDS_PER_IP:30}
+  attempt-window: ${OTP_ATTEMPT_WINDOW:1h}
+  max-attempts: ${OTP_MAX_ATTEMPTS:5}

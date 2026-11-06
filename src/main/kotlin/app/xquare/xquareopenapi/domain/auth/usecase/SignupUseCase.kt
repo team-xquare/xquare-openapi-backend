@@ -27,14 +27,16 @@ class SignupUseCase(
 
     @Transactional
     fun execute(request: SignupRequest): TokenResponse {
+        // 대문자로 보내도 OTP 인증 때와 같은 소문자 값으로 비교하고 저장한다.
+        val email = normalizeEmail(request.email)
         val verifiedEmail = emailVerifiedTokenRepository.findEmailByToken(request.emailVerifiedToken)
-        if (verifiedEmail != request.email) {
+        if (verifiedEmail != email) {
             throw XquareException(ErrorCode.EMAIL_NOT_VERIFIED)
         }
         if (userRepository.existsByUsername(request.username)) {
             throw XquareException(ErrorCode.USERNAME_ALREADY_EXISTS)
         }
-        if (userRepository.existsByEmail(request.email)) {
+        if (userRepository.existsByEmail(email)) {
             throw XquareException(ErrorCode.EMAIL_ALREADY_EXISTS)
         }
 
@@ -44,7 +46,7 @@ class SignupUseCase(
                 password = passwordEncoder.encode(request.password)!!,
                 studentNumber = request.studentNumber,
                 name = request.name,
-                email = request.email,
+                email = email,
                 role = Role.USER,
             ),
         )

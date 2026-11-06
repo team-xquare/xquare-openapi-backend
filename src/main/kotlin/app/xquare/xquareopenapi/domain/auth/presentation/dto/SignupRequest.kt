@@ -24,7 +24,12 @@ data class SignupRequest(
     val name: String,
 
     @field:Email
-    @field:Pattern(regexp = "^[^@\\s]+@dsm\\.hs\\.kr$", message = "@dsm.hs.kr 이메일만 사용할 수 있습니다.")
+    // 대소문자는 SignupUseCase에서 소문자로 맞추므로 여기서는 구분하지 않는다. `+태그`는 OTP 발송처럼 거부한다.
+    @field:Pattern(
+        regexp = "^[^@\\s+]+@dsm\\.hs\\.kr$",
+        flags = [Pattern.Flag.CASE_INSENSITIVE],
+        message = "@dsm.hs.kr 이메일만 사용할 수 있습니다.",
+    )
     val email: String,
 
     @field:NotBlank

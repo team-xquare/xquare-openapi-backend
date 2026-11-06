@@ -13,6 +13,7 @@ import app.xquare.xquareopenapi.domain.auth.presentation.dto.EmailVerifiedTokenR
 import app.xquare.xquareopenapi.domain.auth.presentation.dto.MessageResponse
 import app.xquare.xquareopenapi.domain.auth.usecase.SendEmailOtpUseCase
 import app.xquare.xquareopenapi.domain.auth.usecase.VerifyEmailOtpUseCase
+import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.PostMapping
@@ -32,8 +33,10 @@ class AuthController(
 ) {
 
     @PostMapping("/email/otp")
-    fun sendEmailOtp(@RequestBody @Valid request: EmailOtpSendRequest): MessageResponse =
-        sendEmailOtpUseCase.execute(request)
+    // IP는 X-Forwarded-For를 직접 읽지 않고 remoteAddr를 쓴다. server.forward-headers-strategy=native(기본값)이면
+    // Tomcat이 내부망 프록시가 준 값만 remoteAddr에 반영한다.
+    fun sendEmailOtp(@RequestBody @Valid request: EmailOtpSendRequest, httpRequest: HttpServletRequest): MessageResponse =
+        sendEmailOtpUseCase.execute(request, httpRequest.remoteAddr)
 
     @PostMapping("/email/otp/verify")
     fun verifyEmailOtp(@RequestBody @Valid request: EmailOtpVerifyRequest): EmailVerifiedTokenResponse =

@@ -22,12 +22,21 @@
 
 ### 빈 곳
 - 회원가입 400 INVALID_INPUT: API 명세서에 없음. 현재 구현 기준으로만 추가함
-- OTP 발송·검증 이메일은 `^[^@\s]+@dsm\.hs\.kr$`로 검사하며 빈 문자열도 `400 INVALID_EMAIL_FORMAT`으로 정함. 누락·null·깨진 JSON 및 빈 OTP는 `400 INVALID_INPUT`. 비어 있지 않은 OTP의 자리수·숫자 형식은 검사하지 않고 비교 결과에 따라 `OTP_MISMATCH` 또는 `OTP_NOT_FOUND`를 반환함.
+- OTP 발송·검증 이메일은 앞뒤 공백을 지우고 소문자로 바꾼 뒤 `^[^@\s+]+@dsm\.hs\.kr$`로 검사하며 빈 문자열도 `400 INVALID_EMAIL_FORMAT`으로 정함. 로컬 파트의 `+`도 같은 형식 오류로 거부함(#22 리뷰). 메일 서버가 대소문자와 `+태그`를 같은 메일함으로 배달해 이메일별 제한을 우회할 수 있기 때문. 소문자로 바꾼 값을 OTP·발송 제한 키와 이메일 인증 토큰에 쓰고, 회원가입도 요청 이메일을 소문자로 바꿔 토큰의 이메일과 비교하고 저장함(회원가입의 `+`·형식 오류는 `400 INVALID_INPUT`). 누락·null·깨진 JSON 및 빈 OTP는 `400 INVALID_INPUT`. 비어 있지 않은 OTP의 자리수·숫자 형식은 검사하지 않고 비교 결과에 따라 `OTP_MISMATCH` 또는 `OTP_NOT_FOUND`를 반환함.
 - 로그인·재발급 필드 누락: 명세에 없어 회원가입과 같은 `400 INVALID_INPUT`으로 정함(#10)
 - 로그인 계정 잠금(ACCOUNT_LOCKED)의 해제 조건 및 잠금 기간 미정(기능 명세서에도 "미정"으로 기재). 정해질 때까지 구현하지 않기로 함(#10)
 - 로그인 실패 횟수 카운트 기준(누적/연속, 초기화 시점, 아이디 기준 여부) 미정
 - 오류 응답의 message 문구: 두 명세서 모두 정의하지 않아 YAML의 message 예시는 설명을 한국어로 옮긴 임의 문구임
-- OTP 재발송은 기존 값을 덮어쓰고 TTL 300초를 다시 설정함. 재발송 횟수·쿨다운은 미정이므로 미구현. 검증은 로그인 잠금 기준 5회와 맞춰 같은 OTP가 5회 틀리면 폐기함(5번째 OTP_MISMATCH, 이후 OTP_NOT_FOUND로 재발송 필요). 재발송·성공은 시도 횟수를 초기화함. 저장·발송 실패는 `500 EMAIL_SEND_FAILED`이며 저장값이 해당 발송의 OTP와 같을 때만 원자적으로 정리하고 원래 실패 원인과 정리 실패는 로그로 남김.
+- OTP 재발송은 기존 값을 덮어쓰고 TTL 300초를 다시 설정함. 저장·발송 실패는 `500 EMAIL_SEND_FAILED`이며 저장값이 해당 발송의 OTP와 같을 때만 원자적으로 정리하고 원래 실패 원인과 정리 실패는 로그로 남김.
+- OTP 발송 제한·오입력 횟수(#22): 명세에 없어 정함. 값은 모두 `otp.*` 설정(환경변수)으로 바꿀 수 있음.
+  - 같은 이메일 재발송 쿨다운 60초(`OTP_RESEND_COOLDOWN`). 걸리면 `429 OTP_RESEND_TOO_SOON`.
+  - 발송 상한: 이메일당 1시간 5회(`OTP_MAX_SENDS_PER_EMAIL`), IP당 1시간 30회(`OTP_MAX_SENDS_PER_IP`, 창은 `OTP_SEND_WINDOW`). 둘 다 `429 OTP_SEND_LIMIT_EXCEEDED`(어느 쪽인지 구분하지 않음). IP 상한은 학교 NAT 뒤에서 한 반이 동시에 가입하는 경우를 생각해 넉넉하게 잡음.
+  - 오입력: 코드가 아니라 이메일 기준으로 첫 오입력부터 1시간(`OTP_ATTEMPT_WINDOW`) 동안 5회(`OTP_MAX_ATTEMPTS`)까지. 재발송해도 초기화하지 않음. 5번째 오입력에서 코드를 폐기하고(5번째 OTP_MISMATCH, 이후 OTP_NOT_FOUND), 창이 끝날 때까지 발송을 `429 OTP_ATTEMPTS_EXCEEDED`로 막음. 검증 성공 시에만 횟수를 지움. 그래서 한 이메일에 대한 추측은 1시간에 5번으로 묶임. 대신 정상 사용자도 5번 틀리면 최대 1시간 기다려야 함.
+  - 시간 창은 첫 발송(첫 오입력)부터 세는 고정 창. 거부된 요청은 횟수에 넣지 않음.
+  - 429 응답에는 `Retry-After` 헤더(초, 올림)를 붙임. 여러 제한에 동시에 걸리면 오입력 → 이메일 상한 → IP 상한 → 쿨다운 순으로 먼저 걸린 제한의 남은 시간임. 브라우저가 읽을 수 있게 CORS `Access-Control-Expose-Headers`에도 추가함.
+  - 발송 실패(500)여도 쿨다운과 발송 횟수는 되돌리지 않음. 타임아웃이면 메일이 실제로 나갔을 수 있고, 메일 서비스 장애 중에 재시도가 몰리는 것도 막기 위함. 사용자는 최대 60초 뒤 다시 요청하면 됨.
+  - IP는 `request.remoteAddr` 기준이며 앱 코드는 `X-Forwarded-For`를 직접 읽지 않음. `server.forward-headers-strategy`(`SERVER_FORWARD_HEADERS_STRATEGY`) 기본값을 `native`로 둠(#22 리뷰). `none`이면 프록시(Ingress) 뒤에서 모든 요청이 프록시 IP 하나로 세져 IP 상한(30회)이 전체 사용자에게 걸리기 때문. `native`면 Tomcat RemoteIpValve가 직접 연결한 쪽이 내부망 대역(Spring Boot 4.1.1의 `server.tomcat.remoteip.internal-proxies` 기본값: 10/8, 172.16/12, 192.168/16, 169.254/16, 100.64/10, 127/8, fc00::/7, fe80::/10, ::1)일 때만 `X-Forwarded-For`를 반영하고, 그중 오른쪽부터 처음 나오는 내부망·신뢰 프록시가 아닌 IP를 remoteAddr로 씀. 공인 IP에서 직접 붙은 요청의 헤더는 무시됨. 앞에 Cloudflare 같은 외부 프록시가 더 있으면 그 대역을 `server.tomcat.remoteip.trusted-proxies`에 넣어야 함.
+  - IP 상한 키는 IPv4면 주소 그대로, IPv6면 /64 접두사로 묶음(#22 리뷰). IPv6는 보통 /64 하나를 한 사용자가 받아 주소를 바꿔 가며 상한을 우회할 수 있기 때문. IPv4-mapped IPv6(`::ffff:a.b.c.d`)는 IPv4로 보고, 압축 표기·대소문자 차이는 주소를 파싱해 없앰. IP로 해석되지 않는 값은 그대로 키로 씀.
 - Resend 연결 타임아웃은 기본 5초(`resend.connect-timeout`), 읽기 타임아웃은 기본 10초(`resend.read-timeout`)로 정함. 타임아웃도 `500 EMAIL_SEND_FAILED`로 처리함.
 - 메일 제공자는 Resend HTTP API로 정함. API 키가 비어 있어도 기동은 허용하고 발송 시 실패 처리함. 인증 완료 토큰은 UUID, TTL 600초이며 기존 회원가입 계약을 사용함.
 - 회원가입 시 학번 중복 처리 규칙 및 에러 코드 미정 (이메일 중복은 PR #3 리뷰에서 `409 EMAIL_ALREADY_EXISTS`로 정함)

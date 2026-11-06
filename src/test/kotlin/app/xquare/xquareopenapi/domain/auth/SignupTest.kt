@@ -176,6 +176,27 @@ class SignupTest @Autowired constructor(
     }
 
     @Test
+    fun `대문자 이메일로 가입해도 소문자로 비교하고 저장한다`() {
+        emailVerifiedTokens.tokens[TOKEN] = EMAIL
+
+        mockMvc.post("/auth/signup") {
+            contentType = MediaType.APPLICATION_JSON
+            content = body(email = "Example@DSM.HS.KR")
+        }.andExpect { status { isCreated() } }
+        assertEquals(EMAIL, userRepository.findAll().single().email)
+
+        emailVerifiedTokens.tokens["other-token"] = EMAIL
+        mockMvc.post("/auth/signup") {
+            contentType = MediaType.APPLICATION_JSON
+            content = body(username = "other", email = "EXAMPLE@dsm.hs.kr", emailVerifiedToken = "other-token")
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("EMAIL_ALREADY_EXISTS") }
+        }
+        verify(spiedUserRepository, times(1)).save(any())
+    }
+
+    @Test
     fun `이미 쓰는 아이디면 USERNAME_ALREADY_EXISTS`() {
         emailVerifiedTokens.tokens[TOKEN] = EMAIL
         mockMvc.post("/auth/signup") {
@@ -291,6 +312,7 @@ class SignupTest @Autowired constructor(
             body(email = "example@gmail.com") to "email",
             body(email = "") to "email",
             body(email = ".example@dsm.hs.kr") to "email",
+            body(email = "example+1@dsm.hs.kr") to "email",
             """{"username":"Jun227"}""" to "요청 값이 올바르지 않습니다.",
         )
 
