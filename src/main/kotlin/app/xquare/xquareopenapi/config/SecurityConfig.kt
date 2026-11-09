@@ -1,5 +1,6 @@
 package app.xquare.xquareopenapi.config
 
+import app.xquare.xquareopenapi.domain.user.Role
 import app.xquare.xquareopenapi.global.cors.CorsProperties
 import app.xquare.xquareopenapi.global.error.SecurityErrorResponder
 import app.xquare.xquareopenapi.global.jwt.JwtAuthenticationFilter
@@ -42,6 +43,10 @@ class SecurityConfig {
                 authorize(HttpMethod.POST, "/auth/reissue", permitAll)
                 // 처리되지 않은 오류는 /error로 포워드된다. 이걸 막으면 415·500 같은 원래 응답이 전부 401로 바뀐다.
                 authorize(DispatcherTypeRequestMatcher(DispatcherType.ERROR), permitAll)
+                authorize(HttpMethod.POST, "/students", hasRole(ADMIN))
+                authorize(HttpMethod.PATCH, "/students/*", hasRole(ADMIN))
+                authorize(HttpMethod.DELETE, "/students/*", hasRole(ADMIN))
+                // 나머지는 로그인만 하면 된다(USER, ADMIN).
                 authorize(anyRequest, authenticated)
             }
             exceptionHandling {
@@ -63,4 +68,8 @@ class SecurityConfig {
 
     @Bean
     fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder()
+
+    companion object {
+        private val ADMIN = Role.ADMIN.name
+    }
 }
