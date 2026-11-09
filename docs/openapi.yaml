@@ -652,7 +652,7 @@ paths:
       - name: name
         in: query
         required: false
-        description: 교직원의 이름.
+        description: 교직원의 이름. 정확히 일치하는 교직원만 찾는다.
         schema:
           type: string
           example: 홍길동
@@ -681,7 +681,7 @@ paths:
       - name: office
         in: query
         required: false
-        description: 근무하는 교무실. 부분 일치 검색.
+        description: 근무하는 교무실. 부분 일치 검색. `%`, `_`도 와일드카드가 아닌 글자 그대로 찾는다.
         schema:
           type: string
           example: 3층 교무실
@@ -694,6 +694,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TeacherPageResponse'
+        '400':
+          description: '`INVALID_INPUT`: page가 0보다 작거나 size가 1~100을 벗어남, 또는 조건 형식 오류(숫자가 아닌 학년·반, 없는 과목)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
         '401':
           description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
           content:
@@ -745,6 +756,17 @@ paths:
                 $ref: '#/components/schemas/MessageResponse'
               example:
                 message: 생성되었습니다.
+        '400':
+          description: '`INVALID_INPUT`: 필수 값 누락, 이름 공백·10자 초과, 교무실 공백·30자 초과, 학년 1~3·반 1~9 밖, 학년과 반 중 하나만 보냄, 없는 과목·직책'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
         '401':
           description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
           content:
@@ -819,7 +841,7 @@ paths:
       tags:
       - 교직원
       summary: 교직원 정보 수정
-      description: '교직원 정보를 수정한다. 담당 동아리는 이 API에서 다루지 않으며 동아리 등록·수정의 `teacher`로만 변경된다. 담임이 아니면 `grade`, `classNum`은 null.
+      description: '교직원 정보를 수정한다. 등록과 같은 모든 필드를 보내야 하며, 보낸 값으로 통째로 바꾼다. grade, classNum을 null로 보내면 담임에서 빠진다. 담당 동아리는 이 API에서 다루지 않으며 동아리 등록·수정의 `teacher`로만 변경된다. 담임이 아니면 `grade`, `classNum`은 null.
         권한: ADMIN.'
       operationId: updateTeacher
       security:
@@ -850,6 +872,17 @@ paths:
                 $ref: '#/components/schemas/MessageResponse'
               example:
                 message: 수정되었습니다.
+        '400':
+          description: '`INVALID_INPUT`: 필수 값 누락, 이름 공백·10자 초과, 교무실 공백·30자 초과, 학년 1~3·반 1~9 밖, 학년과 반 중 하나만 보냄, 없는 과목·직책'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
         '401':
           description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
           content:
@@ -2686,6 +2719,12 @@ components:
           $ref: '#/components/schemas/TeacherPosition'
     TeacherUpdateRequest:
       type: object
+      required:
+      - name
+      - subject
+      - office
+      - isManager
+      - position
       properties:
         name:
           type: string
