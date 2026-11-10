@@ -91,6 +91,7 @@
 - 동아리 담당 교직원의 삭제가 그 동아리 수정과 겹치면 `409 CONCURRENT_UPDATE`가 날 수 있다(#25, 명세의 삭제 에러 표에 없음). 아래 동아리 항목 참고.
 - 같은 학급의 담임이 여러 명이어도 막지 않는다. 명세에 에러 코드가 없다.
 - 응답의 `club`은 담당 동아리(id, name, logo), 없으면 null(#25). 담당 교직원을 지우면 그 동아리의 `teacher`가 null이 된다.
+- 자습 감독을 맡은 교직원을 지우면 그 배정만 지워지고 자습 감독 정보는 남는다. 그 층은 `teacher`가 null로 나온다(#27).
 
 # 일정·자습 감독
 
@@ -115,6 +116,25 @@
 - 기간 조회 `startDate`/`finishDate` 필수 여부와 최대 기간 제한 미기재(필수로 가정). 날짜 형식 오류 시 에러 코드 없음
 - 삭제가 소프트/하드 삭제인지, 자습 감독 삭제 시 층별 배정 처리 방식 불명확
 - 성공 응답 `{message}` 스키마는 이 조각 안에서 ScheduleMessageResponse / StudySupervisorMessageResponse로 자체 정의함
+
+### 구현하면서 정한 것 (자습 감독, #27)
+- 날짜 하나에 자습 감독 정보 하나다(`study_supervisors.supervision_date` unique `uk_study_supervisors_supervision_date`). id는 그 날짜 정보의 id이고, 층별 배정은 `study_supervisor_assignments`에 따로 둔다.
+- `floor`는 명세 예시대로 2~4층만 받는다. 다른 값은 `400 INVALID_INPUT`. 실제 층이 정해지면 `StudySupervisor.FLOORS`와 `StudySupervisorAssignmentRequest`의 범위 상수만 고치면 된다.
+- 일부 층만 보내도 된다. 같은 층을 두 번 보내면 `400 INVALID_INPUT`(응답의 층마다 `teacher`가 하나라서). 한 교직원이 여러 층을 맡는 것은 막지 않는다. 명세에 에러 코드가 없다.
+- `supervisors` 빈 리스트는 `400 INVALID_INPUT`. 배정을 모두 없애려면 삭제를 쓴다. `date`·`supervisors`·`floor`·`teacherId`는 모두 필수, 목록에 null이 섞여도 `400 INVALID_INPUT`.
+- 조회: 기간 안의 모든 날짜를 날짜 순으로 준다. 정보가 없는 날짜는 `supervisors`가 빈 배열, 정보가 있는 날짜는 2~4층을 모두 주고 배정이 없는 층은 `teacher`가 null이다.
+- 조회 응답에 `id`(명세에 없음)를 넣었다. 정보가 없는 날짜는 null. 단건 조회가 없어서 이게 없으면 등록 때의 `Location` 말고는 수정·삭제할 id를 알 수 없다.
+- `Location`은 명세대로 `/study-supervisors/{id}`를 주지만 단건 조회 API는 만들지 않았다(명세에 없음). 그 URI에 GET을 보내면 405다.
+- 기간 조회 `startDate`/`finishDate`는 명세대로 필수다. 급식과 달리 기본값(이번 달)이 없어서 `Clock`은 쓰지 않는다. 빠지거나 날짜 형식이 틀리면 `400 INVALID_INPUT`. 기간은 급식 월간 조회와 같이 시작일·종료일을 포함해 최대 92일이고, `finishDate`가 `startDate`보다 이르거나 92일을 넘으면 `400 INVALID_DATE_RANGE`. 하루(같은 날짜)는 된다.
+- 일별 조회 `date`도 필수. 빠지거나 형식이 틀리면 `400 INVALID_INPUT`.
+- 날짜(등록·수정 `date`, 기간 조회 `startDate`/`finishDate`, 일별 조회 `date`)는 MySQL DATE 범위인 1000-01-01~9999-12-31만 받는다. 벗어나면 `400 INVALID_INPUT`("date: 1000-01-01부터 9999-12-31까지의 날짜여야 합니다."). ISO 날짜는 `+999999999-12-31` 같은 확장 연도도 읽혀서(쿼리에서는 `%2B`로 보낼 때), 막지 않으면 조회의 다음 날 계산이 500, 범위 밖 날짜 저장이 MySQL에서 500이었다(#28 리뷰).
+- 수정(PATCH)은 학생·교직원처럼 모든 필드를 받아 통째로 바꾼다. `supervisors`는 명세대로 전체 교체라서 빠진 층은 배정이 없어진다. 다른 정보가 있는 날짜로 옮기면 `409 SUPERVISION_ALREADY_EXISTS`(수정 에러 표에 없지만 등록과 같은 코드). 날짜를 그대로 두는 수정은 된다.
+- 검사 순서: 입력 형식(400) → (수정) 정보 존재 `SUPERVISION_NOT_FOUND`(404) → 교직원 존재 `TEACHER_NOT_FOUND`(404) → 날짜 중복(409).
+- 동시 등록·수정으로 중복 검사를 통과해도 unique 제약에 걸리면 같은 409로 바꾼다. 같은 정보를 동시에 수정하면 배정 교체가 섞이지 않게 행을 잠그고 읽는다.
+- 수정은 `409 CONCURRENT_UPDATE`를 낼 수 있다(명세에 없음, 공통 응답이라 YAML에는 안 넣음). MySQL(REPEATABLE READ)에서 기존 배정을 지우는 delete가 `(study_supervisor_id, floor_number)` unique 인덱스에 gap lock을 잡아서, 배정이 0건인 정보 두 개를 동시에 수정하면 서로의 gap 때문에 insert가 막혀 데드락이 나고 한쪽이 되돌려진다. 다시 보내면 성공한다(#28 리뷰, H2로는 재현되지 않고 MySQL로도 확인 안 함).
+- 삭제는 실제로 지운다(하드 삭제). 층별 배정은 DB가 함께 지우고(`ON DELETE CASCADE`) 교직원은 남는다. 같은 정보를 동시에 지우면 하나만 200, 나머지는 `404 SUPERVISION_NOT_FOUND`.
+- 감독 교직원을 지우면 그 교직원의 배정만 DB가 지운다(`study_supervisor_assignments.teacher_id ON DELETE CASCADE`). 자습 감독 정보는 남고 그 층은 `teacher`가 null로 나온다. 모든 층의 교직원이 지워져도 정보는 남아 수정·삭제할 수 있다. 교직원 삭제 코드는 그대로다.
+- 기능 명세서의 `수정된 내력이 없습니다.`는 에러 코드가 없어서 만들지 않았다. 같은 값으로 수정해도 200이다.
 
 # 급식·동아리·공지
 
