@@ -20,6 +20,7 @@ interface NoticeRepository : JpaRepository<Notice, Long> {
     fun findWithAuthorById(id: Long): Notice?
 
     // 조회 후 고치면 그 사이에 공지가 지워졌을 때 0행 수정으로 500이 난다. 한 번에 고치고 고친 행 수를 돌려준다.
+    // 돌려주는 값은 조건에 맞은 행 수다(Connector/J 기본값). DB_URL에 useAffectedRows=true를 붙이면 안 된다(UpdateNoticeUseCase 참고).
     @Modifying
     @Query("update Notice n set n.title = :title, n.content = :content, n.updatedAt = :updatedAt where n.id = :id")
     fun updateByIdReturningCount(id: Long, title: String, content: String, updatedAt: LocalDateTime): Int

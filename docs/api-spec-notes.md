@@ -222,6 +222,7 @@
 - 목록 필드 이름은 명세대로 `notices`라서 공통 `PageResponse`(`content`) 대신 같은 모양의 `NoticeListResponse`를 쓴다. `page`·`size`·`totalCount`·`totalPage`는 같다.
 - 수정·삭제는 작성자가 아니어도 ADMIN이면 누구나 할 수 있다. 수정해도 작성자는 처음 작성한 사람 그대로다.
 - 수정은 두 필드를 모두 받아 통째로 바꾼다. 수정·삭제 모두 조회하지 않고 JPQL 한 번으로 처리하고, 바뀐 행이 0이면 `404 NOTICE_NOT_FOUND`. 그래서 동시 삭제나 삭제와 겹친 수정도 500 없이 404로 끝난다(`NoticeConcurrencyTest`). 행 하나만 잠그므로 데드락은 없고, 잠금 대기 시간을 넘기면 공통 처리대로 `409 CONCURRENT_UPDATE`(#26)다.
+  - 수정의 "바뀐 행 0 → 404"는 MySQL Connector/J 기본값(`useAffectedRows=false`, UPDATE가 조건에 맞은 행 수를 돌려줌)에 기댄다. 운영 `DB_URL`에 `useAffectedRows=true`를 붙이면 값이 실제로 바뀐 행만 세서, 같은 초에 같은 값으로 두 번 고칠 때 두 번째가 404가 된다. 그래서 `DB_URL`에 이 옵션을 넣으면 안 된다(#30 리뷰). 삭제는 지운 행 수라 이 옵션과 상관없다.
 - 삭제는 실제로 지운다(하드 삭제).
 - 작성자 사용자를 지우면 공지는 남고 `author`가 null이 된다(`notices.author_id` 외래 키 `ON DELETE SET NULL`). 사용자 삭제 API는 아직 없지만 DB에서 지우는 경우를 위해서다. 그래서 응답의 `author`는 nullable이다.
 - `NOTICE_NOT_FOUND` 메시지는 조회·수정·삭제 모두 `이미 삭제되었거나 존재하지 않는 공지입니다.` 하나다(명세는 수정만 `존재하지 않는 공지 id`).
