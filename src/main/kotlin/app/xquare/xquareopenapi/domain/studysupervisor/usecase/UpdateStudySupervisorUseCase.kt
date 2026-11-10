@@ -34,6 +34,9 @@ class UpdateStudySupervisorUseCase(
         } catch (e: DataIntegrityViolationException) {
             throw StudySupervisor.conflictOf(e)
         }
+        // MySQL(REPEATABLE READ)에서 이 delete는 uk(study_supervisor_id, floor_number) 인덱스에 gap lock을 잡는다.
+        // 배정이 0건인 정보 두 개를 동시에 수정하면 두 트랜잭션이 같은 gap을 잡은 채 insert해 데드락이 나고, DB가 되돌린 쪽은
+        // 409 CONCURRENT_UPDATE를 받는다(#28 리뷰, H2로는 재현되지 않고 MySQL로도 확인 안 함). 다시 보내면 성공하고 데이터는 섞이지 않는다.
         assignmentRepository.deleteAllByStudySupervisorId(studySupervisorId)
         studySupervisorAssigner.assign(studySupervisor, request.supervisors, teachers)
     }

@@ -131,6 +131,7 @@
 - 수정(PATCH)은 학생·교직원처럼 모든 필드를 받아 통째로 바꾼다. `supervisors`는 명세대로 전체 교체라서 빠진 층은 배정이 없어진다. 다른 정보가 있는 날짜로 옮기면 `409 SUPERVISION_ALREADY_EXISTS`(수정 에러 표에 없지만 등록과 같은 코드). 날짜를 그대로 두는 수정은 된다.
 - 검사 순서: 입력 형식(400) → (수정) 정보 존재 `SUPERVISION_NOT_FOUND`(404) → 교직원 존재 `TEACHER_NOT_FOUND`(404) → 날짜 중복(409).
 - 동시 등록·수정으로 중복 검사를 통과해도 unique 제약에 걸리면 같은 409로 바꾼다. 같은 정보를 동시에 수정하면 배정 교체가 섞이지 않게 행을 잠그고 읽는다.
+- 수정은 `409 CONCURRENT_UPDATE`를 낼 수 있다(명세에 없음, 공통 응답이라 YAML에는 안 넣음). MySQL(REPEATABLE READ)에서 기존 배정을 지우는 delete가 `(study_supervisor_id, floor_number)` unique 인덱스에 gap lock을 잡아서, 배정이 0건인 정보 두 개를 동시에 수정하면 서로의 gap 때문에 insert가 막혀 데드락이 나고 한쪽이 되돌려진다. 다시 보내면 성공한다(#28 리뷰, H2로는 재현되지 않고 MySQL로도 확인 안 함).
 - 삭제는 실제로 지운다(하드 삭제). 층별 배정은 DB가 함께 지우고(`ON DELETE CASCADE`) 교직원은 남는다. 같은 정보를 동시에 지우면 하나만 200, 나머지는 `404 SUPERVISION_NOT_FOUND`.
 - 감독 교직원을 지우면 그 교직원의 배정만 DB가 지운다(`study_supervisor_assignments.teacher_id ON DELETE CASCADE`). 자습 감독 정보는 남고 그 층은 `teacher`가 null로 나온다. 모든 층의 교직원이 지워져도 정보는 남아 수정·삭제할 수 있다. 교직원 삭제 코드는 그대로다.
 - 기능 명세서의 `수정된 내력이 없습니다.`는 에러 코드가 없어서 만들지 않았다. 같은 값으로 수정해도 200이다.
