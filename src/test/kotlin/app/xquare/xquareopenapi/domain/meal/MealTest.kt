@@ -137,7 +137,7 @@ class MealTest @Autowired constructor(
     @Test
     fun `중복 검사를 통과해도 같은 날짜가 먼저 저장됐으면 MEAL_ALREADY_EXISTS`() {
         save(date = LocalDate.of(2026, 9, 1))
-        doReturn(null).`when`(spiedMealRepository).findByDate(anyDate())
+        doReturn(null).`when`(spiedMealRepository).findIdByDate(anyDate())
 
         mockMvc.post("/meals") {
             bearer(adminToken)
@@ -608,7 +608,7 @@ class MealTest @Autowired constructor(
         }
     }
 
-    // findByDate는 Kotlin에서 LocalDate(non-null)로 선언돼 any()의 null을 받지 못한다. 매처를 등록한 뒤 null 대신 아무 날짜나 넘긴다.
+    // findByDate·findIdByDate는 Kotlin에서 LocalDate(non-null)로 선언돼 any()의 null을 받지 못한다. 매처를 등록한 뒤 null 대신 아무 날짜나 넘긴다.
     private fun anyDate(): LocalDate = any(LocalDate::class.java) ?: LocalDate.MIN
 
     private fun otherViolation() =

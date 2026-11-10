@@ -36,8 +36,11 @@ class NeisMealSyncScheduler(
             val result = try {
                 syncNeisMealsUseCase.execute(neisMeals)
             } catch (e: DataIntegrityViolationException) {
-                // 비어 있던 날짜에 관리자 등록이 먼저 커밋되면 새로 만들던 급식이 unique 제약에 걸려 그 달 전체가 롤백된다.
-                // 한 번만 다시 동기화한다. 다시 할 때는 관리자 급식이 보여서 그 날짜를 건너뛴다.
+                // 동기화가 빈 날짜를 읽은 뒤 그 날짜에 관리자 등록이 먼저 커밋되면, 새로 만들던 급식이 unique 제약에 걸려 그 달 전체가 롤백된다.
+                // 이때 한 번만 다시 동기화한다. 다시 할 때는 관리자 급식이 보여서 그 날짜를 건너뛴다.
+                // 운영 DB(MySQL, 기본 REPEATABLE READ)에서는 이 경로를 거의 타지 않는다. findAllByDateIn의 FOR UPDATE가 행이 없는 날짜에도
+                // gap lock을 걸어서, 관리자 등록이 동기화 커밋까지 기다렸다가 409 MEAL_ALREADY_EXISTS를 받기 때문이다(#24 리뷰, MySQL로는 확인 안 함).
+                // 이 경로는 빈 날짜를 잠그지 않는 H2에서만 확인했다. 격리 수준이 바뀌는 경우를 위한 안전장치로 남겨 둔다.
                 log.info("{} 나이스 급식 동기화가 같은 날짜의 다른 저장과 겹쳐 다시 시도합니다.", month, e)
                 syncNeisMealsUseCase.execute(neisMeals)
             }
