@@ -7,7 +7,6 @@ import app.xquare.xquareopenapi.global.jwt.JwtProperties
 import com.jayway.jsonpath.JsonPath
 import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.security.Keys
-import jakarta.servlet.ServletException
 import org.hamcrest.Matchers.containsString
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -31,7 +30,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 @SpringBootTest
@@ -280,18 +278,21 @@ class SignupTest @Autowired constructor(
     }
 
     @Test
-    fun `어느 unique 제약인지 구분할 수 없는 무결성 위반은 원래 예외를 그대로 던진다`() {
+    fun `어느 unique 제약인지 구분할 수 없는 무결성 위반은 409로 바꾸지 않고 500 INTERNAL_SERVER_ERROR`() {
         val violation = DataIntegrityViolationException("다른 제약 위반")
         doThrow(violation).`when`(spiedUserRepository).save(any())
         emailVerifiedTokens.tokens[TOKEN] = EMAIL
 
-        val thrown = assertFailsWith<ServletException> {
-            mockMvc.post("/auth/signup") {
-                contentType = MediaType.APPLICATION_JSON
-                content = body()
-            }
+        // 원래 예외는 GlobalExceptionHandler가 로그로 남기고, 응답은 {code, message} 형식의 500이다.
+        mockMvc.post("/auth/signup") {
+            contentType = MediaType.APPLICATION_JSON
+            content = body()
+        }.andExpect {
+            status { isInternalServerError() }
+            jsonPath("$.code") { value("INTERNAL_SERVER_ERROR") }
         }
-        assertSame(violation, thrown.cause)
+        assertEquals(0, userRepository.count())
+        assertEquals(EMAIL, emailVerifiedTokens.tokens[TOKEN])
     }
 
     @Test

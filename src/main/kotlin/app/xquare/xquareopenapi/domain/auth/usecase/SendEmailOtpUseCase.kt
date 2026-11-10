@@ -4,6 +4,7 @@ import app.xquare.xquareopenapi.domain.auth.presentation.dto.EmailOtpSendRequest
 import app.xquare.xquareopenapi.domain.auth.presentation.dto.MessageResponse
 import app.xquare.xquareopenapi.domain.auth.repository.EmailOtpRepository
 import app.xquare.xquareopenapi.domain.auth.repository.OtpSendRejection
+import app.xquare.xquareopenapi.domain.auth.mail.OtpMailMaybeSentException
 import app.xquare.xquareopenapi.domain.auth.mail.OtpMailSender
 import app.xquare.xquareopenapi.global.error.ErrorCode
 import app.xquare.xquareopenapi.global.error.XquareException
@@ -36,6 +37,10 @@ class SendEmailOtpUseCase(
         }
         try {
             mailSender.send(email, otp)
+        } catch (e: OtpMailMaybeSentException) {
+            // 메일이 실제로 나갔을 수 있으므로 OTP를 남긴다. 지우면 받은 코드로 검증할 때 OTP_NOT_FOUND가 난다.
+            log.error("이메일 OTP 발송 결과를 알 수 없음. OTP는 유지", e)
+            throw XquareException(ErrorCode.EMAIL_SEND_FAILED)
         } catch (e: Exception) {
             throw sendFailed(email, otp, e)
         }

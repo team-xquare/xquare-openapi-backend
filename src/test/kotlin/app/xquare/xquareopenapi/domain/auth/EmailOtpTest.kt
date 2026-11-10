@@ -32,6 +32,8 @@ class EmailOtpTest @Autowired constructor(
         otps.clear()
         tokens.tokens.clear()
         tokens.ttls.clear()
+        tokens.failOnSave = false
+        tokens.failOnDelete = false
         mail.clear()
         users.deleteAll()
         refreshTokens.clear()
@@ -134,6 +136,49 @@ class EmailOtpTest @Autowired constructor(
         }
         assertEquals("123456", otps.otps[EMAIL])
         assertTrue(tokens.tokens.isEmpty())
+    }
+
+    @Test
+    fun `인증 토큰 저장이 실패하면 코드형식 500이고 코드는 남아 같은 코드로 다시 검증할 수 있다`() {
+        otps.otps[EMAIL] = "123456"
+        tokens.failOnSave = true
+        verify("123456").andExpect {
+            status { isInternalServerError() }
+            jsonPath("$.code") { value("INTERNAL_SERVER_ERROR") }
+            jsonPath("$.message") { value("일시적인 서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.") }
+        }
+        assertEquals("123456", otps.otps[EMAIL])
+        assertEquals(0, otps.attempts(EMAIL))
+        tokens.failOnSave = false
+        val token = verifiedToken()
+        assertEquals(mapOf(token to EMAIL), tokens.tokens)
+        assertNull(otps.otps[EMAIL])
+    }
+
+    @Test
+    fun `코드 확인 중 Redis 오류는 코드형식 500이고 미리 저장한 토큰을 지운다`() {
+        otps.otps[EMAIL] = "123456"
+        otps.failOnConsume = true
+        verify("123456").andExpect {
+            status { isInternalServerError() }
+            jsonPath("$.code") { value("INTERNAL_SERVER_ERROR") }
+        }
+        assertTrue(tokens.tokens.isEmpty())
+    }
+
+    @Test
+    fun `틀린 코드로 만든 토큰을 지우지 못해도 OTP_MISMATCH와 OTP_NOT_FOUND를 그대로 응답한다`() {
+        otps.otps[EMAIL] = "123456"
+        tokens.failOnDelete = true
+        verify("654321").andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("OTP_MISMATCH") }
+        }
+        otps.otps.clear()
+        verify("123456").andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("OTP_NOT_FOUND") }
+        }
     }
 
     @Test

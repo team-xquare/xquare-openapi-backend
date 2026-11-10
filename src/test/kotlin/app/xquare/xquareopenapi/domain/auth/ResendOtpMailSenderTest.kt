@@ -109,10 +109,12 @@ class ResendOtpMailSenderTest {
     }
 
     @Test
-    fun `응답 없는 서버는 읽기 제한 시간 안에 발송 실패로 끝난다`() {
+    fun `요청을 받고 응답하지 않는 서버는 읽기 제한 시간 안에 발송 실패로 끝나고 OTP는 남긴다`() {
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         val release = java.util.concurrent.CountDownLatch(1)
+        var received = ""
         server.createContext("/") { exchange ->
+            received = exchange.requestBody.bufferedReader().readText()
             release.await(5, java.util.concurrent.TimeUnit.SECONDS)
             exchange.close()
         }
@@ -131,12 +133,52 @@ class ResendOtpMailSenderTest {
                         .execute(EmailOtpSendRequest("example@dsm.hs.kr"), "127.0.0.1")
                 }
                 assertEquals(ErrorCode.EMAIL_SEND_FAILED, error.errorCode)
-                assertTrue(repository.otps.isEmpty())
+            }
+            // Resend가 메일을 받아들였을 수 있으므로, 사용자가 받은 코드로 검증할 수 있게 OTP를 지우지 않는다.
+            val otp = repository.otps.getValue("example@dsm.hs.kr")
+            assertTrue(received.contains("<strong>$otp</strong>"))
+        } finally {
+            release.countDown()
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun `읽기 타임아웃과 응답 전 연결 끊김은 발송 여부를 알 수 없음으로 연결 실패는 그대로 던진다`() {
+        val release = java.util.concurrent.CountDownLatch(1)
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/timeout") { exchange ->
+            exchange.requestBody.readAllBytes()
+            release.await(5, java.util.concurrent.TimeUnit.SECONDS)
+            exchange.close()
+        }
+        server.createContext("/drop") { exchange ->
+            exchange.requestBody.readAllBytes()
+            // 응답 헤더 없이 연결을 끊는다.
+            exchange.close()
+        }
+        server.start()
+        try {
+            for (path in listOf("timeout", "drop")) {
+                val sender = ResendOtpMailSender(
+                    ResendProperties("secret", "noreply@dsm.hs.kr", "http://127.0.0.1:${server.address.port}/$path",
+                        readTimeout = java.time.Duration.ofMillis(100)),
+                    engine(),
+                )
+                val error = assertFailsWith<app.xquare.xquareopenapi.domain.auth.mail.OtpMailMaybeSentException>(path) {
+                    sender.send("example@dsm.hs.kr", "123456")
+                }
+                assertTrue(error.cause is org.springframework.web.client.ResourceAccessException, path)
             }
         } finally {
             release.countDown()
             server.stop(0)
         }
+        val refused = ResendOtpMailSender(ResendProperties("secret", "noreply@dsm.hs.kr", "http://127.0.0.1:1"), engine())
+        val error = assertFailsWith<org.springframework.web.client.ResourceAccessException> {
+            refused.send("example@dsm.hs.kr", "123456")
+        }
+        assertTrue(error.cause is java.net.ConnectException)
     }
 
     @Test

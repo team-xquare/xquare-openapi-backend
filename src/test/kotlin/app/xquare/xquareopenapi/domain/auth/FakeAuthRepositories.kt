@@ -5,6 +5,7 @@ import app.xquare.xquareopenapi.domain.auth.repository.RefreshTokenRepository
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
+import org.springframework.data.redis.RedisConnectionFailureException
 import java.time.Duration
 import app.xquare.xquareopenapi.domain.auth.repository.EmailOtpRepository
 import app.xquare.xquareopenapi.domain.auth.repository.OtpVerification
@@ -36,7 +37,9 @@ class FakeAuthRepositories {
 
 class FakeEmailVerifiedTokenRepository : EmailVerifiedTokenRepository {
     val ttls = mutableMapOf<String, Duration>()
+    var failOnSave = false
     override fun save(token: String, email: String, ttl: Duration) {
+        if (failOnSave) throw RedisConnectionFailureException("Redis 장애")
         tokens[token] = email
         ttls[token] = ttl
     }
@@ -89,6 +92,7 @@ class FakeEmailOtpRepository(private val properties: OtpProperties) : EmailOtpRe
     val ttls = mutableMapOf<String, Duration>()
     var failOnSave = false
     var failOnDelete = false
+    var failOnConsume = false
     var now: Instant = Instant.EPOCH
     // 저장소에 넘어온 IP 키. 실제 서버를 띄운 테스트에서 어떤 IP로 셌는지 확인할 때 쓴다.
     val ips = mutableListOf<String>()
@@ -117,6 +121,7 @@ class FakeEmailOtpRepository(private val properties: OtpProperties) : EmailOtpRe
     }
 
     override fun consume(email: String, otp: String): OtpVerification {
+        if (failOnConsume) throw RedisConnectionFailureException("Redis 장애")
         val current = otps[email] ?: return OtpVerification.NOT_FOUND
         if (current != otp) {
             if (increment("email_otp_attempts:$email", properties.attemptWindow) >= properties.maxAttempts) {
@@ -158,6 +163,7 @@ class FakeEmailOtpRepository(private val properties: OtpProperties) : EmailOtpRe
         now = Instant.EPOCH
         failOnSave = false
         failOnDelete = false
+        failOnConsume = false
     }
 }
 
