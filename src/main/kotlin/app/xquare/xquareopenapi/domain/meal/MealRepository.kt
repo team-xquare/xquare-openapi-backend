@@ -24,6 +24,7 @@ interface MealRepository : JpaRepository<Meal, Long> {
 
     // 나이스 동기화가 쓴다. 관리자 수정과 겹쳐도 관리자 수정이 지워지지 않게 행을 잠그고 읽는다.
     // 먼저 수정한 쪽이 커밋할 때까지 기다린 뒤 최신 editedByAdmin을 보고, 동기화가 먼저 잠그면 관리자 수정이 그 뒤에 덮어쓴다.
+    // MySQL(REPEATABLE READ)에서는 행이 없는 날짜에도 gap lock이 걸린다. 그 날짜의 관리자 등록은 동기화 커밋까지 기다렸다가 409가 된다(H2는 빈 날짜를 잠그지 않음).
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     fun findAllByDateIn(dates: Collection<LocalDate>): List<Meal>
 }
