@@ -151,8 +151,11 @@ class NeisMealSyncTest @Autowired constructor(
         assertEquals(listOf(LocalDate.of(2027, 1, 4)), mealRepository.findAll().map(Meal::date))
     }
 
+    // H2에서만 의미 있는 테스트다. H2는 FOR UPDATE로 없는 날짜를 잠그지 않아 동기화 도중 관리자 등록이 먼저 커밋될 수 있다.
+    // MySQL(REPEATABLE READ)에서는 동기화가 빈 날짜에 gap lock을 잡아서, 같은 스레드의 REQUIRES_NEW 등록이 그 잠금을 기다리다
+    // lock wait timeout(기본 50초)으로 실패한다. 운영에서는 이 상황 대신 관리자 등록이 기다렸다가 409가 된다(#24 리뷰, MySQL로는 확인 안 함).
     @Test
-    fun `동기화 중 비어 있던 날짜에 관리자 등록이 먼저 커밋되면 그 달을 한 번 더 동기화하고 관리자 급식은 남긴다`() {
+    fun `H2 한정 - 동기화 중 비어 있던 날짜에 관리자 등록이 먼저 커밋되면 그 달을 한 번 더 동기화하고 관리자 급식은 남긴다`() {
         expectMonth("20261201", "20261231", rows(row("20261230", "2", "떡국"), row("20261231", "2", "만두국")))
         expectMonth("20270101", "20270131", NO_DATA)
         val newTransaction = TransactionTemplate(transactionManager).apply {
