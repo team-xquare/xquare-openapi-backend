@@ -18,4 +18,5 @@ enum class ErrorCode(
     STUDENT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 학생입니다."),
     STUDENT_NUMBER_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 사용 중인 학번입니다."),
     TEACHER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 교직원입니다."),
+    API_KEY_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 발급받은 API 키가 있습니다. 재발급을 이용해 주세요."),
 }
