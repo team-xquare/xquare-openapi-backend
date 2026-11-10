@@ -16,11 +16,17 @@ spring:
       port: ${REDIS_PORT}
 
 # 프록시 뒤에서 X-Forwarded-For를 remoteAddr에 반영한다. Tomcat RemoteIpValve는 직접 연결한 쪽이
-# 내부망 대역(server.tomcat.remoteip.internal-proxies 기본값: 10/8, 172.16/12, 192.168/16, 169.254/16,
-# 100.64/10, 127/8, fc00::/7, fe80::/10, ::1)일 때만 헤더를 믿으므로, 공인 IP에서 직접 붙은 요청의 헤더는 무시된다.
-# 앞에 Cloudflare처럼 외부 프록시가 더 있으면 그 대역을 server.tomcat.remoteip.trusted-proxies에 넣어야 한다.
+# internal-proxies(기본값은 Spring Boot 4.1.1 기본값과 같은 내부망 대역) 또는 trusted-proxies일 때만 헤더를 믿고,
+# 오른쪽부터 처음 나오는 두 목록에 없는 IP를 remoteAddr로 쓴다. 공인 IP에서 직접 붙은 요청의 헤더는 무시된다.
+# 앞단(Ingress/LB)이 지켜야 할 조건은 docs/api-spec-notes.md의 "OTP 발송 제한" 항목 참고.
+# - SERVER_TOMCAT_REMOTEIP_INTERNAL_PROXIES: 헤더를 믿을 프록시 대역(쉼표로 구분한 CIDR). 클러스터 대역만 남기는 식으로 좁힐 때 쓴다.
+# - SERVER_TOMCAT_REMOTEIP_TRUSTED_PROXIES: 내부망이 아닌 프록시(Cloudflare 등) 대역. 기본값은 없음.
 server:
   forward-headers-strategy: ${SERVER_FORWARD_HEADERS_STRATEGY:native}
+  tomcat:
+    remoteip:
+      internal-proxies: "${SERVER_TOMCAT_REMOTEIP_INTERNAL_PROXIES:192.168.0.0/16, 172.16.0.0/12, 169.254.0.0/16, fc00::/7, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, fe80::/10, ::1/128}"
+      trusted-proxies: ${SERVER_TOMCAT_REMOTEIP_TRUSTED_PROXIES:}
 
 jwt:
   secret: ${JWT_SECRET}

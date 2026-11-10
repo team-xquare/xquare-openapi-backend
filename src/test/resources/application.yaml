@@ -11,8 +11,13 @@ spring:
     hibernate:
       ddl-auto: create-drop
 
+# main과 같은 기본값. ForwardedHeadersTest가 환경변수 이름으로 바꿔 끼워 본다.
 server:
   forward-headers-strategy: native
+  tomcat:
+    remoteip:
+      internal-proxies: "${SERVER_TOMCAT_REMOTEIP_INTERNAL_PROXIES:192.168.0.0/16, 172.16.0.0/12, 169.254.0.0/16, fc00::/7, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, fe80::/10, ::1/128}"
+      trusted-proxies: ${SERVER_TOMCAT_REMOTEIP_TRUSTED_PROXIES:}
 
 jwt:
   secret: test-secret-key-must-be-at-least-32-bytes-long
