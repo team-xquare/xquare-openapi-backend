@@ -65,7 +65,7 @@ API 스펙이 있습니다.
 - Redis 키 형식은 다른 기능과 맞춰야 하는 계약이다:
   - `email_verified_token:{token}` → 이메일. 이메일 OTP 인증 API(아직 없음)가 TTL 600초로 저장하고, 회원가입이 읽은 뒤 지운다.
   - `refresh_token:{userId}` → 리프레시 토큰. TTL은 `jwt.refresh-expiration`. 사용자당 하나라 다시 로그인하면 이전 토큰은 폐기된다(사용자가 정함). 재발급은 저장값이 요청 토큰과 같을 때만 Lua 스크립트로 한 번에 바꾼다(`replace`). GET과 SET을 따로 하면 동시 재발급이나 그 사이의 재로그인 때 폐기된 토큰이 새 토큰을 덮어쓴다.
-- API 키: `api_keys`에 활용신청 내용(서비스 이름·사용 목적)과 키 해시를 사용자당 한 행으로 둔다. 원문은 `ApiKeySecret.generate()`로 만들어 발급 응답에서만 내려주고 DB에는 `ApiKeySecret.hash()`(SHA-256 16진수)만 저장한다. unique 제약 이름 `uk_api_keys_user_id`도 동시 신청을 409로 바꾸는 데 쓰는 계약이다.
+- API 키: `api_keys`에 활용신청 내용(서비스 이름·사용 목적)과 키 해시를 사용자당 한 행으로 둔다. 원문은 `ApiKeySecret.generate()`로 만들어 발급·재발급 응답에서만 내려주고 DB에는 `ApiKeySecret.hash()`(SHA-256 16진수)만 저장한다. 재발급은 해시만 바꿔서 기존 키를 바로 폐기한다. unique 제약 이름 `uk_api_keys_user_id`도 동시 신청을 409로 바꾸는 데 쓰는 계약이다.
 - `users`의 unique 제약 이름(`uk_users_username`, `uk_users_email`)도 계약이다. 동시 가입으로 중복 검사를 통과한 요청이 제약에 걸리면, `UserUniqueConstraint`가 이 이름으로 어떤 값이 겹쳤는지 구분해 409로 바꾼다. 운영 DB의 제약 이름이 다르면 구분하지 못하고 500이 난다.
 - JWT: `sub`=userId, `type`=`access`/`refresh`, 액세스 토큰에만 `role`을 넣는다. 모든 토큰에 `jti`(UUID)를 넣는다. 빼면 같은 초에 발급한 토큰이 똑같아져, 재발급 직후에도 폐기한 토큰이 통한다. `generateRefreshToken`은 토큰과 TTL을 함께 돌려주며, Redis에 저장할 때 이 TTL을 그대로 쓴다. `parseRefreshToken`은 서명 오류·만료·액세스 토큰이면 예외 대신 null을 돌려준다.
 

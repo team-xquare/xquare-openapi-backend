@@ -38,6 +38,11 @@ class ApiKey(
     var keyHash: String = keyHash
         protected set
 
+    // 해시를 바꾸면 이전 키로는 더 이상 찾을 수 없어서 바로 폐기된다.
+    fun reissue(keyHash: String) {
+        this.keyHash = keyHash
+    }
+
     companion object {
         const val USER_ID_UNIQUE_CONSTRAINT = "uk_api_keys_user_id"
         const val KEY_HASH_UNIQUE_CONSTRAINT = "uk_api_keys_key_hash"

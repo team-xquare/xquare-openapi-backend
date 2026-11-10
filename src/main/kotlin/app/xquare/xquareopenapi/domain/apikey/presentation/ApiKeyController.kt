@@ -3,6 +3,7 @@ package app.xquare.xquareopenapi.domain.apikey.presentation
 import app.xquare.xquareopenapi.domain.apikey.presentation.dto.ApiKeyRequest
 import app.xquare.xquareopenapi.domain.apikey.presentation.dto.ApiKeyResponse
 import app.xquare.xquareopenapi.domain.apikey.usecase.IssueApiKeyUseCase
+import app.xquare.xquareopenapi.domain.apikey.usecase.ReissueApiKeyUseCase
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -17,10 +18,15 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api-keys")
 class ApiKeyController(
     private val issueApiKeyUseCase: IssueApiKeyUseCase,
+    private val reissueApiKeyUseCase: ReissueApiKeyUseCase,
 ) {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     fun issue(@AuthenticationPrincipal userId: Long, @RequestBody @Valid request: ApiKeyRequest): ApiKeyResponse =
         issueApiKeyUseCase.execute(userId, request)
+
+    @PostMapping("/reissue")
+    fun reissue(@AuthenticationPrincipal userId: Long): ApiKeyResponse =
+        reissueApiKeyUseCase.execute(userId)
 }
