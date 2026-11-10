@@ -30,7 +30,9 @@ class SignupUseCase(
         // 대문자로 보내도 OTP 인증 때와 같은 소문자 값으로 비교하고 저장한다.
         val email = normalizeEmail(request.email)
         val verifiedEmail = emailVerifiedTokenRepository.findEmailByToken(request.emailVerifiedToken)
-        if (verifiedEmail != email) {
+        // 토큰에 저장된 이메일도 같은 방식으로 정규화해 비교한다. 정규화 전 코드(#20)가 대소문자를 그대로 저장한 토큰(TTL 600초)도
+        // 배포 직후 EMAIL_NOT_VERIFIED가 되지 않게 하려는 것이다. 요청 이메일은 이미 허용 목록을 통과했으므로 넓어지는 것은 없다.
+        if (verifiedEmail == null || normalizeEmail(verifiedEmail) != email) {
             throw XquareException(ErrorCode.EMAIL_NOT_VERIFIED)
         }
         if (userRepository.existsByUsername(request.username)) {
