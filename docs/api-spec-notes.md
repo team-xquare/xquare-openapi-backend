@@ -22,12 +22,26 @@
 
 ### 빈 곳
 - 회원가입 400 INVALID_INPUT: API 명세서에 없음. 현재 구현 기준으로만 추가함
-- OTP 발송·검증 이메일은 `^[^@\s]+@dsm\.hs\.kr$`로 검사하며 빈 문자열도 `400 INVALID_EMAIL_FORMAT`으로 정함. 누락·null·깨진 JSON 및 빈 OTP는 `400 INVALID_INPUT`. 비어 있지 않은 OTP의 자리수·숫자 형식은 검사하지 않고 비교 결과에 따라 `OTP_MISMATCH` 또는 `OTP_NOT_FOUND`를 반환함.
+- OTP 발송·검증 이메일은 앞뒤 공백을 지우고 소문자로 바꾼 뒤 `^[a-z0-9_-]+(\.[a-z0-9_-]+)*@dsm\.hs\.kr$`로 검사하며 빈 문자열도 `400 INVALID_EMAIL_FORMAT`으로 정함. 로컬 파트는 영문·숫자·`.`·`_`·`-`만 허용하고(허용 목록), 점은 앞뒤에 오거나 연달아 올 수 없음(#22, #31 리뷰). 메일 서버가 대소문자, `+태그`, 따옴표(`"victim"@`)·역슬래시·괄호 주석 같은 표기를 같은 메일함으로 배달할 수 있어, 그대로 두면 같은 메일함을 가리키는 다른 문자열로 이메일별 제한과 가입 중복 검사를 우회할 수 있기 때문. 소문자로 바꾼 값을 OTP·발송 제한 키와 이메일 인증 토큰에 쓰고, 회원가입도 같은 함수로 앞뒤 공백 제거·소문자화한 뒤 같은 허용 목록으로 검사하고(형식 오류는 `400 INVALID_INPUT`), 그 값으로 토큰의 이메일과 비교하고 저장함. 그래서 앞뒤 공백이 있는 값으로 OTP를 받았다면 같은 값으로 가입할 수 있음. 토큰에 저장된 이메일도 같은 방식으로 정규화해 비교하므로, 정규화 전 코드(#20)가 대소문자를 그대로 저장한 토큰(최대 600초)도 배포 직후 그대로 쓸 수 있음(#31 리뷰). 누락·null·깨진 JSON 및 빈 OTP는 `400 INVALID_INPUT`. 비어 있지 않은 OTP의 자리수·숫자 형식은 검사하지 않고 비교 결과에 따라 `OTP_MISMATCH` 또는 `OTP_NOT_FOUND`를 반환함.
 - 로그인·재발급 필드 누락: 명세에 없어 회원가입과 같은 `400 INVALID_INPUT`으로 정함(#10)
 - 로그인 계정 잠금(ACCOUNT_LOCKED)의 해제 조건 및 잠금 기간 미정(기능 명세서에도 "미정"으로 기재). 정해질 때까지 구현하지 않기로 함(#10)
 - 로그인 실패 횟수 카운트 기준(누적/연속, 초기화 시점, 아이디 기준 여부) 미정
 - 오류 응답의 message 문구: 두 명세서 모두 정의하지 않아 YAML의 message 예시는 설명을 한국어로 옮긴 임의 문구임
-- OTP 재발송은 기존 값을 덮어쓰고 TTL 300초를 다시 설정함. 재발송 횟수·쿨다운은 미정이므로 미구현. 검증은 로그인 잠금 기준 5회와 맞춰 같은 OTP가 5회 틀리면 폐기함(5번째 OTP_MISMATCH, 이후 OTP_NOT_FOUND로 재발송 필요). 재발송·성공은 시도 횟수를 초기화함. 저장·발송 실패는 `500 EMAIL_SEND_FAILED`이며 저장값이 해당 발송의 OTP와 같을 때만 원자적으로 정리하고 원래 실패 원인과 정리 실패는 로그로 남김.
+- OTP 재발송은 기존 값을 덮어쓰고 TTL 300초를 다시 설정함. 저장·발송 실패는 `500 EMAIL_SEND_FAILED`이며 저장값이 해당 발송의 OTP와 같을 때만 원자적으로 정리하고 원래 실패 원인과 정리 실패는 로그로 남김.
+- OTP 발송 제한·오입력 횟수(#22): 명세에 없어 정함. 값은 모두 `otp.*` 설정(환경변수)으로 바꿀 수 있음.
+  - 같은 이메일 재발송 쿨다운 60초(`OTP_RESEND_COOLDOWN`). 걸리면 `429 OTP_RESEND_TOO_SOON`.
+  - 발송 상한: 이메일당 1시간 5회(`OTP_MAX_SENDS_PER_EMAIL`), IP당 1시간 30회(`OTP_MAX_SENDS_PER_IP`, 창은 `OTP_SEND_WINDOW`). 둘 다 `429 OTP_SEND_LIMIT_EXCEEDED`(어느 쪽인지 구분하지 않음). IP 상한은 학교 NAT 뒤에서 한 반이 동시에 가입하는 경우를 생각해 넉넉하게 잡음.
+  - 오입력: 코드가 아니라 이메일 기준으로 첫 오입력부터 1시간(`OTP_ATTEMPT_WINDOW`) 동안 5회(`OTP_MAX_ATTEMPTS`)까지. 재발송해도 초기화하지 않음. 5번째 오입력에서 코드를 폐기하고(5번째 OTP_MISMATCH, 이후 OTP_NOT_FOUND), 창이 끝날 때까지 발송을 `429 OTP_ATTEMPTS_EXCEEDED`로 막음. 검증 성공 시에만 횟수를 지움. 그래서 한 이메일에 대한 추측은 1시간에 5번으로 묶임. 대신 정상 사용자도 5번 틀리면 최대 1시간 기다려야 함.
+  - 시간 창은 첫 발송(첫 오입력)부터 세는 고정 창. 거부된 요청은 횟수에 넣지 않음.
+  - 429 응답에는 `Retry-After` 헤더(초, 올림)를 붙임. 여러 제한에 동시에 걸리면 오입력 → 이메일 상한 → IP 상한 → 쿨다운 순으로 먼저 걸린 제한의 남은 시간임. 브라우저가 읽을 수 있게 CORS `Access-Control-Expose-Headers`에도 추가함.
+  - 발송 실패(500)여도 쿨다운과 발송 횟수는 되돌리지 않음. 타임아웃이면 메일이 실제로 나갔을 수 있고, 메일 서비스 장애 중에 재시도가 몰리는 것도 막기 위함. 사용자는 최대 60초 뒤 다시 요청하면 됨.
+  - IP는 `request.remoteAddr` 기준이며 앱 코드는 `X-Forwarded-For`를 직접 읽지 않음. `server.forward-headers-strategy`(`SERVER_FORWARD_HEADERS_STRATEGY`) 기본값을 `native`로 둠(#22 리뷰). `none`이면 프록시(Ingress) 뒤에서 모든 요청이 프록시 IP 하나로 세져 IP 상한(30회)이 전체 사용자에게 걸리기 때문. `native`면 Tomcat RemoteIpValve가 직접 연결한 쪽이 내부망 대역(Spring Boot 4.1.1의 `server.tomcat.remoteip.internal-proxies` 기본값: 10/8, 172.16/12, 192.168/16, 169.254/16, 100.64/10, 127/8, fc00::/7, fe80::/10, ::1)일 때만 `X-Forwarded-For`를 반영하고, 그중 오른쪽부터 처음 나오는 내부망·신뢰 프록시가 아닌 IP를 remoteAddr로 씀. 공인 IP에서 직접 붙은 요청의 헤더는 무시됨. 앞에 Cloudflare 같은 외부 프록시가 더 있으면 그 대역을 `server.tomcat.remoteip.trusted-proxies`에 넣어야 함.
+  - 신뢰 프록시 대역은 환경변수로 바꿀 수 있음(#31 리뷰): `SERVER_TOMCAT_REMOTEIP_INTERNAL_PROXIES`(`server.tomcat.remoteip.internal-proxies`, 쉼표로 구분한 CIDR, 기본값은 위 Spring Boot 기본값 그대로), `SERVER_TOMCAT_REMOTEIP_TRUSTED_PROXIES`(`server.tomcat.remoteip.trusted-proxies`, 기본값 없음). 기본값이면 동작은 이전과 같음.
+  - 운영 앞단(Ingress·LB) 요구사항(#31 리뷰, 실제 설정은 확인하지 못함). RemoteIpValve는 `X-Forwarded-For`를 오른쪽부터 읽으며 신뢰 프록시 대역을 건너뛰고, 전부 신뢰 대역이면 맨 왼쪽 값을 쓴다. 그래서 다음 두 가지가 지켜지지 않으면 IP 상한이 깨짐.
+    1. Ingress가 실제 클라이언트 IP를 봐야 함. Ingress 앞에서 SNAT가 일어나면(k8s Service `externalTrafficPolicy: Cluster`, 내부 L4 LB 등) 모든 사용자가 노드 IP 몇 개로 세어져, 시간당 30회를 서비스 전체가 나눠 쓰게 되고 한 사람이 가입을 막을 수 있음. `externalTrafficPolicy: Local`로 두거나, LB와 Ingress 사이에 PROXY protocol을 켜서 원래 IP를 넘겨야 함.
+    2. Ingress가 클라이언트가 보낸 `X-Forwarded-For`를 믿지 않아야 함. 받은 값을 그대로 이어 붙이면서 1번처럼 마지막 값이 내부망 IP가 되면 `임의값, 10.x` 꼴이 되어 앞의 임의값이 클라이언트 IP로 쓰이고, 값을 바꿔 가며 상한을 피할 수 있음. 클라이언트가 보낸 값을 버리고 실제 연결 IP로 덮어쓰게 설정해야 함(ingress-nginx라면 `use-forwarded-headers`, `compute-full-forwarded-for`를 켜지 않은 상태인지 확인).
+    - 앞단이 이 조건을 못 지키면 `SERVER_TOMCAT_REMOTEIP_INTERNAL_PROXIES`를 Ingress 파드 대역만으로 좁혀도 1번은 해결되지 않음. 이때는 앞단 설정을 먼저 고쳐야 함.
+  - IP 상한 키는 IPv4면 주소 그대로, IPv6면 /64 접두사로 묶음(#22 리뷰). IPv6는 보통 /64 하나를 한 사용자가 받아 주소를 바꿔 가며 상한을 우회할 수 있기 때문. IPv4-mapped IPv6(`::ffff:a.b.c.d`)는 IPv4로 보고, 압축 표기·대소문자 차이는 주소를 파싱해 없앰(IPv4 앞자리 0도 지움). IP로 해석되지 않는 값(프록시가 넘긴 `X-Forwarded-For` 값이 IP가 아닌 경우 등)은 값마다 따로 세지 않고 모두 `invalid` 키 하나로 모아 같은 상한을 함께 받게 함(#31 리뷰). 값을 바꿔 가며 상한을 피하지 못하게 하려는 것.
 - Resend 연결 타임아웃은 기본 5초(`resend.connect-timeout`), 읽기 타임아웃은 기본 10초(`resend.read-timeout`)로 정함. 타임아웃도 `500 EMAIL_SEND_FAILED`로 처리함. 다만 요청을 보낸 뒤 응답을 받지 못한 경우(읽기 타임아웃, 응답 전 연결 끊김 등)는 Resend가 메일을 받아들였을 수 있어 OTP를 지우지 않음(#20 리뷰). 받은 메일의 코드로 검증할 수 있게 하려는 것. 연결 거부·호스트 조회 실패처럼 요청이 나가지 않은 게 확실한 경우와 Resend 오류 응답(4xx·5xx), 저장 실패는 기존처럼 OTP를 정리함. 연결 타임아웃은 읽기 타임아웃과 같은 예외(`SocketTimeoutException`)라 구분하지 않고 OTP를 남김.
 - 메일 제공자는 Resend HTTP API로 정함. API 키가 비어 있어도 기동은 허용하고 발송 시 실패 처리함. 인증 완료 토큰은 UUID, TTL 600초이며 기존 회원가입 계약을 사용함.
 - 회원가입 시 학번 중복 처리 규칙 및 에러 코드 미정 (이메일 중복은 PR #3 리뷰에서 `409 EMAIL_ALREADY_EXISTS`로 정함)

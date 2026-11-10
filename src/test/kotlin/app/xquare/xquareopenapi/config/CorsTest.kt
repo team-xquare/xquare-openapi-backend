@@ -69,13 +69,13 @@ class CorsTest @Autowired constructor(
     }
 
     @Test
-    fun `실제 요청 응답에 Location 헤더를 읽을 수 있다고 알린다`() {
+    fun `실제 요청 응답에 Location과 Retry-After 헤더를 읽을 수 있다고 알린다`() {
         mockMvc.post("/auth/signup") {
             header("Origin", ALLOWED_ORIGIN)
             contentType = MediaType.APPLICATION_JSON
             content = "{}"
         }.andExpect {
-            header { string("Access-Control-Expose-Headers", "Location") }
+            header { string("Access-Control-Expose-Headers", "Location, Retry-After") }
         }
     }
 

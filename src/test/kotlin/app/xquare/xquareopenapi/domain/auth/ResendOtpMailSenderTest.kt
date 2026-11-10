@@ -120,7 +120,7 @@ class ResendOtpMailSenderTest {
         }
         server.start()
         try {
-            val repository = FakeEmailOtpRepository()
+            val repository = FakeEmailOtpRepository(TEST_OTP_PROPERTIES)
             val sender = ResendOtpMailSender(
                 ResendProperties("secret", "noreply@dsm.hs.kr", "http://127.0.0.1:${server.address.port}",
                     connectTimeout = java.time.Duration.ofMillis(200),
@@ -130,7 +130,7 @@ class ResendOtpMailSenderTest {
             org.junit.jupiter.api.Assertions.assertTimeout(java.time.Duration.ofSeconds(2)) {
                 val error = assertFailsWith<XquareException> {
                     SendEmailOtpUseCase(repository, sender, java.security.SecureRandom())
-                        .execute(EmailOtpSendRequest("example@dsm.hs.kr"))
+                        .execute(EmailOtpSendRequest("example@dsm.hs.kr"), "127.0.0.1")
                 }
                 assertEquals(ErrorCode.EMAIL_SEND_FAILED, error.errorCode)
             }
@@ -199,10 +199,10 @@ class ResendOtpMailSenderTest {
     }
 
     private fun fails(key: String, url: String) {
-        val repository = FakeEmailOtpRepository()
+        val repository = FakeEmailOtpRepository(TEST_OTP_PROPERTIES)
         val sender = ResendOtpMailSender(ResendProperties(key, "noreply@dsm.hs.kr", url), engine())
         val error = assertFailsWith<XquareException> {
-            SendEmailOtpUseCase(repository, sender, java.security.SecureRandom()).execute(EmailOtpSendRequest("example@dsm.hs.kr"))
+            SendEmailOtpUseCase(repository, sender, java.security.SecureRandom()).execute(EmailOtpSendRequest("example@dsm.hs.kr"), "127.0.0.1")
         }
         assertEquals(ErrorCode.EMAIL_SEND_FAILED, error.errorCode)
         assertTrue(repository.otps.isEmpty())

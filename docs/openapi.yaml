@@ -21,8 +21,10 @@ paths:
       tags:
       - 인증/인가
       summary: 이메일 OTP 발송
-      description: 'DSM 이메일(@dsm.hs.kr)로 회원가입용 6자리 인증코드(100000~999999)를 발송한다. 코드는 Redis에 이메일을 key로 300초 TTL로 저장되며 `email/otp`
-        템플릿으로 발송된다. 권한: ALL(비로그인 허용).'
+      description: |-
+        DSM 이메일(@dsm.hs.kr)로 회원가입용 6자리 인증코드(100000~999999)를 발송한다. 코드는 Redis에 이메일을 key로 300초 TTL로 저장되며 `email/otp` 템플릿으로 발송된다. 권한: ALL(비로그인 허용).
+
+        발송 제한(기본값, 환경변수로 변경 가능): 같은 이메일은 60초에 1번, 1시간에 5번까지 보낼 수 있고, 같은 IP는 1시간에 30번까지 보낼 수 있다(IP는 연결한 주소이며, 내부망 프록시를 거친 요청만 `X-Forwarded-For`의 클라이언트 IP를 쓴다. IPv6는 /64 접두사가 같으면 같은 IP로 센다). 같은 이메일로 1시간 안에 인증코드를 5번 틀리면 그 창이 끝날 때까지 발송을 막는다. 시간 창은 첫 발송(첫 오입력)부터 1시간인 고정 창이다. 제한에 걸리면 429와 함께 `Retry-After` 헤더(초)로 다시 요청할 수 있을 때까지 남은 시간을 알린다. 발송에 실패해도(500) 쿨다운과 발송 횟수는 되돌리지 않는다.
       operationId: sendEmailOtp
       security: []
       requestBody:
@@ -39,7 +41,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
         '400':
-          description: 'INVALID_EMAIL_FORMAT: 빈 이메일 또는 @dsm.hs.kr 형식이 아님 / INVALID_INPUT: 필드 누락·null 또는 JSON 파싱 실패'
+          description: 'INVALID_EMAIL_FORMAT: 빈 이메일, @dsm.hs.kr 형식이 아님 또는 로컬 파트에 영문·숫자·`.`·`_`·`-` 외의 문자(`+`, 따옴표 등) 포함 / INVALID_INPUT: 필드 누락·null 또는 JSON 파싱 실패'
           content:
             application/json:
               schema:
@@ -64,12 +66,40 @@ paths:
                   value:
                     code: EMAIL_SEND_FAILED
                     message: 메일 발송 또는 인증코드 저장에 실패했습니다.
+        '429':
+          description: |-
+            OTP_RESEND_TOO_SOON: 같은 이메일로 60초 안에 다시 요청함
+            OTP_SEND_LIMIT_EXCEEDED: 이메일 또는 IP의 1시간 발송 상한 초과
+            OTP_ATTEMPTS_EXCEEDED: 같은 이메일로 1시간 안에 인증코드를 5번 틀림
+          headers:
+            Retry-After:
+              description: 다시 요청할 수 있을 때까지 남은 시간(초, 올림)
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                OTP_RESEND_TOO_SOON:
+                  value:
+                    code: OTP_RESEND_TOO_SOON
+                    message: 인증코드를 너무 자주 요청했습니다. 잠시 후 다시 시도해 주세요.
+                OTP_SEND_LIMIT_EXCEEDED:
+                  value:
+                    code: OTP_SEND_LIMIT_EXCEEDED
+                    message: 인증코드 발송 횟수를 초과했습니다. 잠시 후 다시 시도해 주세요.
+                OTP_ATTEMPTS_EXCEEDED:
+                  value:
+                    code: OTP_ATTEMPTS_EXCEEDED
+                    message: 인증코드 입력 횟수를 초과했습니다. 잠시 후 다시 시도해 주세요.
   /auth/email/otp/verify:
     post:
       tags:
       - 인증/인가
       summary: 이메일 OTP 검증
-      description: '이메일로 받은 6자리 인증코드를 검증하고 회원가입용 emailVerifiedToken을 발급한다. 같은 코드를 5회 틀리면 코드가 폐기되어 재발송이 필요하다. 검증 성공 시 기존 OTP는 삭제되며, 토큰은 600초 TTL로 저장되어 회원가입 요청에
+      description: '이메일로 받은 6자리 인증코드를 검증하고 회원가입용 emailVerifiedToken을 발급한다. 오입력 횟수는 코드가 아니라 이메일 기준으로 첫 오입력부터 1시간 동안 세며 재발송해도 초기화되지 않는다. 5번째 오입력에서 코드가 폐기되고(OTP_MISMATCH, 이후 OTP_NOT_FOUND), 그 1시간이 끝날 때까지 발송 API가 429 OTP_ATTEMPTS_EXCEEDED를 돌려준다. 검증에 성공하면 오입력 횟수를 지운다. 검증 성공 시 기존 OTP는 삭제되며, 토큰은 600초 TTL로 저장되어 회원가입 요청에
         사용된다. 권한: ALL(비로그인 허용).'
       operationId: verifyEmailOtp
       security: []
@@ -90,7 +120,7 @@ paths:
           description: |-
             OTP_NOT_FOUND: 발송된 인증코드가 없거나 만료됨 (재발송 필요)
             OTP_MISMATCH: 인증코드 불일치
-            INVALID_EMAIL_FORMAT: 빈 이메일 또는 @dsm.hs.kr 형식이 아님
+            INVALID_EMAIL_FORMAT: 빈 이메일, @dsm.hs.kr 형식이 아님 또는 로컬 파트에 영문·숫자·`.`·`_`·`-` 외의 문자(`+`, 따옴표 등) 포함
             INVALID_INPUT: 빈 OTP, 필드 누락·null 또는 JSON 파싱 실패
           content:
             application/json:
@@ -2376,7 +2406,7 @@ components:
       properties:
         email:
           type: string
-          description: 인증코드를 받을 이메일. `@dsm.hs.kr` 형식만 허용
+          description: 인증코드를 받을 이메일. `@dsm.hs.kr` 형식만 허용. 앞뒤 공백을 지우고 소문자로 바꾼 값을 쓰므로 대소문자가 달라도 같은 이메일로 보고 발송 제한도 함께 센다. 로컬 파트는 영문·숫자·`.`·`_`·`-`만 허용하며 점은 앞뒤나 연달아 올 수 없음(`+`, 따옴표, 역슬래시, 괄호 등은 INVALID_EMAIL_FORMAT)
           example: example@dsm.hs.kr
     AuthEmailOtpVerifyRequest:
       type: object
@@ -2386,7 +2416,7 @@ components:
       properties:
         email:
           type: string
-          description: 인증코드를 발송받은 이메일. `@dsm.hs.kr` 형식만 허용
+          description: 인증코드를 발송받은 이메일. `@dsm.hs.kr` 형식만 허용. 발송 API와 같이 앞뒤 공백을 지우고 소문자로 바꿔 비교하며, 발급하는 토큰에도 소문자 이메일을 연결함. 로컬 파트 규칙은 발송 API와 같음
           example: example@dsm.hs.kr
         otp:
           type: string
@@ -2460,7 +2490,7 @@ components:
         email:
           type: string
           format: email
-          description: 인증을 완료한 이메일. `@dsm.hs.kr` 형식만 허용. 이미 가입된 이메일이면 409 EMAIL_ALREADY_EXISTS
+          description: 인증을 완료한 이메일. OTP API와 같은 규칙으로 앞뒤 공백을 지우고 소문자로 바꾼 뒤 검사함. `@dsm.hs.kr` 형식만 허용하며 로컬 파트는 영문·숫자·`.`·`_`·`-`만 허용(어기면 400 INVALID_INPUT). 정규화한 값으로 토큰의 이메일과 비교하고 저장함. 이미 가입된 이메일이면 409 EMAIL_ALREADY_EXISTS
           example: example@dsm.hs.kr
         emailVerifiedToken:
           type: string

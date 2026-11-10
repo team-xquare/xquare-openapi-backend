@@ -12,15 +12,15 @@ import kotlin.test.assertEquals
 class SendEmailOtpUseCaseTest {
     @Test
     fun `이전 발송 실패가 이후 발송의 코드를 삭제하지 않는다`() {
-        val repository = FakeEmailOtpRepository()
+        val repository = FakeEmailOtpRepository(TEST_OTP_PROPERTIES)
         val sender = object : app.xquare.xquareopenapi.domain.auth.mail.OtpMailSender {
             override fun send(email: String, otp: String) {
-                repository.save(email, "new-code", java.time.Duration.ofSeconds(300))
+                repository.otps[email] = "new-code"
                 throw IllegalStateException("메일 장애")
             }
         }
         val error = kotlin.test.assertFailsWith<app.xquare.xquareopenapi.global.error.XquareException> {
-            SendEmailOtpUseCase(repository, sender, SecureRandom()).execute(EmailOtpSendRequest("example@dsm.hs.kr"))
+            SendEmailOtpUseCase(repository, sender, SecureRandom()).execute(EmailOtpSendRequest("example@dsm.hs.kr"), "127.0.0.1")
         }
         assertEquals(app.xquare.xquareopenapi.global.error.ErrorCode.EMAIL_SEND_FAILED, error.errorCode)
         assertEquals("new-code", repository.otps["example@dsm.hs.kr"])
@@ -28,14 +28,14 @@ class SendEmailOtpUseCaseTest {
 
     @Test
     fun `발송 여부를 알 수 없는 실패는 500이지만 OTP를 남겨 받은 코드로 검증할 수 있다`() {
-        val repository = FakeEmailOtpRepository()
+        val repository = FakeEmailOtpRepository(TEST_OTP_PROPERTIES)
         val sender = object : app.xquare.xquareopenapi.domain.auth.mail.OtpMailSender {
             override fun send(email: String, otp: String) {
                 throw app.xquare.xquareopenapi.domain.auth.mail.OtpMailMaybeSentException(java.net.SocketTimeoutException("Read timed out"))
             }
         }
         val error = kotlin.test.assertFailsWith<app.xquare.xquareopenapi.global.error.XquareException> {
-            SendEmailOtpUseCase(repository, sender, SecureRandom()).execute(EmailOtpSendRequest("example@dsm.hs.kr"))
+            SendEmailOtpUseCase(repository, sender, SecureRandom()).execute(EmailOtpSendRequest("example@dsm.hs.kr"), "127.0.0.1")
         }
         assertEquals(app.xquare.xquareopenapi.global.error.ErrorCode.EMAIL_SEND_FAILED, error.errorCode)
         val otp = repository.otps.getValue("example@dsm.hs.kr")
@@ -51,9 +51,9 @@ class SendEmailOtpUseCaseTest {
         for (otp in listOf(100000, 999999)) {
             val random = mock(SecureRandom::class.java)
             `when`(random.nextInt(100000, 1000000)).thenReturn(otp)
-            val repository = FakeEmailOtpRepository()
+            val repository = FakeEmailOtpRepository(TEST_OTP_PROPERTIES)
             val mail = FakeOtpMailSender()
-            SendEmailOtpUseCase(repository, mail, random).execute(EmailOtpSendRequest("example@dsm.hs.kr"))
+            SendEmailOtpUseCase(repository, mail, random).execute(EmailOtpSendRequest("example@dsm.hs.kr"), "127.0.0.1")
             verify(random).nextInt(100000, 1000000)
             assertEquals(otp.toString(), repository.otps["example@dsm.hs.kr"])
             assertEquals(otp.toString(), mail.messages.single().second)
