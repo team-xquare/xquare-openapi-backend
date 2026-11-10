@@ -1788,7 +1788,8 @@ paths:
       tags:
       - 동아리
       summary: 동아리 검색
-      description: '동아리명(부분 일치)·구성원 이름(복수 가능)·교실·담당 선생님 이름으로 동아리를 검색하고 페이지 단위로 반환한다. 권한: USER 이상.'
+      description: '동아리명(부분 일치)·구성원 이름(복수 가능)·교실·담당 선생님 이름으로 동아리를 검색하고 페이지 단위로 반환한다. 조건은 모두 AND로 묶고, 등록 순(id)으로 정렬한다.
+        동아리명·구성원 이름의 `%`, `_`는 글자 그대로 찾는다. 권한: USER 이상.'
       operationId: searchClubs
       security:
       - bearerAuth: []
@@ -1804,11 +1805,12 @@ paths:
       - name: member
         in: query
         required: false
-        description: 동아리 구성원 이름. 여러 명 동시 검색 가능(member=성준&member=민수)
+        description: 동아리 구성원 이름(부분 일치). 여러 명 동시 검색 가능(member=성준&member=민수)하며, 준 이름이 모두 구성원에 있는 동아리만 찾는다(AND). 최대 10개
         style: form
         explode: true
         schema:
           type: array
+          maxItems: 10
           items:
             type: string
           example:
@@ -1823,7 +1825,7 @@ paths:
       - name: teacher
         in: query
         required: false
-        description: 담당 선생님 이름
+        description: 담당 선생님 이름(정확히 일치). 교직원 검색의 이름과 같은 방식
         schema:
           type: string
           example: 이진경
@@ -1855,6 +1857,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ClubListResponse'
+        '400':
+          description: '`INVALID_INPUT`: page 0~21474836·size 1~100 밖, member 10개 초과, 없는 room 값, 숫자가 아닌 page·size'
+          content:
+            application/json:
+              schema: *id007
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: '요청 값이 올바르지 않습니다.'
         '401':
           description: 'INVALID_TOKEN: 토큰이 없거나 유효하지 않음'
           content:
@@ -1870,7 +1882,8 @@ paths:
       - 동아리
       summary: 동아리 등록
       description: '동아리를 등록한다. 팀장(manager)은 member에 포함돼야 하고, 이미 다른 동아리가 쓰는 교실은 지정할 수 없다. 학생의 소속 동아리·교직원의 담당 동아리는 이 API의 member·teacher로만
-        바뀐다. teacher는 생략 가능. 권한: ADMIN.'
+        바뀐다. teacher는 생략 가능. 한 학생은 한 동아리에만 속하고 한 교직원은 한 동아리만 담당하므로, 이미 다른 동아리에 속한 학생·담당 교직원을 넣으면 409. member에 같은 id가 여러 번 있으면 한 번으로 친다.
+        권한: ADMIN.'
       operationId: createClub
       security:
       - bearerAuth: []
@@ -1910,7 +1923,7 @@ paths:
               example:
                 message: 생성되었습니다.
         '400':
-          description: 'ROOM_ALREADY_IN_USE: 다른 동아리가 이미 사용 중인 교실; MANAGER_NOT_IN_MEMBER: manager가 member에 포함되지 않음'
+          description: 'ROOM_ALREADY_IN_USE: 다른 동아리가 이미 사용 중인 교실; MANAGER_NOT_IN_MEMBER: manager가 member에 포함되지 않음; INVALID_INPUT: 필수 값 누락, name 공백·20자 초과, logo 공백·255자 초과, member 50개 초과, 없는 room 값'
           content:
             application/json:
               schema: *id007
@@ -1923,6 +1936,10 @@ paths:
                   value:
                     code: MANAGER_NOT_IN_MEMBER
                     message: manager가 member에 포함되지 않음
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: '요청 값이 올바르지 않습니다.'
         '401':
           description: 'INVALID_TOKEN: 토큰이 없거나 유효하지 않음'
           content:
@@ -1957,13 +1974,27 @@ paths:
                   value:
                     code: TEACHER_NOT_FOUND
                     message: 존재하지 않는 교직원 id
+        '409':
+          description: '`STUDENT_ALREADY_IN_CLUB`: member에 다른 동아리 소속 학생이 있음 / `TEACHER_ALREADY_IN_CLUB`: 다른 동아리를 담당하는 교직원'
+          content:
+            application/json:
+              schema: *id007
+              examples:
+                STUDENT_ALREADY_IN_CLUB:
+                  value:
+                    code: STUDENT_ALREADY_IN_CLUB
+                    message: 이미 다른 동아리에 속한 학생입니다.
+                TEACHER_ALREADY_IN_CLUB:
+                  value:
+                    code: TEACHER_ALREADY_IN_CLUB
+                    message: 이미 다른 동아리를 담당하는 교직원입니다.
   /clubs/{clubId}:
     get:
       tags:
       - 동아리
       summary: 동아리 조회
       description: '동아리 1건을 id로 조회한다. 팀장·구성원은 학생 객체(id, studentNumber, name), 담당 교직원은 교직원 객체(id, name)로 반환하며 팀장도 member에 포함된다.
-        담당 교직원이 없으면 teacher는 null. 권한: USER 이상.'
+        담당 교직원이 없으면 teacher는 null. 팀장 학생이 삭제됐으면 새 팀장을 정할 때까지 manager는 null. member는 학번 순. 권한: USER 이상.'
       operationId: getClub
       security:
       - bearerAuth: []
@@ -2008,7 +2039,8 @@ paths:
       tags:
       - 동아리
       summary: 동아리 수정
-      description: '동아리 정보를 수정한다. member는 전달한 리스트로 전체 교체되며 manager는 member에 포함돼야 한다. 이미 다른 동아리가 쓰는 교실은 지정할 수 없다. 권한: ADMIN.'
+      description: '동아리 정보를 수정한다. 등록과 같은 필드를 모두 받아 통째로 바꾼다(teacher를 null로 보내거나 빼면 담당 선생님이 없어진다). member는 전달한 리스트로 전체 교체되며 빠진 학생은 소속이 없어진다.
+        manager는 member에 포함돼야 한다. 이미 다른 동아리가 쓰는 교실은 지정할 수 없고, 이 동아리가 쓰던 교실·구성원·담당 선생님을 그대로 두는 것은 된다. 권한: ADMIN.'
       operationId: updateClub
       security:
       - bearerAuth: []
@@ -2050,7 +2082,7 @@ paths:
               example:
                 message: 수정되었습니다.
         '400':
-          description: 'ROOM_ALREADY_IN_USE: 다른 동아리가 이미 사용 중인 교실; MANAGER_NOT_IN_MEMBER: manager가 member에 포함되지 않음'
+          description: 'ROOM_ALREADY_IN_USE: 다른 동아리가 이미 사용 중인 교실; MANAGER_NOT_IN_MEMBER: manager가 member에 포함되지 않음; INVALID_INPUT: 필수 값 누락, name 공백·20자 초과, logo 공백·255자 초과, member 50개 초과, 없는 room 값'
           content:
             application/json:
               schema: *id007
@@ -2063,6 +2095,10 @@ paths:
                   value:
                     code: MANAGER_NOT_IN_MEMBER
                     message: manager가 member에 포함되지 않음
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: '요청 값이 올바르지 않습니다.'
         '401':
           description: 'INVALID_TOKEN: 토큰이 없거나 유효하지 않음'
           content:
@@ -2101,11 +2137,25 @@ paths:
                   value:
                     code: TEACHER_NOT_FOUND
                     message: 존재하지 않는 교직원 id
+        '409':
+          description: '`STUDENT_ALREADY_IN_CLUB`: member에 다른 동아리 소속 학생이 있음 / `TEACHER_ALREADY_IN_CLUB`: 다른 동아리를 담당하는 교직원'
+          content:
+            application/json:
+              schema: *id007
+              examples:
+                STUDENT_ALREADY_IN_CLUB:
+                  value:
+                    code: STUDENT_ALREADY_IN_CLUB
+                    message: 이미 다른 동아리에 속한 학생입니다.
+                TEACHER_ALREADY_IN_CLUB:
+                  value:
+                    code: TEACHER_ALREADY_IN_CLUB
+                    message: 이미 다른 동아리를 담당하는 교직원입니다.
     delete:
       tags:
       - 동아리
       summary: 동아리 삭제
-      description: '동아리를 삭제한다. 권한: ADMIN.'
+      description: '동아리를 삭제한다(하드 삭제). 구성원 학생·담당 교직원은 지우지 않고 소속·담당 동아리만 null이 된다. 권한: ADMIN.'
       operationId: deleteClub
       security:
       - bearerAuth: []
@@ -3142,7 +3192,53 @@ components:
           - 카레라이스
     ClubRoom:
       type: string
-      description: 동아리가 사용하는 교실. 정해진 실 중 하나. 한 교실은 한 동아리만 사용
+      description: 동아리가 사용하는 교실. 정해진 실 중 하나. 한 교실은 한 동아리만 사용. 명세에 예시(ROOM_2_1, ROOM_2_2)만 있어 같은 형식(ROOM_층_실 번호)으로 1~5층, 1~9실을 둠(#25)
+      enum:
+      - ROOM_1_1
+      - ROOM_1_2
+      - ROOM_1_3
+      - ROOM_1_4
+      - ROOM_1_5
+      - ROOM_1_6
+      - ROOM_1_7
+      - ROOM_1_8
+      - ROOM_1_9
+      - ROOM_2_1
+      - ROOM_2_2
+      - ROOM_2_3
+      - ROOM_2_4
+      - ROOM_2_5
+      - ROOM_2_6
+      - ROOM_2_7
+      - ROOM_2_8
+      - ROOM_2_9
+      - ROOM_3_1
+      - ROOM_3_2
+      - ROOM_3_3
+      - ROOM_3_4
+      - ROOM_3_5
+      - ROOM_3_6
+      - ROOM_3_7
+      - ROOM_3_8
+      - ROOM_3_9
+      - ROOM_4_1
+      - ROOM_4_2
+      - ROOM_4_3
+      - ROOM_4_4
+      - ROOM_4_5
+      - ROOM_4_6
+      - ROOM_4_7
+      - ROOM_4_8
+      - ROOM_4_9
+      - ROOM_5_1
+      - ROOM_5_2
+      - ROOM_5_3
+      - ROOM_5_4
+      - ROOM_5_5
+      - ROOM_5_6
+      - ROOM_5_7
+      - ROOM_5_8
+      - ROOM_5_9
       example: ROOM_2_1
     ClubStudent:
       type: object
@@ -3180,15 +3276,19 @@ components:
           example: DMS
         logo: &id020
           type: string
-          description: 동아리 로고 이미지 키. 파일 업로드 API로 업로드한 뒤 반환받은 키
+          maxLength: 255
+          description: 동아리 로고 이미지 키. 파일 업로드 API로 업로드한 뒤 반환받은 키(키가 실제로 있는지는 검사하지 않음)
           example: b0c39b24-792f-48cf-9492-ed238ed48486파일1.png
         room:
           $ref: '#/components/schemas/ClubRoom'
         manager:
-          $ref: '#/components/schemas/ClubStudent'
+          oneOf:
+          - $ref: '#/components/schemas/ClubStudent'
+          - type: 'null'
+          description: 팀장. 팀장 학생이 삭제됐으면 새 팀장을 정할 때까지 null
         member:
           type: array
-          description: 동아리 구성원. 팀장도 포함
+          description: 동아리 구성원(학번 순). 팀장도 포함
           items:
             $ref: '#/components/schemas/ClubStudent'
         teacher:
@@ -3230,7 +3330,9 @@ components:
       properties:
         name:
           type: string
-          description: 동아리명
+          minLength: 1
+          maxLength: 20
+          description: 동아리명. 1~20자. 다른 동아리와 같은 이름도 허용
           example: DMS
         logo: *id020
         room:
@@ -3242,7 +3344,8 @@ components:
           example: 1
         member:
           type: array
-          description: 구성원 학생 id 리스트. 팀장 포함
+          maxItems: 50
+          description: 구성원 학생 id 리스트. 팀장 포함. 최대 50개, 같은 id는 한 번으로 침. 다른 동아리 소속 학생은 넣을 수 없음
           items:
             type: integer
             format: int64
@@ -3253,16 +3356,27 @@ components:
           - 4
           - 5
         teacher:
-          type: integer
+          type:
+          - integer
+          - 'null'
           format: int64
-          description: 담당 선생님의 교직원 id. 생략 가능
+          description: 담당 선생님의 교직원 id. 생략하거나 null 가능. 다른 동아리를 담당하는 교직원은 넣을 수 없음
           example: 3
     ClubUpdateRequest:
       type: object
+      description: 등록과 같은 필드를 모두 받아 통째로 바꾼다
+      required:
+      - name
+      - logo
+      - room
+      - manager
+      - member
       properties:
         name:
           type: string
-          description: 동아리명
+          minLength: 1
+          maxLength: 20
+          description: 동아리명. 1~20자
           example: DMS
         logo: *id020
         manager:
@@ -3272,7 +3386,8 @@ components:
           example: 1
         member:
           type: array
-          description: 구성원 학생 id 리스트. 전달한 리스트로 전체 교체. 팀장 포함
+          maxItems: 50
+          description: 구성원 학생 id 리스트. 전달한 리스트로 전체 교체(빠진 학생은 소속이 없어짐). 팀장 포함. 최대 50개
           items:
             type: integer
             format: int64
@@ -3285,9 +3400,11 @@ components:
         room:
           $ref: '#/components/schemas/ClubRoom'
         teacher:
-          type: integer
+          type:
+          - integer
+          - 'null'
           format: int64
-          description: 담당 선생님의 교직원 id
+          description: 담당 선생님의 교직원 id. null로 보내거나 빼면 담당 선생님이 없어짐
           example: 1
     NoticeCreateRequest:
       type: object
