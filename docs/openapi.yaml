@@ -1249,7 +1249,7 @@ paths:
                 format: uri
               example: /study-supervisors/1
         '400':
-          description: '`INVALID_INPUT`: date·supervisors 누락, 날짜 형식 오류, 빈 supervisors, 2~4층이 아닌 floor, 같은 floor 중복, floor·teacherId 누락'
+          description: '`INVALID_INPUT`: date·supervisors 누락, 날짜 형식 오류, 1000-01-01~9999-12-31 밖의 date, 빈 supervisors, 2~4층이 아닌 floor, 같은 floor 중복, floor·teacherId 누락'
           content:
             application/json:
               schema:
@@ -1338,7 +1338,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/StudySupervisorRangeResponse'
         '400':
-          description: 'INVALID_DATE_RANGE: finishDate가 startDate보다 이르거나 기간이 92일을 넘음 / `INVALID_INPUT`: startDate·finishDate 누락, 날짜 형식 오류'
+          description: 'INVALID_DATE_RANGE: finishDate가 startDate보다 이르거나 기간이 92일을 넘음 / `INVALID_INPUT`: startDate·finishDate 누락, 날짜 형식 오류, 1000-01-01~9999-12-31 밖의 날짜'
           content:
             application/json:
               schema:
@@ -1391,7 +1391,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/StudySupervisorDayResponse'
         '400':
-          description: '`INVALID_INPUT`: date 누락, 날짜 형식 오류'
+          description: '`INVALID_INPUT`: date 누락, 날짜 형식 오류, 1000-01-01~9999-12-31 밖의 날짜'
           content:
             application/json:
               schema:
@@ -1449,7 +1449,7 @@ paths:
               example:
                 message: 수정되었습니다.
         '400':
-          description: '`INVALID_INPUT`: date·supervisors 누락, 날짜 형식 오류, 빈 supervisors, 2~4층이 아닌 floor, 같은 floor 중복, floor·teacherId 누락, id가 숫자가 아님'
+          description: '`INVALID_INPUT`: date·supervisors 누락, 날짜 형식 오류, 1000-01-01~9999-12-31 밖의 date, 빈 supervisors, 2~4층이 아닌 floor, 같은 floor 중복, floor·teacherId 누락, id가 숫자가 아님'
           content:
             application/json:
               schema:

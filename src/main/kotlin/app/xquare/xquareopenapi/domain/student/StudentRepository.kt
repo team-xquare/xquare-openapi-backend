@@ -27,7 +27,8 @@ interface StudentRepository : JpaRepository<Student, Long> {
     fun search(name: String?, grade: Int?, classNum: Int?, pageable: Pageable): Page<Student>
 
     // 동아리 등록·수정이 쓴다. 다른 동아리 등록·수정이 같은 학생을 동시에 넣지 못하게 행을 잠그고 읽는다.
-    // 요청마다 잠글 학생을 이 메서드 한 번으로 id 순으로 잠가야 서로 엇갈려 기다리는 데드락이 나지 않는다.
+    // 요청마다 잠글 학생을 이 메서드 한 번으로 id 순으로 잠가야 동아리 요청끼리 엇갈려 기다리는 데드락이 나지 않는다.
+    // 학생 삭제는 순서가 반대라(학생 → ON DELETE SET NULL로 동아리) 동아리 수정과 겹치면 데드락이 날 수 있다(UpdateClubUseCase 참고).
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select s from Student s where s.id in :ids order by s.id")
     fun findAllByIdInForUpdate(ids: Collection<Long>): List<Student>

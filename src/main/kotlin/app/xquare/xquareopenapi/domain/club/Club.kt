@@ -10,6 +10,7 @@ import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
 import jakarta.persistence.Enumerated
 import jakarta.persistence.FetchType
+import jakarta.persistence.ForeignKey
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
@@ -56,14 +57,14 @@ class Club(
 
     // 팀장 학생을 지우면 DB가 null로 바꾼다(ON DELETE SET NULL). 관리자가 수정으로 새 팀장을 정할 때까지 비어 있다.
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "manager_id")
+    @JoinColumn(name = "manager_id", foreignKey = ForeignKey(name = Club.MANAGER_FOREIGN_KEY))
     @OnDelete(action = OnDeleteAction.SET_NULL)
     var manager: Student? = manager
         protected set
 
     // 담당 교직원을 지우면 DB가 null로 바꾼다(ON DELETE SET NULL).
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "teacher_id")
+    @JoinColumn(name = "teacher_id", foreignKey = ForeignKey(name = Club.TEACHER_FOREIGN_KEY))
     @OnDelete(action = OnDeleteAction.SET_NULL)
     var teacher: Teacher? = teacher
         protected set
@@ -79,11 +80,16 @@ class Club(
     companion object {
         const val ROOM_UNIQUE_CONSTRAINT = "uk_clubs_room"
         const val TEACHER_UNIQUE_CONSTRAINT = "uk_clubs_teacher"
+        const val MANAGER_FOREIGN_KEY = "fk_clubs_manager"
+        const val TEACHER_FOREIGN_KEY = "fk_clubs_teacher"
 
         // 중복 검사를 통과한 뒤 다른 요청이 먼저 같은 교실·교직원을 차지하면 unique 제약에 걸린다. 이때도 검사와 같은 에러로 바꾼다.
+        // 팀장·담당 교직원은 잠그고 읽어서 외래 키에 걸리지 않아야 한다. 그래도 걸리면 그 사이 지워진 것이라 형식 없는 500 대신 404로 바꾼다(#26 리뷰).
         fun conflictOf(e: DataIntegrityViolationException): Exception {
             if (e.violates(ROOM_UNIQUE_CONSTRAINT)) return XquareException(ErrorCode.ROOM_ALREADY_IN_USE)
             if (e.violates(TEACHER_UNIQUE_CONSTRAINT)) return XquareException(ErrorCode.TEACHER_ALREADY_IN_CLUB)
+            if (e.violates(MANAGER_FOREIGN_KEY)) return XquareException(ErrorCode.STUDENT_NOT_FOUND)
+            if (e.violates(TEACHER_FOREIGN_KEY)) return XquareException(ErrorCode.TEACHER_NOT_FOUND)
             return e
         }
     }

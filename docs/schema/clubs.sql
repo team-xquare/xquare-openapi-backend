@@ -6,7 +6,8 @@
 -- 계약:
 -- - FK 3개는 모두 ON DELETE SET NULL이어야 한다. 학생·교직원·동아리를 JPQL로 지울 때 연관을 DB가 풀어 준다.
 --   빠뜨려도 ddl-auto: validate는 FK 동작을 검사하지 않아 앱은 뜨고, 첫 삭제에서 무결성 오류로 500이 난다.
---   FK 이름은 앱이 쓰지 않으므로 바꿔도 된다.
+-- - FK 이름 fk_clubs_manager, fk_clubs_teacher도 계약이다. 동아리 저장이 그 사이 지워진 팀장·교직원 때문에 외래 키에 걸리면
+--   404 STUDENT_NOT_FOUND, TEACHER_NOT_FOUND로 바꾸는 데 쓴다(#26 리뷰). 이름이 다르면 500이 난다. fk_students_club 이름은 앱이 쓰지 않는다.
 -- - unique 제약 이름 uk_clubs_room, uk_clubs_teacher는 동시 등록·수정이 제약에 걸렸을 때
 --   400 ROOM_ALREADY_IN_USE, 409 TEACHER_ALREADY_IN_CLUB으로 바꾸는 데 쓴다. 이름이 다르면 구분하지 못하고 500이 난다.
 -- - room은 Hibernate가 MySQL에서 만드는 그대로 enum이다. ClubRoom 값을 더하거나 바꾸면 이 목록도 ALTER로 맞춰야 한다.

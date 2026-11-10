@@ -208,6 +208,60 @@ class StudySupervisorTest @Autowired constructor(
         }
     }
 
+    // MySQL DATE 범위(1000-01-01 ~ 9999-12-31) 밖의 날짜는 막는다. 막지 않으면 LocalDate.MAX(+999999999-12-31)에서
+    // 다음 날 계산이 DateTimeException으로 500이 되고, 범위 밖 날짜를 저장하면 MySQL이 거부해 500이 된다(#28 리뷰).
+    @Test
+    fun `등록, 수정 날짜는 1000-01-01부터 9999-12-31까지 받는다`() {
+        val teacher = teacher("이진경")
+        val supervision = supervision(LocalDate.of(2026, 9, 14), 2 to teacher)
+
+        listOf("0999-12-31", "+10000-01-01", "+999999999-12-31").forEach { date ->
+            mockMvc.post("/study-supervisors") {
+                bearer(adminToken)
+                json(body(date = date, assignments = listOf(2 to teacher.id!!)))
+            }.andExpectInvalidInput("date: 1000-01-01부터 9999-12-31까지의 날짜여야 합니다.")
+            mockMvc.patch("/study-supervisors/${supervision.id}") {
+                bearer(adminToken)
+                json(body(date = date, assignments = listOf(2 to teacher.id!!)))
+            }.andExpectInvalidInput("date: 1000-01-01부터 9999-12-31까지의 날짜여야 합니다.")
+        }
+        assertEquals(listOf(LocalDate.of(2026, 9, 14)), studySupervisorRepository.findAll().map { it.date })
+        listOf("1000-01-01", "9999-12-31").forEach { date ->
+            mockMvc.post("/study-supervisors") {
+                bearer(adminToken)
+                json(body(date = date, assignments = listOf(2 to teacher.id!!)))
+            }.andExpect { status { isCreated() } }
+        }
+        mockMvc.patch("/study-supervisors/${supervision.id}") {
+            bearer(adminToken)
+            json(body(date = "9999-12-30", assignments = listOf(2 to teacher.id!!)))
+        }.andExpect { status { isOk() } }
+    }
+
+    // 쿼리 값의 +는 URL에서 공백이 되므로 %2B로 보낸 것처럼 param()으로 넣는다. 이렇게 넣으면 +999999999-12-31도 LocalDate로 바인딩된다.
+    @Test
+    fun `조회 날짜도 1000-01-01부터 9999-12-31까지 받는다`() {
+        listOf("0999-12-31", "+10000-01-01", "+999999999-12-31").forEach { date ->
+            mockMvc.get("/study-supervisors") {
+                bearer(userToken)
+                param("startDate", "2026-09-14")
+                param("finishDate", date)
+            }.andExpectInvalidInput("finishDate: 1000-01-01부터 9999-12-31까지의 날짜여야 합니다.")
+            mockMvc.get("/study-supervisors") {
+                bearer(userToken)
+                param("startDate", date)
+                param("finishDate", "2026-09-14")
+            }.andExpectInvalidInput("startDate: 1000-01-01부터 9999-12-31까지의 날짜여야 합니다.")
+            mockMvc.get("/study-supervisors/day") {
+                bearer(userToken)
+                param("date", date)
+            }.andExpectInvalidInput("date: 1000-01-01부터 9999-12-31까지의 날짜여야 합니다.")
+        }
+        mockMvc.get("/study-supervisors?startDate=1000-01-01&finishDate=1000-01-01") { bearer(userToken) }.andExpect { status { isOk() } }
+        mockMvc.get("/study-supervisors?startDate=9999-12-31&finishDate=9999-12-31") { bearer(userToken) }.andExpect { status { isOk() } }
+        mockMvc.get("/study-supervisors/day?date=9999-12-31") { bearer(userToken) }.andExpect { status { isOk() } }
+    }
+
     // 기간 조회
 
     @Test
