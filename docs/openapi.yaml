@@ -8,6 +8,7 @@ info:
     권한: `security: []`인 API는 인증 없이 호출할 수 있고, 나머지는 `Authorization: Bearer <accessToken>`이 필요합니다. 필요한 권한은 `x-required-role`(USER, ADMIN)에 적었습니다.
 tags:
 - name: 인증/인가
+- name: API 키
 - name: 학생
 - name: 교직원
 - name: 자습 감독
@@ -261,6 +262,66 @@ paths:
                   value:
                     code: EMAIL_ALREADY_EXISTS
                     message: 이미 사용 중인 이메일입니다.
+  /api-keys:
+    post:
+      tags:
+      - API 키
+      summary: 활용신청 등록 (API 키 발급)
+      description: '활용신청을 등록한다. 자동 승인이라 바로 API 키를 발급한다. 키 원문은 이 응답에서만 볼 수 있고 서버에는 해시만 저장하므로, 잃어버리면 재발급해야 한다. 사용자당 키는
+        1개. 권한: USER, ADMIN(로그인한 본인).'
+      operationId: issueApiKey
+      security:
+      - bearerAuth: []
+      x-required-role: USER
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApiKeyRequest'
+            example:
+              serviceName: 급식 알리미
+              purpose: 반 단톡방에 매일 급식을 올리려고 합니다.
+      responses:
+        '201':
+          description: 발급됨
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyResponse'
+        '400':
+          description: '`INVALID_INPUT`: 필수 값 누락, 서비스 이름 공백·30자 초과, 사용 목적 공백·200자 초과'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
+        '401':
+          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_TOKEN:
+                  value:
+                    code: INVALID_TOKEN
+                    message: 토큰이 없거나 유효하지 않습니다.
+        '409':
+          description: '`API_KEY_ALREADY_EXISTS`: 이미 발급받은 키가 있음. 재발급을 이용해야 함'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                API_KEY_ALREADY_EXISTS:
+                  value:
+                    code: API_KEY_ALREADY_EXISTS
+                    message: 이미 발급받은 API 키가 있습니다. 재발급을 이용해 주세요.
   /students:
     get:
       tags:
@@ -2387,6 +2448,33 @@ components:
       scheme: bearer
       bearerFormat: JWT
   schemas:
+    ApiKeyRequest:
+      type: object
+      required:
+      - serviceName
+      - purpose
+      properties:
+        serviceName:
+          type: string
+          minLength: 1
+          maxLength: 30
+          description: API를 사용할 서비스 이름
+          example: 급식 알리미
+        purpose:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: 사용 목적
+          example: 반 단톡방에 매일 급식을 올리려고 합니다.
+    ApiKeyResponse:
+      type: object
+      required:
+      - apiKey
+      properties:
+        apiKey:
+          type: string
+          description: 발급한 API 키 원문. `xq_` 뒤에 43자. 이 응답에서만 볼 수 있다.
+          example: xq_Qm9vZ2llV29vZ2llQm9vZ2llV29vZ2llQm9vZ2ll
     ErrorResponse:
       type: object
       required:
