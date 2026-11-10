@@ -55,8 +55,9 @@ class NoticeConcurrencyTest @Autowired constructor(
 
         // 잠금 대기 시간이 넘으면 HTTP에서는 GlobalExceptionHandler가 409 CONCURRENT_UPDATE로 바꾼다. 둘 다 500이 아니다.
         assertTrue(results.all { it == null || it == ErrorCode.NOTICE_NOT_FOUND || it == ErrorCode.CONCURRENT_UPDATE })
-        assertEquals(null, results[0])
-        assertFalse(noticeRepository.existsById(id))
+        // 삭제도 잠금 대기 시간을 넘기면 CONCURRENT_UPDATE다. 그때는 공지가 남는다(#30 리뷰).
+        assertTrue(results[0] == null || results[0] == ErrorCode.CONCURRENT_UPDATE)
+        assertEquals(results[0] != null, noticeRepository.existsById(id))
     }
 
     private fun saveNotice(): Long {
