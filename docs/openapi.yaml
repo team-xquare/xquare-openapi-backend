@@ -2390,6 +2390,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NoticeDetailResponse'
+        '400':
+          description: '`INVALID_INPUT`: 숫자가 아닌 noticeId'
+          content:
+            application/json:
+              schema: *id007
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: '요청 값이 올바르지 않습니다.'
         '401':
           description: 'INVALID_TOKEN: 토큰이 없거나 유효하지 않음'
           content:
@@ -2513,6 +2523,16 @@ paths:
                 $ref: '#/components/schemas/MessageResponse'
               example:
                 message: 삭제되었습니다.
+        '400':
+          description: '`INVALID_INPUT`: 숫자가 아닌 noticeId'
+          content:
+            application/json:
+              schema: *id007
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: '요청 값이 올바르지 않습니다.'
         '401':
           description: 'INVALID_TOKEN: 토큰이 없거나 유효하지 않음'
           content:
