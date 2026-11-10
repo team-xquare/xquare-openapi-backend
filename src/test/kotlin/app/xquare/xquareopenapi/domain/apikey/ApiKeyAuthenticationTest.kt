@@ -14,6 +14,8 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers
 import tools.jackson.databind.json.JsonMapper
 import java.time.LocalDate
 import kotlin.test.assertEquals
@@ -82,6 +84,19 @@ class ApiKeyAuthenticationTest @Autowired constructor(
         }
         assertEquals(1, studentRepository.count())
         assertEquals(ApiKeySecret.hash(apiKey), apiKeyRepository.findAll().single().keyHash)
+    }
+
+    @Test
+    fun `HEAD 요청도 토큰만으로는 조회할 수 없고 키로만 된다`() {
+        val apiKey = issue()
+        val student = studentRepository.save(Student(2315, "김준서", LocalDate.of(2009, 7, 28), "s@dsm.hs.kr"))
+
+        listOf("/students", "/students/${student.id}", "/teachers", "/teachers/999").forEach { path ->
+            mockMvc.perform(head(path).header("Authorization", "Bearer $adminToken"))
+                .andExpect(MockMvcResultMatchers.status().isUnauthorized)
+        }
+        mockMvc.perform(head("/students/${student.id}").header("X-API-Key", apiKey))
+            .andExpect(MockMvcResultMatchers.status().isOk)
     }
 
     @Test

@@ -60,7 +60,7 @@
 - 재발급은 로그인한 본인 키만. 키가 없으면 `404 API_KEY_NOT_FOUND`. 신청 내용은 그대로 두고 해시만 바꾼다
 - 동시에 재발급하면 각 요청이 모두 키를 받지만 마지막으로 저장된 키 하나만 남는다(받은 키 중 하나는 반드시 쓸 수 있음)
 - 키는 `X-API-Key` 헤더로 받는다. JWT의 `Authorization`과 헤더를 나눠서 둘을 같이 보내도 헷갈리지 않게 했다
-- 키 인증 대상은 지금 있는 조회 API(`GET /students`, `/students/{id}`, `/teachers`, `/teachers/{id}`). 노션 API 명세서에는 타겟이 USER(JWT)로 적혀 있지만 태스크("조회 API는 API 키")를 따랐다
+- 키 인증 대상은 지금 있는 조회 API(`GET /students`, `/students/{id}`, `/teachers`, `/teachers/{id}`)와 같은 경로의 HEAD. Spring MVC가 GET 매핑에 HEAD도 자동으로 응답해서, 빼면 토큰만으로 200/404를 보고 존재 여부를 알 수 있다. 노션 API 명세서에는 타겟이 USER(JWT)로 적혀 있지만 태스크("조회 API는 API 키")를 따랐다
 - 키가 없거나 틀리면 액세스 토큰이 있어도 `401 INVALID_API_KEY`. 키로는 등록·수정·삭제나 키 재발급을 할 수 없다(`401 INVALID_TOKEN`)
 
 # 학생·교직원

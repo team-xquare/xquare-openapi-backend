@@ -109,8 +109,11 @@ class SecurityConfig {
     companion object {
         private val ADMIN = Role.ADMIN.name
 
+        // Spring MVC는 GET 매핑에 HEAD도 자동으로 응답하므로 HEAD도 같이 잡는다. 빠지면 토큰만으로 존재 여부가 드러난다.
         private val API_KEY_READ_ENDPOINTS = listOf("/students", "/students/*", "/teachers", "/teachers/*")
-            .map { PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, it) }
+            .flatMap { path ->
+                listOf(HttpMethod.GET, HttpMethod.HEAD).map { PathPatternRequestMatcher.withDefaults().matcher(it, path) }
+            }
             .toTypedArray<RequestMatcher>()
     }
 }
