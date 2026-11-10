@@ -61,7 +61,7 @@ class EmailOtpTest @Autowired constructor(
 
     @Test
     fun `두 API 모두 잘못된 이메일과 빈 이메일은 INVALID_EMAIL_FORMAT`() {
-        for (email in listOf("", " ", "a@gmail.com", "a@dsmXhs.kr", "a@@dsm.hs.kr", "a b@dsm.hs.kr", "a@dsm.hs.kr.other", "victim+1@dsm.hs.kr", "+@dsm.hs.kr")) {
+        for (email in listOf("", " ", "a@gmail.com", "a@dsmXhs.kr", "a@@dsm.hs.kr", "a b@dsm.hs.kr", "a@dsm.hs.kr.other", "victim+1@dsm.hs.kr", "+@dsm.hs.kr") + NOT_ALLOWED_LOCAL_PARTS) {
             for (path in listOf("/auth/email/otp", "/auth/email/otp/verify")) {
                 request(path, """{"email":"$email","otp":"123456"}""").andExpect {
                     status { isBadRequest() }
@@ -399,6 +399,25 @@ class EmailOtpTest @Autowired constructor(
         assertEquals(VICTIM, users.findAll().single().email)
     }
 
+    @Test
+    fun `허용 목록 문자로 된 이메일은 두 API 모두 받고 정규화한 값으로 저장한다`() {
+        for (email in listOf("first.last@dsm.hs.kr", "a_b-c1@dsm.hs.kr")) {
+            send(email = email).andExpect { status { isOk() } }
+        }
+        val otp = mail.messages.first().second
+        val token = verifiedToken(otp, email = " First.Last@DSM.HS.KR ")
+        assertEquals("first.last@dsm.hs.kr", tokens.tokens[token])
+    }
+
+    @Test
+    fun `앞뒤 공백을 넣은 같은 값으로 OTP를 받고 가입할 수 있다`() {
+        val padded = " victim@dsm.hs.kr "
+        send(email = padded).andExpect { status { isOk() } }
+        val token = verifiedToken(mail.messages.single().second, email = padded)
+        signup(padded, token).andExpect { status { isCreated() } }
+        assertEquals(VICTIM, users.findAll().single().email)
+    }
+
     private fun sendFailed() = send().andExpect {
         status { isInternalServerError() }
         jsonPath("$.code") { value("EMAIL_SEND_FAILED") }
@@ -429,5 +448,20 @@ class EmailOtpTest @Autowired constructor(
     companion object {
         private const val EMAIL = "example@dsm.hs.kr"
         private const val VICTIM = "victim@dsm.hs.kr"
+
+        // 같은 메일함을 가리키는 다른 문자열을 만들 수 있는 로컬 파트. JSON 본문에 그대로 넣으므로 따옴표·역슬래시는 JSON 이스케이프한 값이다.
+        val NOT_ALLOWED_LOCAL_PARTS = listOf(
+            "\\\"victim\\\"@dsm.hs.kr", // "victim"@dsm.hs.kr
+            "\\\"vic tim\\\"@dsm.hs.kr",
+            "vic\\\\tim@dsm.hs.kr", // vic\tim@dsm.hs.kr
+            "victim(comment)@dsm.hs.kr",
+            "(comment)victim@dsm.hs.kr",
+            "victim.@dsm.hs.kr",
+            "vic..tim@dsm.hs.kr",
+            ".victim@dsm.hs.kr",
+            "victim!@dsm.hs.kr",
+            "victim%x@dsm.hs.kr",
+            "v\u0131ctim@dsm.hs.kr", // 터키어 ı(소문자화해도 ASCII가 아님)
+        )
     }
 }

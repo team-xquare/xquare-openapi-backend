@@ -195,6 +195,17 @@ class SignupTest @Autowired constructor(
     }
 
     @Test
+    fun `앞뒤 공백이 있는 이메일도 OTP API처럼 받아 정규화한 값으로 비교하고 저장한다`() {
+        emailVerifiedTokens.tokens[TOKEN] = EMAIL
+
+        mockMvc.post("/auth/signup") {
+            contentType = MediaType.APPLICATION_JSON
+            content = body(email = "  Example@dsm.hs.kr ")
+        }.andExpect { status { isCreated() } }
+        assertEquals(EMAIL, userRepository.findAll().single().email)
+    }
+
+    @Test
     fun `이미 쓰는 아이디면 USERNAME_ALREADY_EXISTS`() {
         emailVerifiedTokens.tokens[TOKEN] = EMAIL
         mockMvc.post("/auth/signup") {
@@ -314,6 +325,11 @@ class SignupTest @Autowired constructor(
             body(email = "") to "email",
             body(email = ".example@dsm.hs.kr") to "email",
             body(email = "example+1@dsm.hs.kr") to "email",
+            body(email = "\\\"example\\\"@dsm.hs.kr") to "email",
+            body(email = "exa\\\\mple@dsm.hs.kr") to "email",
+            body(email = "example(comment)@dsm.hs.kr") to "email",
+            body(email = "exa..mple@dsm.hs.kr") to "email",
+            body(email = "example.@dsm.hs.kr") to "email",
             """{"username":"Jun227"}""" to "요청 값이 올바르지 않습니다.",
         )
 
