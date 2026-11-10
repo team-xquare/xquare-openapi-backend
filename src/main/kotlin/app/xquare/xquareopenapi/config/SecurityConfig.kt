@@ -41,6 +41,9 @@ class SecurityConfig {
                 authorize(HttpMethod.POST, "/auth/signup", permitAll)
                 authorize(HttpMethod.POST, "/auth/login", permitAll)
                 authorize(HttpMethod.POST, "/auth/reissue", permitAll)
+                // 급식 조회는 공개(ALL)다. 토큰이 없거나 유효하지 않아도 401 없이 조회된다.
+                authorize(HttpMethod.GET, "/meals", permitAll)
+                authorize(HttpMethod.GET, "/meals/*", permitAll)
                 // 처리되지 않은 오류는 /error로 포워드된다. 이걸 막으면 415·500 같은 원래 응답이 전부 401로 바뀐다.
                 authorize(DispatcherTypeRequestMatcher(DispatcherType.ERROR), permitAll)
                 authorize(HttpMethod.POST, "/students", hasRole(ADMIN))
@@ -49,6 +52,8 @@ class SecurityConfig {
                 authorize(HttpMethod.POST, "/teachers", hasRole(ADMIN))
                 authorize(HttpMethod.PATCH, "/teachers/*", hasRole(ADMIN))
                 authorize(HttpMethod.DELETE, "/teachers/*", hasRole(ADMIN))
+                authorize(HttpMethod.POST, "/meals", hasRole(ADMIN))
+                authorize(HttpMethod.PATCH, "/meals/*", hasRole(ADMIN))
                 // 나머지는 로그인만 하면 된다(USER, ADMIN).
                 authorize(anyRequest, authenticated)
             }

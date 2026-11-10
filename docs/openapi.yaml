@@ -1513,14 +1513,16 @@ paths:
       tags:
       - 급식
       summary: 월간 급식 조회
-      description: 'startDate~finishDate 기간의 급식 목록(조식/중식/석식 메뉴 배열)을 반환한다. 급식이 없는 날짜(방학·주말 등)는 meals에 포함하지 않는다. 권한: 공개(ALL).'
+      description: 'startDate~finishDate 기간의 급식 목록(조식/중식/석식 메뉴 배열)을 날짜 순으로 반환한다. 급식이 없는 날짜(방학·주말 등)와 관리자가 ''급식 없음''으로 표시한 날짜는 meals와 totalCount에 포함하지 않는다.
+        둘 다 생략하면 이번 달(서울 시간 기준) 1일~말일, startDate만 주면 그 달 말일까지, finishDate만 주면 그 달 1일부터 조회한다. 기간은 시작일·종료일을 포함해 최대 92일이다.
+        권한: 공개(ALL). 토큰이 없거나 유효하지 않아도 401 없이 조회된다.'
       operationId: getMonthlyMeals
       security: []
       parameters:
       - name: startDate
         in: query
         required: false
-        description: 조회 시작 날짜
+        description: 조회 시작 날짜(yyyy-MM-dd). 생략하면 finishDate가 속한 달(없으면 이번 달)의 1일
         schema:
           type: string
           format: date
@@ -1528,7 +1530,7 @@ paths:
       - name: finishDate
         in: query
         required: false
-        description: 조회 종료 날짜
+        description: 조회 종료 날짜(yyyy-MM-dd). 생략하면 startDate가 속한 달(없으면 이번 달)의 말일
         schema:
           type: string
           format: date
@@ -1541,7 +1543,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/MealListResponse'
         '400':
-          description: 'INVALID_DATE_RANGE: finishDate가 startDate보다 이른 경우'
+          description: 'INVALID_DATE_RANGE: finishDate가 startDate보다 이르거나 기간이 92일을 넘음 / `INVALID_INPUT`: 날짜 형식 오류'
           content:
             application/json:
               schema: &id007
@@ -1550,22 +1552,19 @@ paths:
                 INVALID_DATE_RANGE:
                   value:
                     code: INVALID_DATE_RANGE
-                    message: finishDate가 startDate보다 이른 경우
-        '401':
-          description: 'INVALID_TOKEN: 토큰이 없거나 유효하지 않음'
-          content:
-            application/json:
-              schema: *id007
-              examples:
-                INVALID_TOKEN:
+                    message: 조회 기간이 올바르지 않습니다.
+                INVALID_INPUT:
                   value:
-                    code: INVALID_TOKEN
-                    message: 토큰이 없거나 유효하지 않음
+                    code: INVALID_INPUT
+                    message: 'startDate: 형식이 올바르지 않습니다.'
     post:
       tags:
       - 급식
       summary: 급식 등록
-      description: '날짜별 급식(조식/중식/석식 메뉴 배열)을 등록한다. 해당 날짜의 급식 정보가 이미 있으면 409. 메뉴는 나이스 급식 정보 기준. 권한: ADMIN.'
+      description: '날짜별 급식(조식/중식/석식 메뉴 배열)을 등록한다. 해당 날짜의 급식 정보가 이미 있으면 409. 메뉴는 나이스 급식 정보 기준.
+        모든 필드가 필수이고, 급식이 없는 끼니는 빈 배열로 보낸다. 관리자가 등록한 급식은 나이스 동기화가 덮어쓰지 않는다.
+        세 끼를 모두 빈 배열로 보내면 그 날짜를 ''급식 없음''으로 표시해 나이스 동기화가 급식을 만들지 못하게 막는다(조회에서 빠지고 Location의 id는 단건 조회 404).
+        ''급식 없음''으로 표시된 날짜는 비어 있는 날짜로 보고 409 없이 그 표시를 새 급식으로 바꾼다(201, Location은 그 표시의 id). 권한: ADMIN.'
       operationId: createMeal
       security:
       - bearerAuth: []
@@ -1605,6 +1604,16 @@ paths:
                 $ref: '#/components/schemas/MessageResponse'
               example:
                 message: 생성되었습니다.
+        '400':
+          description: '`INVALID_INPUT`: 필수 값 누락, 날짜 형식 오류, 끼니당 메뉴 20개 초과, 메뉴가 공백·50자 초과·제어 문자 포함'
+          content:
+            application/json:
+              schema: *id007
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
         '409':
           description: 'MEAL_ALREADY_EXISTS: 해당 날짜의 급식 정보가 이미 존재함'
           content:
@@ -1640,7 +1649,7 @@ paths:
       tags:
       - 급식
       summary: 급식 조회
-      description: '급식 정보 1건을 id로 조회한다. 권한: 공개(ALL).'
+      description: '급식 정보 1건을 id로 조회한다. ''급식 없음''으로 표시된 급식은 없는 급식으로 보고 404. 권한: 공개(ALL). 토큰이 없거나 유효하지 않아도 401 없이 조회된다.'
       operationId: getMeal
       security: []
       parameters:
@@ -1659,18 +1668,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MealDetailResponse'
-        '401':
-          description: 'INVALID_TOKEN: 토큰이 없거나 유효하지 않음'
+        '400':
+          description: '`INVALID_INPUT`: mealId가 숫자가 아님'
           content:
             application/json:
               schema: *id007
               examples:
-                INVALID_TOKEN:
+                INVALID_INPUT:
                   value:
-                    code: INVALID_TOKEN
-                    message: 토큰이 없거나 유효하지 않음
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
         '404':
-          description: 'MEAL_NOT_FOUND: 존재하지 않는 급식 정보 id'
+          description: 'MEAL_NOT_FOUND: 존재하지 않는 급식 정보 id이거나 ''급식 없음''으로 표시된 급식'
           content:
             application/json:
               schema: *id007
@@ -1683,7 +1692,9 @@ paths:
       tags:
       - 급식
       summary: 급식 수정
-      description: '급식 정보를 수정한다. 권한: ADMIN.'
+      description: '급식 정보를 수정한다. 등록과 같은 모든 필드를 보내야 하며, 보낸 값으로 통째로 바꾼다. 다른 급식이 있는 날짜로 바꾸면 409.
+        수정한 급식은 이후 나이스 동기화가 덮어쓰지 않는다. 세 끼를 모두 빈 배열로 보내면 ''급식 없음''으로 표시되어 조회에서 빠지고, 나이스 동기화도 그 날짜를 다시 만들지 않는다.
+        날짜를 옮기면 원래 날짜에 ''급식 없음'' 표시를 남겨 동기화가 같은 급식을 다시 만들지 않게 한다. ''급식 없음''으로 표시된 날짜로는 옮길 수 있다(그 표시는 지워진다). 권한: ADMIN.'
       operationId: updateMeal
       security:
       - bearerAuth: []
@@ -1722,6 +1733,26 @@ paths:
                 $ref: '#/components/schemas/MessageResponse'
               example:
                 message: 수정되었습니다.
+        '400':
+          description: '`INVALID_INPUT`: 등록과 같은 입력 검증 실패, mealId가 숫자가 아님'
+          content:
+            application/json:
+              schema: *id007
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
+        '409':
+          description: 'MEAL_ALREADY_EXISTS: 바꾸려는 날짜에 다른 급식 정보가 이미 존재함'
+          content:
+            application/json:
+              schema: *id007
+              examples:
+                MEAL_ALREADY_EXISTS:
+                  value:
+                    code: MEAL_ALREADY_EXISTS
+                    message: 해당 날짜의 급식 정보가 이미 존재함
         '401':
           description: 'INVALID_TOKEN: 토큰이 없거나 유효하지 않음'
           content:
@@ -1743,7 +1774,7 @@ paths:
                     code: FORBIDDEN
                     message: 권한 없음
         '404':
-          description: 'MEAL_NOT_FOUND: 존재하지 않는 급식 정보 id'
+          description: 'MEAL_NOT_FOUND: 존재하지 않는 급식 정보 id이거나 ''급식 없음''으로 표시된 급식'
           content:
             application/json:
               schema: *id007
@@ -3047,7 +3078,7 @@ components:
           example: '2026-09-03'
         meals:
           type: array
-          description: 날짜별 급식 정보. 급식이 없는 날짜는 포함하지 않음
+          description: 날짜별 급식 정보. 급식이 없는 날짜와 '급식 없음'으로 표시된 날짜는 포함하지 않음
           items:
             $ref: '#/components/schemas/MealItem'
         totalCount:
@@ -3056,22 +3087,37 @@ components:
           example: 3
     MealCreateRequest:
       type: object
+      description: 메뉴는 끼니마다 최대 20개, 하나에 1~50자(공백만 있거나 제어 문자가 있으면 안 됨). 세 끼를 모두 빈 배열로 보내면 그 날짜를 '급식 없음'으로 표시한다.
+      required:
+      - date
+      - breakfast
+      - lunch
+      - dinner
       properties:
         date: *id013
         breakfast:
           type: array
+          maxItems: 20
           items: *id014
           example: *id015
         lunch:
           type: array
+          maxItems: 20
           items: *id016
           example: *id017
         dinner:
           type: array
+          maxItems: 20
           items: *id018
           example: *id019
     MealUpdateRequest:
       type: object
+      description: MealCreateRequest와 같은 규칙. 모든 필드를 보내 통째로 바꾼다.
+      required:
+      - date
+      - breakfast
+      - lunch
+      - dinner
       properties:
         date: *id013
         breakfast:
