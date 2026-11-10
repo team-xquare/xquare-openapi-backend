@@ -5,6 +5,7 @@ import app.xquare.xquareopenapi.domain.auth.repository.RefreshTokenRepository
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
+import org.springframework.data.redis.RedisConnectionFailureException
 import java.time.Duration
 import app.xquare.xquareopenapi.domain.auth.repository.EmailOtpRepository
 import app.xquare.xquareopenapi.domain.auth.repository.OtpVerification
@@ -32,7 +33,9 @@ class FakeAuthRepositories {
 
 class FakeEmailVerifiedTokenRepository : EmailVerifiedTokenRepository {
     val ttls = mutableMapOf<String, Duration>()
+    var failOnSave = false
     override fun save(token: String, email: String, ttl: Duration) {
+        if (failOnSave) throw RedisConnectionFailureException("Redis 장애")
         tokens[token] = email
         ttls[token] = ttl
     }
@@ -81,6 +84,7 @@ class FakeEmailOtpRepository : EmailOtpRepository {
     val ttls = mutableMapOf<String, Duration>()
     var failOnSave = false
     var failOnDelete = false
+    var failOnConsume = false
     override fun save(email: String, otp: String, ttl: Duration) {
         attempts.remove(email)
         otps[email] = otp
@@ -88,6 +92,7 @@ class FakeEmailOtpRepository : EmailOtpRepository {
         if (failOnSave) throw IllegalStateException("Redis 저장 실패")
     }
     override fun consume(email: String, otp: String): OtpVerification {
+        if (failOnConsume) throw RedisConnectionFailureException("Redis 장애")
         val current = otps[email] ?: return OtpVerification.NOT_FOUND
         if (current != otp) {
             attempts[email] = (attempts[email] ?: 0) + 1
@@ -114,6 +119,7 @@ class FakeEmailOtpRepository : EmailOtpRepository {
         ttls.clear()
         failOnSave = false
         failOnDelete = false
+        failOnConsume = false
     }
 }
 

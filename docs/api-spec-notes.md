@@ -36,7 +36,7 @@
 - 회원가입 password 문자 종류: 명세에 없어 공백을 뺀 ASCII(`\x21-\x7E`)로 정함. BCrypt가 72바이트를 넘는 비밀번호를 거부하는데, 글자 수 제한만으로는 이모지 등 멀티바이트 문자를 막지 못하기 때문
 - 토큰 만료 시간(access/refresh TTL), 토큰 형식(JWT 클레임) 미정. 구현은 access 1시간, refresh 14일(환경변수로 변경 가능), 클레임은 CLAUDE.md의 JWT 항목 참고
 - 재발급 시 refreshToken 저장 방식과 동시 요청 처리: 명세에 없어 Redis `refresh_token:{userId}`에 사용자당 하나만 두고, 재발급은 저장값이 요청 토큰과 같을 때만 바꾸도록(compare-and-set) 정함(#10). 그래서 다른 기기에서 로그인하면 먼저 로그인한 기기는 재발급에 실패함(사용자가 정함)
-- 오류 응답 500 EMAIL_SEND_FAILED 외 서버 내부 오류 공통 처리 미정
+- 서버 내부 오류 공통 처리: 명세에 없어 Redis·DB 장애(Spring `DataAccessException`)는 `500 INTERNAL_SERVER_ERROR` "일시적인 서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."로 정함(#20 리뷰). 그 밖의 예상하지 못한 예외는 아직 공통 처리가 없음. OTP 검증은 인증 토큰을 먼저 저장한 뒤 OTP를 소모하므로, 토큰 저장이 실패해도 OTP가 남아 같은 코드로 다시 검증할 수 있음. OTP가 틀렸거나 소모에 실패하면 미리 저장한 토큰을 지움
 - 회원가입 password의 "특수문자" 허용 문자 집합 미정 (YAML에는 minLength/maxLength만 반영)
 - 로그인 password 길이/형식 위반 시 INVALID_CREDENTIALS인지 검증 오류인지: 명세에 없어 빈 값만 `400 INVALID_INPUT`, 나머지는 `401 INVALID_CREDENTIALS`로 정함(#10). 형식 규칙이 바뀌어도 기존 계정이 로그인할 수 있게 하려는 것
 
