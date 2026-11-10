@@ -8,6 +8,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.options
 import org.springframework.test.web.servlet.post
 
@@ -76,6 +77,25 @@ class CorsTest @Autowired constructor(
             content = "{}"
         }.andExpect {
             header { string("Access-Control-Expose-Headers", "Location") }
+        }
+    }
+
+    @Test
+    fun `조회 API는 X-API-Key 헤더 preflight를 받고 실제 응답에도 허용 origin 헤더를 붙인다`() {
+        mockMvc.options("/students") {
+            header("Origin", ALLOWED_ORIGIN)
+            header("Access-Control-Request-Method", "GET")
+            header("Access-Control-Request-Headers", "X-API-Key")
+        }.andExpect {
+            status { isOk() }
+            header { string("Access-Control-Allow-Headers", containsStringIgnoringCase("x-api-key")) }
+        }
+        // API 키 체인이 401로 막아도 브라우저가 응답을 읽을 수 있어야 한다.
+        mockMvc.get("/students") {
+            header("Origin", ALLOWED_ORIGIN)
+        }.andExpect {
+            status { isUnauthorized() }
+            header { string("Access-Control-Allow-Origin", ALLOWED_ORIGIN) }
         }
     }
 

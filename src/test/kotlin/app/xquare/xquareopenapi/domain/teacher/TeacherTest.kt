@@ -4,7 +4,11 @@ import app.xquare.xquareopenapi.domain.user.Role
 import app.xquare.xquareopenapi.global.jwt.JwtProvider
 import org.hamcrest.Matchers.contains
 import org.hamcrest.Matchers.containsString
+import app.xquare.xquareopenapi.domain.apikey.ApiKey
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyRepository
+import app.xquare.xquareopenapi.domain.apikey.ApiKeySecret
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -27,13 +31,21 @@ import kotlin.test.assertTrue
 class TeacherTest @Autowired constructor(
     private val mockMvc: MockMvc,
     private val teacherRepository: TeacherRepository,
+    private val apiKeyRepository: ApiKeyRepository,
     jwtProvider: JwtProvider,
 ) {
     private val adminToken = jwtProvider.generateAccessToken(1L, Role.ADMIN)
     private val userToken = jwtProvider.generateAccessToken(2L, Role.USER)
 
+    // 조회 API는 API 키로만 인증한다.
+    @BeforeEach
+    fun setUp() {
+        apiKeyRepository.save(ApiKey(2L, "테스트", "테스트", ApiKeySecret.hash(RAW_API_KEY)))
+    }
+
     @AfterEach
     fun tearDown() {
+        apiKeyRepository.deleteAll()
         teacherRepository.deleteAll()
     }
 
@@ -129,7 +141,7 @@ class TeacherTest @Autowired constructor(
         val teacher = save()
 
         mockMvc.get("/teachers/${teacher.id}") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.id") { value(teacher.id!!) }
@@ -150,7 +162,7 @@ class TeacherTest @Autowired constructor(
         val teacher = save(grade = null, classNum = null, isManager = false)
 
         mockMvc.get("/teachers/${teacher.id}") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             jsonPath("$.grade") { value(null as Any?) }
             jsonPath("$.classNum") { value(null as Any?) }
@@ -161,14 +173,14 @@ class TeacherTest @Autowired constructor(
     @Test
     fun `없는 교직원이면 TEACHER_NOT_FOUND`() {
         mockMvc.get("/teachers/999") {
-            bearer(userToken)
+            apiKey()
         }.andExpectTeacherNotFound()
     }
 
     @Test
     fun `교직원 id가 숫자가 아니면 INVALID_INPUT`() {
         mockMvc.get("/teachers/abc") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("INVALID_INPUT") }
@@ -182,7 +194,7 @@ class TeacherTest @Autowired constructor(
         val teachers = (1..25).map { save(name = "교사$it") }
 
         mockMvc.get("/teachers") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.content.length()") { value(20) }
@@ -201,7 +213,7 @@ class TeacherTest @Autowired constructor(
         (1..5).forEach { save(name = "교사$it") }
 
         mockMvc.get("/teachers?page=1&size=2") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             jsonPath("$.content[*].name") { value(contains("교사3", "교사4")) }
             jsonPath("$.page") { value(1) }
@@ -258,7 +270,7 @@ class TeacherTest @Autowired constructor(
         // URI 문자열에 %를 넣으면 MockMvc가 다시 인코딩하므로 param으로 넘긴다.
         listOf("%" to "가", "_" to "나", "!" to "다").forEach { (office, expected) ->
             mockMvc.get("/teachers") {
-                bearer(userToken)
+                apiKey()
                 param("office", office)
             }.andExpect {
                 jsonPath("$.content[*].name") { value(contains(expected)) }
@@ -288,7 +300,7 @@ class TeacherTest @Autowired constructor(
             "page=21474837&size=100" to "page: ",
         ).forEach { (query, expectedMessage) ->
             mockMvc.get("/teachers?$query") {
-                bearer(userToken)
+                apiKey()
             }.andExpect {
                 status { isBadRequest() }
                 jsonPath("$.code") { value("INVALID_INPUT") }
@@ -300,7 +312,7 @@ class TeacherTest @Autowired constructor(
     @Test
     fun `size는 100까지, page는 offset이 int를 넘지 않는 데까지 받는다`() {
         mockMvc.get("/teachers?page=21474836&size=100") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.page") { value(21474836) }
@@ -402,12 +414,10 @@ class TeacherTest @Autowired constructor(
     // 권한
 
     @Test
-    fun `토큰이 없으면 INVALID_TOKEN`() {
+    fun `토큰이 없으면 등록, 수정, 삭제는 INVALID_TOKEN`() {
         val teacher = save()
 
         listOf(
-            mockMvc.get("/teachers"),
-            mockMvc.get("/teachers/${teacher.id}"),
             mockMvc.post("/teachers") { json(body()) },
             mockMvc.patch("/teachers/${teacher.id}") { json(body()) },
             mockMvc.delete("/teachers/${teacher.id}"),
@@ -415,6 +425,23 @@ class TeacherTest @Autowired constructor(
             it.andExpect {
                 status { isUnauthorized() }
                 jsonPath("$.code") { value("INVALID_TOKEN") }
+            }
+        }
+    }
+
+    @Test
+    fun `API 키가 없거나 틀리면 조회는 INVALID_API_KEY`() {
+        val teacher = save()
+
+        listOf(
+            mockMvc.get("/teachers"),
+            mockMvc.get("/teachers/${teacher.id}"),
+            mockMvc.get("/teachers") { header("X-API-Key", "xq_wrong") },
+        ).forEach {
+            it.andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value("INVALID_API_KEY") }
+                jsonPath("$.message") { value("API 키가 없거나 유효하지 않습니다.") }
             }
         }
     }
@@ -437,11 +464,15 @@ class TeacherTest @Autowired constructor(
     }
 
     @Test
-    fun `ADMIN도 조회할 수 있다`() {
+    fun `토큰만으로는 USER든 ADMIN이든 조회할 수 없다`() {
         val teacher = save()
 
-        mockMvc.get("/teachers") { bearer(adminToken) }.andExpect { status { isOk() } }
-        mockMvc.get("/teachers/${teacher.id}") { bearer(adminToken) }.andExpect { status { isOk() } }
+        listOf(userToken, adminToken).forEach { token ->
+            mockMvc.get("/teachers/${teacher.id}") { bearer(token) }.andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value("INVALID_API_KEY") }
+            }
+        }
     }
 
     private fun save(
@@ -456,7 +487,7 @@ class TeacherTest @Autowired constructor(
 
     private fun expectNames(query: String, vararg expected: String) {
         mockMvc.get("/teachers?$query") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             if (expected.isEmpty()) {
@@ -484,6 +515,8 @@ class TeacherTest @Autowired constructor(
     private fun bodyWithoutHomeroom() =
         """{"name":"홍길동","subject":"MATH","office":"3층 교무실","isManager":true,"position":"ACADEMIC_AFFAIRS"}"""
 
+    private fun MockHttpServletRequestDsl.apiKey() = header("X-API-Key", RAW_API_KEY)
+
     private fun body(
         name: String = "홍길동",
         grade: Int? = 1,
@@ -503,4 +536,8 @@ class TeacherTest @Autowired constructor(
           "position": "$position"
         }
     """.trimIndent()
+
+    companion object {
+        private const val RAW_API_KEY = "xq_test-api-key"
+    }
 }

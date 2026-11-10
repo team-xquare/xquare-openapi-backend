@@ -6,4 +6,6 @@ interface ApiKeyRepository : JpaRepository<ApiKey, Long> {
     fun existsByUserId(userId: Long): Boolean
 
     fun findByUserId(userId: Long): ApiKey?
+
+    fun findByKeyHash(keyHash: String): ApiKey?
 }

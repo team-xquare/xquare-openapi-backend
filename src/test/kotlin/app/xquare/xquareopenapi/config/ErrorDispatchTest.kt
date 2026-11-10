@@ -33,10 +33,11 @@ class ErrorDispatchTest @Autowired constructor(
     }
 
     @Test
-    fun `인증이 필요한 경로는 여전히 토큰 없이 접근할 수 없다`() {
+    fun `조회 API는 API 키 없이 접근할 수 없고 401 INVALID_API_KEY를 JSON으로 응답한다`() {
         val response = send(HttpRequest.newBuilder(uri("/students")).GET())
 
         assertEquals(401, response.statusCode())
+        assertEquals("""{"code":"INVALID_API_KEY","message":"API 키가 없거나 유효하지 않습니다."}""", response.body())
     }
 
     @Test

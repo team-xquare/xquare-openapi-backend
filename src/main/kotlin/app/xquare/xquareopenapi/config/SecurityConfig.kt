@@ -1,5 +1,7 @@
 package app.xquare.xquareopenapi.config
 
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyAuthenticationFilter
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyRepository
 import app.xquare.xquareopenapi.domain.user.Role
 import app.xquare.xquareopenapi.global.cors.CorsProperties
 import app.xquare.xquareopenapi.global.error.SecurityErrorResponder
@@ -8,6 +10,7 @@ import app.xquare.xquareopenapi.global.jwt.JwtProvider
 import jakarta.servlet.DispatcherType
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.annotation.Order
 import org.springframework.http.HttpMethod
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.invoke
@@ -16,14 +19,45 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher
 import org.springframework.security.web.util.matcher.DispatcherTypeRequestMatcher
+import org.springframework.security.web.util.matcher.RequestMatcher
 import org.springframework.web.cors.CorsConfigurationSource
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 
 @Configuration
 class SecurityConfig {
 
+    // 조회 API는 API 키로만 인증한다. JWT 필터가 없는 체인을 따로 둬서 토큰이 있어도 키 없이는 401이다.
     @Bean
+    @Order(1)
+    fun apiKeySecurityFilterChain(
+        http: HttpSecurity,
+        apiKeyRepository: ApiKeyRepository,
+        securityErrorResponder: SecurityErrorResponder,
+    ): SecurityFilterChain {
+        http {
+            securityMatcher(*API_KEY_READ_ENDPOINTS)
+            csrf { disable() }
+            cors { }
+            formLogin { disable() }
+            httpBasic { disable() }
+            sessionManagement {
+                sessionCreationPolicy = SessionCreationPolicy.STATELESS
+            }
+            authorizeHttpRequests {
+                authorize(anyRequest, hasAuthority(ApiKeyAuthenticationFilter.AUTHORITY))
+            }
+            exceptionHandling {
+                authenticationEntryPoint = securityErrorResponder.invalidApiKey
+            }
+            addFilterBefore<UsernamePasswordAuthenticationFilter>(ApiKeyAuthenticationFilter(apiKeyRepository))
+        }
+        return http.build()
+    }
+
+    @Bean
+    @Order(2)
     fun securityFilterChain(
         http: HttpSecurity,
         jwtProvider: JwtProvider,
@@ -49,7 +83,7 @@ class SecurityConfig {
                 authorize(HttpMethod.POST, "/teachers", hasRole(ADMIN))
                 authorize(HttpMethod.PATCH, "/teachers/*", hasRole(ADMIN))
                 authorize(HttpMethod.DELETE, "/teachers/*", hasRole(ADMIN))
-                // 나머지는 로그인만 하면 된다(USER, ADMIN).
+                // 나머지는 로그인만 하면 된다(USER, ADMIN). 조회 API는 위의 API 키 체인이 먼저 가져간다.
                 authorize(anyRequest, authenticated)
             }
             exceptionHandling {
@@ -74,5 +108,9 @@ class SecurityConfig {
 
     companion object {
         private val ADMIN = Role.ADMIN.name
+
+        private val API_KEY_READ_ENDPOINTS = listOf("/students", "/students/*", "/teachers", "/teachers/*")
+            .map { PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, it) }
+            .toTypedArray<RequestMatcher>()
     }
 }

@@ -5,7 +5,7 @@ info:
   description: |-
     노션 "xquare open API"의 API 명세서와 기능 명세서를 합쳐 만든 명세입니다. 두 명세서가 다르면 API 명세서를 따랐습니다.
 
-    권한: `security: []`인 API는 인증 없이 호출할 수 있고, 나머지는 `Authorization: Bearer <accessToken>`이 필요합니다. 필요한 권한은 `x-required-role`(USER, ADMIN)에 적었습니다.
+    권한: `security: []`인 API는 인증 없이 호출할 수 있습니다. `apiKeyAuth`인 조회 API는 `X-API-Key: <apiKey>`가 필요하고 액세스 토큰으로는 호출할 수 없습니다(`x-required-role: API_KEY`). 나머지는 `Authorization: Bearer <accessToken>`이 필요하며, 필요한 권한은 `x-required-role`(USER, ADMIN)에 적었습니다.
 tags:
 - name: 인증/인가
 - name: API 키
@@ -367,11 +367,11 @@ paths:
       tags:
       - 학생
       summary: 학생 전체 조회
-      description: '이름(부분 일치), 학년, 반 조건으로 학생 목록을 페이지 단위로 조회한다. 응답은 `content` 리스트와 페이지 정보를 반환한다. 권한: USER.'
+      description: '이름(부분 일치), 학년, 반 조건으로 학생 목록을 페이지 단위로 조회한다. 응답은 `content` 리스트와 페이지 정보를 반환한다. 인증: API 키(`X-API-Key`).'
       operationId: getStudents
       security:
-      - bearerAuth: []
-      x-required-role: USER
+      - apiKeyAuth: []
+      x-required-role: API_KEY
       parameters:
       - name: name
         in: query
@@ -442,16 +442,16 @@ paths:
                     code: INVALID_INPUT
                     message: 요청 값이 올바르지 않습니다.
         '401':
-          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
+          description: '`INVALID_API_KEY`: API 키가 없거나 유효하지 않음. 액세스 토큰만으로는 조회할 수 없다'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
-                INVALID_TOKEN:
+                INVALID_API_KEY:
                   value:
-                    code: INVALID_TOKEN
-                    message: 토큰이 없거나 유효하지 않음
+                    code: INVALID_API_KEY
+                    message: API 키가 없거나 유효하지 않습니다.
     post:
       tags:
       - 학생
@@ -542,11 +542,11 @@ paths:
       tags:
       - 학생
       summary: 학생 조회
-      description: '학생 id로 학생 한 명의 정보를 조회한다. 권한: USER.'
+      description: '학생 id로 학생 한 명의 정보를 조회한다. 인증: API 키(`X-API-Key`).'
       operationId: getStudent
       security:
-      - bearerAuth: []
-      x-required-role: USER
+      - apiKeyAuth: []
+      x-required-role: API_KEY
       parameters:
       - name: studentId
         in: path
@@ -564,16 +564,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/StudentResponse'
         '401':
-          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
+          description: '`INVALID_API_KEY`: API 키가 없거나 유효하지 않음. 액세스 토큰만으로는 조회할 수 없다'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
-                INVALID_TOKEN:
+                INVALID_API_KEY:
                   value:
-                    code: INVALID_TOKEN
-                    message: 토큰이 없거나 유효하지 않음
+                    code: INVALID_API_KEY
+                    message: API 키가 없거나 유효하지 않습니다.
         '404':
           description: '`STUDENT_NOT_FOUND`: 존재하지 않는 학생 id'
           content:
@@ -744,11 +744,11 @@ paths:
       tags:
       - 교직원
       summary: 교직원 전체 조회
-      description: '이름, 담당 학급(학년·반), 담당 과목, 교무실(부분 일치) 조건으로 교직원 목록을 페이지 단위로 조회한다. 응답은 `content` 리스트와 페이지 정보를 반환한다. 권한: USER.'
+      description: '이름, 담당 학급(학년·반), 담당 과목, 교무실(부분 일치) 조건으로 교직원 목록을 페이지 단위로 조회한다. 응답은 `content` 리스트와 페이지 정보를 반환한다. 인증: API 키(`X-API-Key`).'
       operationId: getTeachers
       security:
-      - bearerAuth: []
-      x-required-role: USER
+      - apiKeyAuth: []
+      x-required-role: API_KEY
       parameters:
       - name: name
         in: query
@@ -807,16 +807,16 @@ paths:
                     code: INVALID_INPUT
                     message: 요청 값이 올바르지 않습니다.
         '401':
-          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
+          description: '`INVALID_API_KEY`: API 키가 없거나 유효하지 않음. 액세스 토큰만으로는 조회할 수 없다'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
-                INVALID_TOKEN:
+                INVALID_API_KEY:
                   value:
-                    code: INVALID_TOKEN
-                    message: 토큰이 없거나 유효하지 않음
+                    code: INVALID_API_KEY
+                    message: API 키가 없거나 유효하지 않습니다.
     post:
       tags:
       - 교직원
@@ -895,11 +895,11 @@ paths:
       tags:
       - 교직원
       summary: 교직원 조회
-      description: '교직원 id로 교직원 한 명의 정보를 조회한다. 권한: USER.'
+      description: '교직원 id로 교직원 한 명의 정보를 조회한다. 인증: API 키(`X-API-Key`).'
       operationId: getTeacher
       security:
-      - bearerAuth: []
-      x-required-role: USER
+      - apiKeyAuth: []
+      x-required-role: API_KEY
       parameters:
       - name: teacherId
         in: path
@@ -917,16 +917,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/TeacherResponse'
         '401':
-          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
+          description: '`INVALID_API_KEY`: API 키가 없거나 유효하지 않음. 액세스 토큰만으로는 조회할 수 없다'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
-                INVALID_TOKEN:
+                INVALID_API_KEY:
                   value:
-                    code: INVALID_TOKEN
-                    message: 토큰이 없거나 유효하지 않음
+                    code: INVALID_API_KEY
+                    message: API 키가 없거나 유효하지 않습니다.
         '404':
           description: '`TEACHER_NOT_FOUND`: 존재하지 않는 교직원 id'
           content:
@@ -2487,6 +2487,11 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: '`POST /api-keys`로 발급받은 API 키'
   schemas:
     ApiKeyRequest:
       type: object
