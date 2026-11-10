@@ -400,6 +400,19 @@ class EmailOtpTest @Autowired constructor(
     }
 
     @Test
+    fun `IP로 해석되지 않는 remoteAddr는 값이 달라도 invalid 키 하나로 IP 상한을 함께 받는다`() {
+        repeat(4) { i ->
+            send(email = "user$i@dsm.hs.kr", ip = "garbage-$i").andExpect { status { isOk() } }
+        }
+        send(email = "user9@dsm.hs.kr", ip = "another-garbage").andExpect {
+            status { isTooManyRequests() }
+            jsonPath("$.code") { value("OTP_SEND_LIMIT_EXCEEDED") }
+        }
+        assertEquals(List(5) { "invalid" }, otps.ips)
+        send(email = "user9@dsm.hs.kr", ip = "203.0.113.7").andExpect { status { isOk() } }
+    }
+
+    @Test
     fun `허용 목록 문자로 된 이메일은 두 API 모두 받고 정규화한 값으로 저장한다`() {
         for (email in listOf("first.last@dsm.hs.kr", "a_b-c1@dsm.hs.kr")) {
             send(email = email).andExpect { status { isOk() } }

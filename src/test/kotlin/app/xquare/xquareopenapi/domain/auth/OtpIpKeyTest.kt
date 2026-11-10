@@ -40,9 +40,17 @@ class OtpIpKeyTest {
     }
 
     @Test
-    fun `IP로 해석되지 않는 값은 그대로 쓰고 DNS 조회를 하지 않는다`() {
-        for (ip in listOf("localhost:8080", "zz::1", "2001:db8::g", "unknown", "")) {
-            assertEquals(ip, otpIpKey(ip))
+    fun `IP로 해석되지 않는 값은 모두 invalid 키 하나로 모으고 DNS 조회를 하지 않는다`() {
+        for (ip in listOf("localhost:8080", "zz::1", "2001:db8::g", "unknown", "", "localhost", "example.com",
+            "1.2.3", "1.2.3.4.5", "256.0.0.1", "1.2.3.-4", "1.2.3.4 ", "[1.2.3.4]", "1.2.3.0004", "random-${System.nanoTime()}")) {
+            assertEquals("invalid", otpIpKey(ip), ip)
         }
+    }
+
+    @Test
+    fun `IPv4 앞자리 0은 지워 같은 키로 만든다`() {
+        assertEquals("10.0.0.1", otpIpKey("010.000.000.001"))
+        assertEquals("0.0.0.0", otpIpKey("0.0.0.0"))
+        assertEquals("255.255.255.255", otpIpKey("255.255.255.255"))
     }
 }
