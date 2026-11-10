@@ -181,6 +181,7 @@
 - `ROOM_ALREADY_IN_USE`·`STUDENT_ALREADY_IN_CLUB`·`TEACHER_ALREADY_IN_CLUB`는 다른 동아리와 겹칠 때만 낸다. 수정하면서 자기 교실·구성원·담당 선생님을 그대로 두는 것은 된다.
 - 검사 순서: 입력 형식(400) → (수정) 동아리 존재(404) → 팀장 포함(400) → 학생·교직원 존재(404) → 교실(400) → 학생 소속(409) → 교직원 담당(409).
 - 동시 등록·수정으로 교실·교직원 검사를 통과해도 unique 제약(`uk_clubs_room`, `uk_clubs_teacher`)에 걸리면 같은 에러 코드로 바꾼다. 같은 학생을 동시에 다른 동아리에 넣지 못하게 구성원 학생 행을 잠그고 읽는다. 수정은 빠질 기존 구성원도 새 구성원과 한 번에 id 순으로 잠가, 요청끼리 잠금 순서가 엇갈려 데드락이 나지 않게 한다(#26 리뷰).
+- 담당 교직원도 잠그고 읽는다. 잠그지 않으면 읽은 뒤 교직원 삭제가 먼저 커밋돼 동아리 저장이 외래 키(`fk_clubs_teacher`)에 걸리고 형식 없는 500이 났다(#26 2차 리뷰). 지금은 교직원 삭제가 동아리 등록·수정 커밋을 기다렸다가 지우고, 담당 교직원은 null이 된다. 그래도 외래 키에 걸리면 `fk_clubs_teacher`는 `404 TEACHER_NOT_FOUND`, `fk_clubs_manager`는 `404 STUDENT_NOT_FOUND`로 바꾼다. 그래서 두 FK 이름도 계약이다(`docs/schema/clubs.sql`).
 - 잠금 충돌(데드락, 잠금 대기 시간 초과)로 DB가 트랜잭션을 되돌리면 `409 CONCURRENT_UPDATE`("동시에 수정되어 처리하지 못했습니다. 다시 시도해 주세요.", 새 코드, 명세에 없음). `GlobalExceptionHandler`가 `PessimisticLockingFailureException`(`CannotAcquireLockException` 포함)을 받아 모든 API에서 같은 형식으로 준다. 처리 안 하면 `{code, message}` 형식 없는 500이 나간다. 어느 API에서나 날 수 있는 공통 응답이라 YAML의 API별 에러 표에는 넣지 않았다.
 - 삭제는 실제로 지운다(하드 삭제). 학생·교직원은 지우지 않고 소속·담당 동아리만 null이 된다. 기능 명세서의 "동아리 변경 시즌 이후 기존 정보가 사라진다"는 별도 기능(일괄 초기화)이 없어서, 관리자가 동아리를 지우거나 수정하는 것으로 처리한다.
 - 학생·교직원을 지우면 동아리는 남는다. 구성원 학생은 구성원에서 빠지고, 팀장 학생이면 `manager`가 null(새 팀장은 수정으로 정한다), 담당 교직원이면 `teacher`가 null. DB의 외래 키 `ON DELETE SET NULL`로 처리해서 학생·교직원 삭제 코드는 그대로다. 그래서 상세·목록 응답의 `manager`는 nullable이다.

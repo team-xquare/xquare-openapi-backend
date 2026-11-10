@@ -8,7 +8,6 @@ import app.xquare.xquareopenapi.domain.teacher.Teacher
 import app.xquare.xquareopenapi.domain.teacher.TeacherRepository
 import app.xquare.xquareopenapi.global.error.ErrorCode
 import app.xquare.xquareopenapi.global.error.XquareException
-import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Component
 
 class ClubRelations(
@@ -41,7 +40,8 @@ class ClubRelationLoader(
         val teacher = if (request.teacher == null) {
             null
         } else {
-            teacherRepository.findByIdOrNull(request.teacher) ?: throw XquareException(ErrorCode.TEACHER_NOT_FOUND)
+            // 학생처럼 잠그고 읽어서, 읽은 뒤 교직원 삭제가 먼저 커밋되지 못하게 한다(#26 리뷰).
+            teacherRepository.findByIdForUpdate(request.teacher) ?: throw XquareException(ErrorCode.TEACHER_NOT_FOUND)
         }
         if (clubRepository.existsByRoomExcept(request.room, clubId)) throw XquareException(ErrorCode.ROOM_ALREADY_IN_USE)
         if (members.any { it.belongsToOtherClub(clubId) }) throw XquareException(ErrorCode.STUDENT_ALREADY_IN_CLUB)

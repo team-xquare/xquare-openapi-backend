@@ -17,6 +17,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentMatchers.anyLong
+import org.mockito.Mockito.doAnswer
 import org.mockito.Mockito.doReturn
 import org.mockito.Mockito.doThrow
 import org.mockito.Mockito.never
@@ -35,6 +36,11 @@ import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.TransactionDefinition
+import org.springframework.transaction.support.TransactionTemplate
+import org.hibernate.exception.ConstraintViolationException
+import java.sql.SQLException
 import java.time.LocalDate
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -49,11 +55,16 @@ class ClubTest @Autowired constructor(
     private val clubRepository: ClubRepository,
     private val studentRepository: StudentRepository,
     private val teacherRepository: TeacherRepository,
+    private val transactionManager: PlatformTransactionManager,
     jwtProvider: JwtProvider,
 ) {
     // 동시 등록·수정을 흉내 내려고 중복 검사만 통과시킬 때 쓴다.
     @MockitoSpyBean
     private lateinit var spiedClubRepository: ClubRepository
+
+    // 교직원을 읽은 직후 교직원 삭제가 먼저 커밋된 상황을 만들 때 쓴다.
+    @MockitoSpyBean
+    private lateinit var spiedTeacherRepository: TeacherRepository
 
     private val adminToken = jwtProvider.generateAccessToken(1L, Role.ADMIN)
     private val userToken = jwtProvider.generateAccessToken(2L, Role.USER)
@@ -224,6 +235,43 @@ class ClubTest @Autowired constructor(
             json(body(room = "ROOM_3_1", manager = manager.id!!, member = listOf(manager.id!!), teacher = teacherId))
         }.andExpectTeacherInClub()
         assertEquals(1, clubRepository.count())
+    }
+
+    // 교직원은 잠그고 읽어서 실제로는 이렇게 되지 않는다(ClubConcurrencyTest). 잠금 없이 읽던 때의 상황을 스텁으로 만들어
+    // 외래 키 위반이 와도 형식 없는 500이 아니라 TEACHER_NOT_FOUND인지 본다(#26 리뷰).
+    @Test
+    fun `교직원을 읽은 뒤 그 교직원이 지워져 외래 키에 걸려도 TEACHER_NOT_FOUND`() {
+        val club = club(name = "가", room = ClubRoom.ROOM_2_2, studentNumbers = listOf(1101))
+        val forCreate = teacher("이진경")
+        val forUpdate = teacher("김선생")
+        val manager = student(3101)
+        deleteTeacherRightAfterRead(forCreate, forUpdate)
+
+        mockMvc.post("/clubs") {
+            bearer(adminToken)
+            json(body(room = "ROOM_3_1", manager = manager.id!!, member = listOf(manager.id!!), teacher = forCreate.id))
+        }.andExpectTeacherNotFound().andExpect { jsonPath("$.message") { value("존재하지 않는 교직원입니다.") } }
+        mockMvc.patch("/clubs/${club.id}") {
+            bearer(adminToken)
+            json(body(room = "ROOM_2_2", manager = club.manager!!.id!!, member = memberIds(club), teacher = forUpdate.id))
+        }.andExpectTeacherNotFound().andExpect { jsonPath("$.message") { value("존재하지 않는 교직원입니다.") } }
+        assertEquals(listOf(club.id), clubRepository.findAll().map { it.id })
+        assertEquals(0, teacherRepository.count())
+    }
+
+    @Test
+    fun `팀장 외래 키에 걸리면 STUDENT_NOT_FOUND`() {
+        val manager = student(2315)
+        val violation = DataIntegrityViolationException(
+            "fk",
+            ConstraintViolationException("fk", SQLException(), "FK_CLUBS_MANAGER: PUBLIC.CLUBS FOREIGN KEY(MANAGER_ID)"),
+        )
+        doThrow(violation).`when`(spiedClubRepository).saveAndFlush(any())
+
+        mockMvc.post("/clubs") {
+            bearer(adminToken)
+            json(body(manager = manager.id!!, member = listOf(manager.id!!)))
+        }.andExpectStudentNotFound().andExpect { jsonPath("$.message") { value("존재하지 않는 학생입니다.") } }
     }
 
     @Test
@@ -898,6 +946,19 @@ class ClubTest @Autowired constructor(
 
     private fun teacher(name: String) =
         teacherRepository.save(Teacher(name, null, null, TeacherSubject.MATH, "3층 교무실", false, TeacherPosition.MEISTER))
+
+    // 동아리 등록·수정이 교직원을 읽을 때, 다른 트랜잭션이 그 교직원을 지우고 커밋한 뒤 지우기 전 엔티티를 돌려준다.
+    private fun deleteTeacherRightAfterRead(vararg teachers: Teacher) {
+        val byId = teachers.associateBy { it.id!! }
+        val newTransaction = TransactionTemplate(transactionManager).apply {
+            propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW
+        }
+        doAnswer { invocation ->
+            val id = invocation.getArgument<Long>(0)
+            newTransaction.executeWithoutResult { teacherRepository.deleteByIdReturningCount(id) }
+            byId.getValue(id)
+        }.`when`(spiedTeacherRepository).findByIdForUpdate(anyLong())
+    }
 
     private fun queryCount(uri: String): Long {
         val statistics = entityManagerFactory.unwrap(SessionFactory::class.java).statistics
