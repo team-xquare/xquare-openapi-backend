@@ -28,7 +28,7 @@
 - 로그인 실패 횟수 카운트 기준(누적/연속, 초기화 시점, 아이디 기준 여부) 미정
 - 오류 응답의 message 문구: 두 명세서 모두 정의하지 않아 YAML의 message 예시는 설명을 한국어로 옮긴 임의 문구임
 - OTP 재발송은 기존 값을 덮어쓰고 TTL 300초를 다시 설정함. 재발송 횟수·쿨다운은 미정이므로 미구현. 검증은 로그인 잠금 기준 5회와 맞춰 같은 OTP가 5회 틀리면 폐기함(5번째 OTP_MISMATCH, 이후 OTP_NOT_FOUND로 재발송 필요). 재발송·성공은 시도 횟수를 초기화함. 저장·발송 실패는 `500 EMAIL_SEND_FAILED`이며 저장값이 해당 발송의 OTP와 같을 때만 원자적으로 정리하고 원래 실패 원인과 정리 실패는 로그로 남김.
-- Resend 연결 타임아웃은 기본 5초(`resend.connect-timeout`), 읽기 타임아웃은 기본 10초(`resend.read-timeout`)로 정함. 타임아웃도 `500 EMAIL_SEND_FAILED`로 처리함.
+- Resend 연결 타임아웃은 기본 5초(`resend.connect-timeout`), 읽기 타임아웃은 기본 10초(`resend.read-timeout`)로 정함. 타임아웃도 `500 EMAIL_SEND_FAILED`로 처리함. 다만 요청을 보낸 뒤 응답을 받지 못한 경우(읽기 타임아웃, 응답 전 연결 끊김 등)는 Resend가 메일을 받아들였을 수 있어 OTP를 지우지 않음(#20 리뷰). 받은 메일의 코드로 검증할 수 있게 하려는 것. 연결 거부·호스트 조회 실패처럼 요청이 나가지 않은 게 확실한 경우와 Resend 오류 응답(4xx·5xx), 저장 실패는 기존처럼 OTP를 정리함. 연결 타임아웃은 읽기 타임아웃과 같은 예외(`SocketTimeoutException`)라 구분하지 않고 OTP를 남김.
 - 메일 제공자는 Resend HTTP API로 정함. API 키가 비어 있어도 기동은 허용하고 발송 시 실패 처리함. 인증 완료 토큰은 UUID, TTL 600초이며 기존 회원가입 계약을 사용함.
 - 회원가입 시 학번 중복 처리 규칙 및 에러 코드 미정 (이메일 중복은 PR #3 리뷰에서 `409 EMAIL_ALREADY_EXISTS`로 정함)
 - emailVerifiedToken 사용 후 삭제(1회용) 여부 미정
