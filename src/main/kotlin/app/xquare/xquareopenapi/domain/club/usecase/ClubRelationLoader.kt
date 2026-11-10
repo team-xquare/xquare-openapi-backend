@@ -34,6 +34,7 @@ class ClubRelationLoader(
         val memberIds = request.member.toSet()
         // 다른 동아리 등록·수정이 같은 학생을 동시에 넣지 못하게 학생 행을 잠근다.
         // 기존 구성원을 따로 늦게 잠그면 잠금 순서가 다른 요청과 엇갈려 데드락이 나므로, 한 번에 id 순으로 잠근다(#26 리뷰).
+        // 이 규칙으로 막는 건 동아리 API끼리의 데드락이다. 학생·교직원 삭제와의 순서 차이는 UpdateClubUseCase 주석 참고.
         val locked = studentRepository.findAllByIdInForUpdate(memberIds + previousMemberIds)
         val members = locked.filter { it.id in memberIds }
         if (members.size != memberIds.size) throw XquareException(ErrorCode.STUDENT_NOT_FOUND)
