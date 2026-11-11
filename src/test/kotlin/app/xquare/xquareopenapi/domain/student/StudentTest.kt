@@ -5,7 +5,11 @@ import app.xquare.xquareopenapi.global.jwt.JwtProvider
 import jakarta.servlet.ServletException
 import org.hamcrest.Matchers.contains
 import org.hamcrest.Matchers.containsString
+import app.xquare.xquareopenapi.domain.apikey.ApiKey
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyRepository
+import app.xquare.xquareopenapi.domain.apikey.ApiKeySecret
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentMatchers.anyInt
@@ -19,6 +23,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.MediaType
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
+import org.springframework.test.web.servlet.MockHttpServletRequestDsl
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActionsDsl
 import org.springframework.test.web.servlet.delete
@@ -35,6 +40,7 @@ import kotlin.test.assertSame
 class StudentTest @Autowired constructor(
     private val mockMvc: MockMvc,
     private val studentRepository: StudentRepository,
+    private val apiKeyRepository: ApiKeyRepository,
     jwtProvider: JwtProvider,
 ) {
     // 동시 등록·수정을 흉내 내려고 중복 검사만 통과시킬 때 쓴다.
@@ -44,8 +50,15 @@ class StudentTest @Autowired constructor(
     private val adminToken = jwtProvider.generateAccessToken(1L, Role.ADMIN)
     private val userToken = jwtProvider.generateAccessToken(2L, Role.USER)
 
+    // 조회 API는 API 키로만 인증한다.
+    @BeforeEach
+    fun setUp() {
+        apiKeyRepository.save(ApiKey(2L, "테스트", "테스트", ApiKeySecret.hash(RAW_API_KEY)))
+    }
+
     @AfterEach
     fun tearDown() {
+        apiKeyRepository.deleteAll()
         studentRepository.deleteAll()
     }
 
@@ -169,7 +182,7 @@ class StudentTest @Autowired constructor(
         val student = save(2315)
 
         mockMvc.get("/students/${student.id}") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.id") { value(student.id!!) }
@@ -190,7 +203,7 @@ class StudentTest @Autowired constructor(
         val student = save(3001)
 
         mockMvc.get("/students/${student.id}") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             jsonPath("$.grade") { value(3) }
             jsonPath("$.classNum") { value(0) }
@@ -201,14 +214,14 @@ class StudentTest @Autowired constructor(
     @Test
     fun `없는 학생이면 STUDENT_NOT_FOUND`() {
         mockMvc.get("/students/999") {
-            bearer(userToken)
+            apiKey()
         }.andExpectStudentNotFound()
     }
 
     @Test
     fun `학생 id가 숫자가 아니면 INVALID_INPUT`() {
         mockMvc.get("/students/abc") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("INVALID_INPUT") }
@@ -223,7 +236,7 @@ class StudentTest @Autowired constructor(
         (1101..1125).reversed().forEach { save(it) }
 
         mockMvc.get("/students") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.content.length()") { value(20) }
@@ -242,7 +255,7 @@ class StudentTest @Autowired constructor(
         (1101..1105).forEach { save(it) }
 
         mockMvc.get("/students?page=1&size=2") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             jsonPath("$.content[*].studentNumber") { value(contains(1103, 1104)) }
             jsonPath("$.page") { value(1) }
@@ -284,14 +297,14 @@ class StudentTest @Autowired constructor(
         // URI 문자열에 %를 넣으면 MockMvc가 다시 인코딩하므로 param으로 넘긴다.
         listOf("%" to 1101, "_" to 1102, "!" to 1103).forEach { (name, expected) ->
             mockMvc.get("/students") {
-                bearer(userToken)
+                apiKey()
                 param("name", name)
             }.andExpect {
                 jsonPath("$.content[*].studentNumber") { value(contains(expected)) }
             }
         }
         mockMvc.get("/students") {
-            bearer(userToken)
+            apiKey()
             param("name", "!%")
         }.andExpect {
             jsonPath("$.content") { isEmpty() }
@@ -327,7 +340,7 @@ class StudentTest @Autowired constructor(
             "page=21474837&size=100" to "page: ",
         ).forEach { (query, expectedMessage) ->
             mockMvc.get("/students?$query") {
-                bearer(userToken)
+                apiKey()
             }.andExpect {
                 status { isBadRequest() }
                 jsonPath("$.code") { value("INVALID_INPUT") }
@@ -339,7 +352,7 @@ class StudentTest @Autowired constructor(
     @Test
     fun `size는 100까지, page는 offset이 int를 넘지 않는 데까지 받는다`() {
         mockMvc.get("/students?page=21474836&size=100") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.page") { value(21474836) }
@@ -479,12 +492,10 @@ class StudentTest @Autowired constructor(
     // 권한
 
     @Test
-    fun `토큰이 없으면 INVALID_TOKEN`() {
+    fun `토큰이 없으면 등록, 수정, 삭제는 INVALID_TOKEN`() {
         val student = save(2315)
 
         listOf(
-            mockMvc.get("/students"),
-            mockMvc.get("/students/${student.id}"),
             mockMvc.post("/students") { json(body()) },
             mockMvc.patch("/students/${student.id}") { json(body()) },
             mockMvc.delete("/students/${student.id}"),
@@ -492,6 +503,23 @@ class StudentTest @Autowired constructor(
             it.andExpect {
                 status { isUnauthorized() }
                 jsonPath("$.code") { value("INVALID_TOKEN") }
+            }
+        }
+    }
+
+    @Test
+    fun `API 키가 없거나 틀리면 조회는 INVALID_API_KEY`() {
+        val student = save(2315)
+
+        listOf(
+            mockMvc.get("/students"),
+            mockMvc.get("/students/${student.id}"),
+            mockMvc.get("/students") { header("X-API-Key", "xq_wrong") },
+        ).forEach {
+            it.andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value("INVALID_API_KEY") }
+                jsonPath("$.message") { value("API 키가 없거나 유효하지 않습니다.") }
             }
         }
     }
@@ -515,11 +543,15 @@ class StudentTest @Autowired constructor(
     }
 
     @Test
-    fun `ADMIN도 조회할 수 있다`() {
+    fun `토큰만으로는 USER든 ADMIN이든 조회할 수 없다`() {
         val student = save(2315)
 
-        mockMvc.get("/students") { bearer(adminToken) }.andExpect { status { isOk() } }
-        mockMvc.get("/students/${student.id}") { bearer(adminToken) }.andExpect { status { isOk() } }
+        listOf(userToken, adminToken).forEach { token ->
+            mockMvc.get("/students/${student.id}") { bearer(token) }.andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value("INVALID_API_KEY") }
+            }
+        }
     }
 
     private fun save(studentNumber: Int, name: String = "김준서") =
@@ -527,7 +559,7 @@ class StudentTest @Autowired constructor(
 
     private fun expectStudentNumbers(query: String, vararg expected: Int) {
         mockMvc.get("/students?$query") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.content[*].studentNumber") { value(contains(*expected.toTypedArray())) }
@@ -555,6 +587,8 @@ class StudentTest @Autowired constructor(
         content = body
     }
 
+    private fun MockHttpServletRequestDsl.apiKey() = header("X-API-Key", RAW_API_KEY)
+
     private fun body(
         studentNumber: Int = 2315,
         name: String = "김준서",
@@ -568,4 +602,8 @@ class StudentTest @Autowired constructor(
           "email": "$email"
         }
     """.trimIndent()
+
+    companion object {
+        private const val RAW_API_KEY = "xq_test-api-key"
+    }
 }

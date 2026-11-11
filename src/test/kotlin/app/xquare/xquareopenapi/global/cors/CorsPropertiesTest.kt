@@ -37,7 +37,7 @@ class CorsPropertiesTest {
 
         assertEquals(listOf("GET", "POST", "PUT", "PATCH", "DELETE"), configuration.allowedMethods)
         assertNull(configuration.checkHttpMethod(HttpMethod.TRACE))
-        assertEquals(listOf("Authorization", "Content-Type"), configuration.allowedHeaders)
+        assertEquals(listOf("Authorization", "Content-Type", "X-API-Key"), configuration.allowedHeaders)
         assertEquals(3600L, configuration.maxAge)
         assertNull(configuration.allowCredentials)
     }

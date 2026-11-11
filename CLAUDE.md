@@ -31,7 +31,7 @@ API 스펙이 있습니다.
     - 생존자로 나오면 `javap -c -l -p`로 해당 줄의 바이트코드를 보고 위 경우인지 확인한다. 핵심 로직에서는 `if (a != null) a.b else c`처럼 써서 피했다(`LoginUseCase`, `SignupUseCase.save`).
   - `timeoutConstInMillis = 30000`: Testcontainers 테스트가 뮤턴트를 처음 돌릴 때 컨테이너를 띄우느라 기본 제한 시간을 넘겨 TIMED_OUT이 난다. 30초로 늘려도 가끔 남는데, 같은 뮤턴트가 다른 회차에서 KILLED로 나오면 환경 문제로 본다.
   - `config` 패키지는 대상에서 뺐다. Spring 컨텍스트가 뜰 때 한 번만 실행되고 PIT은 캐시된 컨텍스트를 재사용해서, 바뀐 코드가 실행되지 않아 가짜 생존자만 생긴다. 생성자에서 한 번만 도는 코드도 같은 이유로 Spring 테스트로는 못 잡으니 단위 테스트(`JwtProviderTest`처럼)로 검증한다.
-- `RedisAuthRepositoriesTest`와 `ReissueConcurrencyTest`는 Redis를, `UserUniqueConstraintMySqlTest`와 `StudentRepositoryMySqlTest`는 MySQL을 Testcontainers로 띄운다. Docker가 꺼져 있으면 실패하지 않고 건너뛴다.
+- `RedisAuthRepositoriesTest`와 `ReissueConcurrencyTest`는 Redis를, `UserUniqueConstraintMySqlTest`, `StudentRepositoryMySqlTest`, `ApiKeyRepositoryMySqlTest`는 MySQL을 Testcontainers로 띄운다. Docker가 꺼져 있으면 실패하지 않고 건너뛴다.
 - `ReissueConcurrencyTest`는 실제 HTTP 서버에 같은 리프레시 토큰으로 8개 요청을 동시에 보내는 검증을 3회 반복한다. 성공 1개·401 응답 7개, Redis에 저장된 토큰과 성공 응답의 일치, 새 토큰의 재발급과 이전 토큰 재사용 거부를 확인한다. 테스트 종료 시 컨텍스트를 닫으므로 H2 DB 이름도 다른 테스트와 분리한다.
 
 ## 로컬 실행에 필요한 환경변수
@@ -53,8 +53,9 @@ API 스펙이 있습니다.
 - 에러 처리: `XquareException(ErrorCode.X)`를 던지면 `GlobalExceptionHandler`가 `{ "code", "message" }` 응답으로 바꾼다. 새 에러는 명세의 에러 코드 이름 그대로 `ErrorCode`에 추가한다. 입력 검증 실패와 JSON 파싱 실패는 모두 `400 INVALID_INPUT`이다.
 - 보안: `SecurityConfig`는 `POST /auth/signup`, `/auth/login`, `/auth/reissue` 외의 모든 요청에 인증을 요구한다. 공개 엔드포인트를 새로 만들면 여기에 `permitAll`을 추가해야 하고, 빠뜨리면 토큰 없는 요청이 `401 INVALID_TOKEN`이 된다. `ERROR` 디스패치(`/error` 포워드)도 허용해 둬야 한다. 막으면 415·500 같은 원래 응답이 모두 401로 바뀐다. MockMvc는 이 포워드를 흉내 내지 않으므로 `ErrorDispatchTest`처럼 실제 서버로 확인한다. `PasswordEncoder`(BCrypt) 빈도 여기서 만든다.
 - 인증: `JwtAuthenticationFilter`가 `Authorization: Bearer {accessToken}`을 검증해 principal=userId, 권한=`ROLE_{Role}`로 인증한다. 토큰이 없거나 유효하지 않으면 인증하지 않고 넘기고, 인증이 필요한 경로면 `SecurityErrorResponder`가 `401 INVALID_TOKEN`, 권한이 부족하면 `403 FORBIDDEN`으로 응답한다. 이 둘은 Security 필터에서 막히므로 `GlobalExceptionHandler`를 거치지 않는다. 필터는 빈으로 등록하지 않는다(Spring Boot가 서블릿 필터로도 등록해 두 번 실행된다).
-- CORS: `SecurityConfig`의 `cors { }`가 `corsConfigurationSource` 빈을 쓴다. 설정 값은 `global/cors/CorsProperties`에 있고, 허용 메서드는 GET/POST/PUT/PATCH/DELETE, 허용 헤더는 `Authorization`/`Content-Type`이다. 토큰을 헤더로 주고받으므로 credentials(쿠키)는 허용하지 않는다. preflight는 인증 검사보다 먼저 처리돼서 토큰 없이 통과한다.
-- 권한: `/students`, `/teachers` 등록·수정·삭제처럼 ADMIN 전용 API는 `SecurityConfig`에 `hasRole(ADMIN)`으로 메서드와 경로를 적는다. 나머지는 `authenticated`라서 USER와 ADMIN 모두 통과한다. ADMIN 계정을 만드는 API는 없어서 DB에서 `users.role`을 직접 바꿔야 한다.
+- API 키 인증: 조회 API(`GET`·`HEAD` `/students`, `/students/*`, `/teachers`, `/teachers/*`)는 `SecurityConfig.apiKeySecurityFilterChain`(`@Order(1)`)이 먼저 가져가 `X-API-Key`로만 인증한다. 이 체인에는 `ApiKeyAuthenticationFilter`만 있고 JWT 필터가 없어서, 토큰만 보내면 `401 INVALID_API_KEY`다. 반대로 JWT 체인에는 키 필터가 없어서 키로는 등록·수정·삭제를 못 한다. 조회 API를 새로 만들면 `API_KEY_READ_ENDPOINTS`에 경로를 넣는다. 빠뜨리면 JWT 체인으로 가서 토큰으로 조회된다. Spring MVC는 GET 매핑에 HEAD도 자동으로 응답하므로 매처는 GET과 HEAD를 함께 만든다.
+- CORS: `SecurityConfig`의 `cors { }`가 `corsConfigurationSource` 빈을 쓴다. 설정 값은 `global/cors/CorsProperties`에 있고, 허용 메서드는 GET/POST/PUT/PATCH/DELETE, 허용 헤더는 `Authorization`/`Content-Type`/`X-API-Key`다. 토큰을 헤더로 주고받으므로 credentials(쿠키)는 허용하지 않는다. preflight는 인증 검사보다 먼저 처리돼서 토큰 없이 통과한다.
+- 권한: `/students`, `/teachers` 등록·수정·삭제처럼 ADMIN 전용 API는 `SecurityConfig`에 `hasRole(ADMIN)`으로 메서드와 경로를 적는다. 나머지는 `authenticated`라서 USER와 ADMIN 모두 통과한다(조회 API는 위의 API 키 체인이 먼저 가져간다). ADMIN 계정을 만드는 API는 없어서 DB에서 `users.role`을 직접 바꿔야 한다.
 - 수정 API(PATCH)는 등록과 같은 요청 DTO로 모든 필드를 받아 통째로 바꾼다(`StudentRequest`, `TeacherRequest`). 그래서 교직원의 nullable 필드(`grade`, `classNum`)를 null로 보내면 값을 지운다.
 - 목록 조회는 `@ModelAttribute` 검색 DTO로 받는다. `page`(0 이상)·`size`(1~100)는 Bean Validation으로 검사하고, 응답은 `global/dto/PageResponse`. 쿼리 값의 타입이 틀리면 `GlobalExceptionHandler`가 `형식이 올바르지 않습니다.`로 바꿔 400을 준다.
   - 부분 일치 검색은 `like concat('%', :x, '%') escape '!'`로 쓰고, 값은 `escapeLike()`(`global/jpa`)를 거쳐 넘긴다. 그래야 입력의 `%`·`_`가 글자 그대로 찾아진다. MySQL은 문자열 안의 `\`를 이스케이프로 읽으므로 이스케이프 문자로 쓰지 않는다.
@@ -65,6 +66,7 @@ API 스펙이 있습니다.
 - Redis 키 형식은 다른 기능과 맞춰야 하는 계약이다:
   - `email_verified_token:{token}` → 이메일. 이메일 OTP 인증 API(아직 없음)가 TTL 600초로 저장하고, 회원가입이 읽은 뒤 지운다.
   - `refresh_token:{userId}` → 리프레시 토큰. TTL은 `jwt.refresh-expiration`. 사용자당 하나라 다시 로그인하면 이전 토큰은 폐기된다(사용자가 정함). 재발급은 저장값이 요청 토큰과 같을 때만 Lua 스크립트로 한 번에 바꾼다(`replace`). GET과 SET을 따로 하면 동시 재발급이나 그 사이의 재로그인 때 폐기된 토큰이 새 토큰을 덮어쓴다.
+- API 키: `api_keys`에 활용신청 내용(서비스 이름·사용 목적)과 키 해시를 사용자당 한 행으로 둔다. 원문은 `ApiKeySecret.generate()`로 만들어 발급·재발급 응답에서만 내려주고 DB에는 `ApiKeySecret.hash()`(SHA-256 16진수)만 저장한다. 재발급은 해시만 바꿔서 기존 키를 바로 폐기한다. unique 제약 이름 `uk_api_keys_user_id`도 동시 신청을 409로 바꾸는 데 쓰는 계약이다.
 - `users`의 unique 제약 이름(`uk_users_username`, `uk_users_email`)도 계약이다. 동시 가입으로 중복 검사를 통과한 요청이 제약에 걸리면, `UserUniqueConstraint`가 이 이름으로 어떤 값이 겹쳤는지 구분해 409로 바꾼다. 운영 DB의 제약 이름이 다르면 구분하지 못하고 500이 난다.
 - JWT: `sub`=userId, `type`=`access`/`refresh`, 액세스 토큰에만 `role`을 넣는다. 모든 토큰에 `jti`(UUID)를 넣는다. 빼면 같은 초에 발급한 토큰이 똑같아져, 재발급 직후에도 폐기한 토큰이 통한다. `generateRefreshToken`은 토큰과 TTL을 함께 돌려주며, Redis에 저장할 때 이 TTL을 그대로 쓴다. `parseRefreshToken`은 서명 오류·만료·액세스 토큰이면 예외 대신 null을 돌려준다.
 
