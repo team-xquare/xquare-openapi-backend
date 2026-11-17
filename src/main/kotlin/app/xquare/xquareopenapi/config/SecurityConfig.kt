@@ -41,6 +41,10 @@ class SecurityConfig {
                 authorize(HttpMethod.POST, "/auth/signup", permitAll)
                 authorize(HttpMethod.POST, "/auth/login", permitAll)
                 authorize(HttpMethod.POST, "/auth/reissue", permitAll)
+                // Swagger UI와 API 문서(springdoc)
+                authorize(HttpMethod.GET, "/swagger-ui.html", permitAll)
+                authorize(HttpMethod.GET, "/swagger-ui/**", permitAll)
+                authorize(HttpMethod.GET, "/v3/api-docs/**", permitAll)
                 // 처리되지 않은 오류는 /error로 포워드된다. 이걸 막으면 415·500 같은 원래 응답이 전부 401로 바뀐다.
                 authorize(DispatcherTypeRequestMatcher(DispatcherType.ERROR), permitAll)
                 authorize(HttpMethod.POST, "/students", hasRole(ADMIN))
