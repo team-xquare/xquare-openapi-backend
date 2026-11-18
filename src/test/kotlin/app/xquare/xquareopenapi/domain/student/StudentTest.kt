@@ -2,7 +2,6 @@ package app.xquare.xquareopenapi.domain.student
 
 import app.xquare.xquareopenapi.domain.user.Role
 import app.xquare.xquareopenapi.global.jwt.JwtProvider
-import jakarta.servlet.ServletException
 import org.hamcrest.Matchers.contains
 import org.hamcrest.Matchers.containsString
 import app.xquare.xquareopenapi.domain.apikey.ApiKey
@@ -32,8 +31,6 @@ import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import java.time.LocalDate
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertSame
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -132,17 +129,19 @@ class StudentTest @Autowired constructor(
     }
 
     @Test
-    fun `학번 제약이 아닌 무결성 위반은 원래 예외를 그대로 던진다`() {
+    fun `학번 제약이 아닌 무결성 위반은 409로 바꾸지 않고 500 INTERNAL_SERVER_ERROR`() {
         val violation = DataIntegrityViolationException("다른 제약 위반")
         doThrow(violation).`when`(spiedStudentRepository).saveAndFlush(any())
 
-        val thrown = assertFailsWith<ServletException> {
-            mockMvc.post("/students") {
-                bearer(adminToken)
-                json(body())
-            }
+        // 원래 예외는 GlobalExceptionHandler가 로그로 남기고, 응답은 {code, message} 형식의 500이다.
+        mockMvc.post("/students") {
+            bearer(adminToken)
+            json(body())
+        }.andExpect {
+            status { isInternalServerError() }
+            jsonPath("$.code") { value("INTERNAL_SERVER_ERROR") }
         }
-        assertSame(violation, thrown.cause)
+        assertEquals(0, studentRepository.count())
     }
 
     @Test
@@ -421,18 +420,19 @@ class StudentTest @Autowired constructor(
     }
 
     @Test
-    fun `수정 중 학번 제약이 아닌 무결성 위반은 원래 예외를 그대로 던진다`() {
+    fun `수정 중 학번 제약이 아닌 무결성 위반은 409로 바꾸지 않고 500 INTERNAL_SERVER_ERROR`() {
         val student = save(2315)
         val violation = DataIntegrityViolationException("다른 제약 위반")
         doThrow(violation).`when`(spiedStudentRepository).flush()
 
-        val thrown = assertFailsWith<ServletException> {
-            mockMvc.patch("/students/${student.id}") {
-                bearer(adminToken)
-                json(body())
-            }
+        mockMvc.patch("/students/${student.id}") {
+            bearer(adminToken)
+            json(body(studentNumber = 2316))
+        }.andExpect {
+            status { isInternalServerError() }
+            jsonPath("$.code") { value("INTERNAL_SERVER_ERROR") }
         }
-        assertSame(violation, thrown.cause)
+        assertEquals(2315, studentRepository.findById(student.id!!).get().studentNumber)
     }
 
     @Test

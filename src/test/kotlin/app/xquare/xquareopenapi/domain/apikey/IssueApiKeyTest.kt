@@ -2,7 +2,6 @@ package app.xquare.xquareopenapi.domain.apikey
 
 import app.xquare.xquareopenapi.domain.user.Role
 import app.xquare.xquareopenapi.global.jwt.JwtProvider
-import jakarta.servlet.ServletException
 import org.hamcrest.Matchers.containsString
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -24,9 +23,7 @@ import org.springframework.test.web.servlet.ResultActionsDsl
 import org.springframework.test.web.servlet.post
 import tools.jackson.databind.json.JsonMapper
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 @SpringBootTest
@@ -92,12 +89,16 @@ class IssueApiKeyTest @Autowired constructor(
     }
 
     @Test
-    fun `사용자 제약이 아닌 무결성 위반은 원래 예외를 그대로 던진다`() {
+    fun `사용자 제약이 아닌 무결성 위반은 409로 바꾸지 않고 500 INTERNAL_SERVER_ERROR`() {
         val violation = DataIntegrityViolationException("다른 제약 위반")
         doThrow(violation).`when`(spiedApiKeyRepository).saveAndFlush(any())
 
-        val thrown = assertFailsWith<ServletException> { issue(userToken) }
-        assertSame(violation, thrown.cause)
+        // 원래 예외는 GlobalExceptionHandler가 로그로 남기고, 응답은 {code, message} 형식의 500이다.
+        issue(userToken).andExpect {
+            status { isInternalServerError() }
+            jsonPath("$.code") { value("INTERNAL_SERVER_ERROR") }
+        }
+        assertEquals(0, apiKeyRepository.count())
     }
 
     @Test
