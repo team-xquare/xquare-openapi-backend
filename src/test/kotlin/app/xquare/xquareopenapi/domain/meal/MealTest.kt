@@ -361,7 +361,7 @@ class MealTest @Autowired constructor(
     fun `중복 검사를 통과해도 수정한 날짜가 겹치면 MEAL_ALREADY_EXISTS`() {
         val meal = save(date = LocalDate.of(2026, 9, 1))
         save(date = LocalDate.of(2026, 9, 2))
-        doReturn(null).`when`(spiedMealRepository).findByDate(anyDate())
+        doReturn(null).`when`(spiedMealRepository).findIdByDate(anyDate())
 
         mockMvc.patch("/meals/${meal.id}") {
             bearer(adminToken)

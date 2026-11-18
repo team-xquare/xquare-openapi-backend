@@ -7,13 +7,11 @@ import org.springframework.data.jpa.repository.Query
 import java.time.LocalDate
 
 interface MealRepository : JpaRepository<Meal, Long> {
-    fun findByDate(date: LocalDate): Meal?
-
-    // 급식 등록이 '급식 없음' 표시를 잠그기 전에 id만 읽는다. 엔티티를 읽지 않아야 잠근 뒤 읽은 값을 쓴다.
+    // 급식 등록과 날짜 이동이 '급식 없음' 표시를 잠그기 전에 id만 읽는다. 엔티티를 읽지 않아야 잠근 뒤 읽은 값을 쓴다.
     @Query("select m.id from Meal m where m.date = :date")
     fun findIdByDate(date: LocalDate): Long?
 
-    // 급식 등록이 '급식 없음' 표시 행을 고치기 전에 잠근다. 같은 표시에 동시에 등록하면 늦은 쪽이 먼저 고친 값을 보고 409가 된다.
+    // 급식 등록이 '급식 없음' 표시 행을 고치기 전에, 날짜 이동이 그 행을 지우기 전에 잠근다. 같은 표시에 동시에 오면 늦은 쪽이 먼저 고친 값을 보고 409가 된다.
     // 날짜가 아니라 id로 잠근다. MySQL에서 없는 날짜를 FOR UPDATE로 읽으면 gap lock이 걸려, 같은 날짜 동시 등록끼리 데드락이 난다.
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select m from Meal m where m.id = :id")

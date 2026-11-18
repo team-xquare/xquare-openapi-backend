@@ -48,6 +48,7 @@ API 스펙이 있습니다.
   - `config` 패키지는 대상에서 뺐다. Spring 컨텍스트가 뜰 때 한 번만 실행되고 PIT은 캐시된 컨텍스트를 재사용해서, 바뀐 코드가 실행되지 않아 가짜 생존자만 생긴다. 생성자에서 한 번만 도는 코드도 같은 이유로 Spring 테스트로는 못 잡으니 단위 테스트(`JwtProviderTest`처럼)로 검증한다.
 - `RedisAuthRepositoriesTest`와 `ReissueConcurrencyTest`는 Redis를, `UserUniqueConstraintMySqlTest`와 `StudentRepositoryMySqlTest`는 MySQL을 Testcontainers로 띄운다. Docker가 꺼져 있으면 실패하지 않고 건너뛴다.
 - `ReissueConcurrencyTest`는 실제 HTTP 서버에 같은 리프레시 토큰으로 8개 요청을 동시에 보내는 검증을 3회 반복한다. 성공 1개·401 응답 7개, Redis에 저장된 토큰과 성공 응답의 일치, 새 토큰의 재발급과 이전 토큰 재사용 거부를 확인한다. 테스트 종료 시 컨텍스트를 닫으므로 H2 DB 이름도 다른 테스트와 분리한다.
+- `@MockitoSpyBean`으로 감싼 Spring Data 저장소는 JDK 프록시라 진짜 스파이가 아니라 위임 목이다. `doAnswer` 안에서 `callRealMethod()`는 실패하므로 `mockingDetails(목).mockCreationSettings.defaultAnswer.answer(invocation)`로 실제 동작을 부른다.
 
 ## 로컬 실행에 필요한 환경변수
 
@@ -80,6 +81,7 @@ API 스펙이 있습니다.
 - `meals`의 unique 제약 이름 `uk_meals_meal_date`도 같은 방식으로 409(`MEAL_ALREADY_EXISTS`)로 바꾸는 데 쓴다.
 - `students`의 unique 제약 이름 `uk_students_student_number`도 계약이다. 동시 등록·수정으로 중복 검사를 통과한 요청이 제약에 걸리면 이 이름으로 구분해 409로 바꾼다(`DataIntegrityViolationException.violates`).
 - 나이스 급식 동기화(`domain/meal/neis`): `NeisMealSyncScheduler`가 cron마다 이번 달·다음 달을 `NeisMealClient`(RestClient, `config/NeisConfig`의 `neisRestClient`)로 가져와 `SyncNeisMealsUseCase`로 저장한다. `Meal.editedByAdmin`이 true(관리자가 등록·수정)인 날짜는 덮어쓰지 않는다. 동기화는 `findAllByDateIn`으로 행을 잠그고 읽어 관리자 수정과 겹쳐도 관리자 수정을 지우지 않는다.
+- 급식 '급식 없음' 표시: 급식 삭제 API가 없어서 세 끼가 모두 빈 행(`Meal.isNoMeal`, `editedByAdmin = true`)을 '급식 없음' 표시로 쓴다. 조회 API에서 빼고(단건 404), 등록·날짜 이동에서는 없는 급식으로 본다. 수정으로 날짜를 옮기면 원래 날짜에 표시를 남긴다. 급식 조회 쿼리를 새로 만들면 표시를 빼야 한다. 등록이 표시를 새 메뉴로 고치거나 날짜 이동이 표시를 지울 때는 `findIdByDate`로 id만 읽고 `findByIdForUpdate`로 잠근 뒤 다시 읽는다. 잠그지 않으면 같은 날짜의 등록·수정이 겹칠 때 먼저 쓴 급식이 에러 없이 사라진다(`CreateMealConcurrencyTest`, `UpdateMealConcurrencyTest`).
   - 테스트는 실제 나이스를 부르지 않는다. `MockRestServiceServer.bindTo(RestClient.builder())`로 만든 RestClient를 넣어 클라이언트·스케줄러를 직접 만든다(`NeisMealClientTest`, `NeisMealSyncTest`). 테스트 설정은 `neis.meal-sync-cron: "-"`로 스케줄을 끈다.
   - "이번 달" 같은 날짜 계산은 `Clock` 빈(`config/ClockConfig`, Asia/Seoul)을 주입받아 한다. 테스트는 `Clock.fixed`를 넣는다.
 - Redis 저장소는 인터페이스(`EmailVerifiedTokenRepository`, `RefreshTokenRepository`) 뒤에 둔다. 인증 API 테스트(`SignupTest`, `LoginTest`, `ReissueTest`)는 `FakeAuthRepositories`를 `@Import`해 `@Primary` 가짜 구현으로 바꿔 끼워서 Redis 없이 돈다. 저장소 인터페이스에 메서드를 추가하면 가짜 구현에도 넣는다.
