@@ -34,6 +34,14 @@ class SwaggerTest @Autowired constructor(
     }
 
     @Test
+    fun `내 정보 조회는 토큰의 사용자 id를 쓰므로 문서에 요청 파라미터가 없다`() {
+        mockMvc.get("/v3/api-docs").andExpect {
+            jsonPath("$.paths['/users/me'].get") { exists() }
+            jsonPath("$.paths['/users/me'].get.parameters") { doesNotExist() }
+        }
+    }
+
+    @Test
     fun `Swagger UI 화면은 토큰 없이 열린다`() {
         mockMvc.get("/swagger-ui/index.html").andExpect {
             status { isOk() }
