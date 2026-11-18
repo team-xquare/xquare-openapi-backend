@@ -71,10 +71,19 @@ class FakeRefreshTokenRepository : RefreshTokenRepository {
         return true
     }
 
+    var failOnDelete = false
+
+    override fun delete(userId: Long) {
+        if (failOnDelete) throw RedisConnectionFailureException("Redis 장애")
+        tokens.remove(userId)
+        ttls.remove(userId)
+    }
+
     fun clear() {
         tokens.clear()
         ttls.clear()
         failOnSave = false
+        failOnDelete = false
     }
 }
 

@@ -20,6 +20,7 @@ class SwaggerTest @Autowired constructor(
             status { isOk() }
             jsonPath("$.openapi") { exists() }
             jsonPath("$.paths['/auth/signup']") { exists() }
+            jsonPath("$.paths['/auth/password/reset'].post") { exists() }
         }
     }
 

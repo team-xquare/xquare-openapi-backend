@@ -23,8 +23,7 @@ class User(
     @Column(nullable = false, length = 15)
     val username: String,
 
-    @Column(nullable = false, length = 60)
-    val password: String,
+    password: String,
 
     @Column(nullable = false)
     val studentNumber: Int,
@@ -39,6 +38,15 @@ class User(
     @Column(nullable = false, length = 20)
     val role: Role = Role.USER,
 ) {
+    // 비밀번호 재설정에서만 바꾼다. 인코딩된 해시만 받는다.
+    @Column(nullable = false, length = 60)
+    var password: String = password
+        protected set
+
+    fun changePassword(encodedPassword: String) {
+        password = encodedPassword
+    }
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null

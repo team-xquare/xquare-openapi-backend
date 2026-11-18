@@ -61,6 +61,17 @@ class RedisAuthRepositoriesTest @Autowired constructor(
     }
 
     @Test
+    fun `리프레시 토큰을 지우면 그 사용자의 키만 사라진다`() {
+        redisTemplate.opsForValue().set("refresh_token:7", "token-7")
+        redisTemplate.opsForValue().set("refresh_token:8", "token-8")
+
+        refreshTokenRepository.delete(7L)
+
+        assertEquals(false, redisTemplate.hasKey("refresh_token:7"))
+        assertEquals("token-8", redisTemplate.opsForValue().get("refresh_token:8"))
+    }
+
+    @Test
     fun `저장된 리프레시 토큰이 기대한 값이면 새 토큰과 TTL로 바꾼다`() {
         redisTemplate.opsForValue().set("refresh_token:7", "old-token")
 

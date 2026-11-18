@@ -227,6 +227,76 @@ paths:
                   value:
                     code: INVALID_REFRESH_TOKEN
                     message: 리프레시 토큰이 없거나 만료 또는 폐기되었습니다. 재로그인이 필요합니다.
+  /auth/password/reset:
+    post:
+      tags:
+      - 인증/인가
+      summary: 비밀번호 재설정
+      description: '이메일 OTP 발송(`/auth/email/otp`)·검증(`/auth/email/otp/verify`)으로 받은 emailVerifiedToken과 새 비밀번호로 비밀번호를 바꾼다. 이메일은 요청으로 받지
+        않고 토큰에 저장된 값을 쓰며, 그 이메일로 가입한 사용자의 비밀번호를 BCrypt로 인코딩해 저장한다. 새 비밀번호 규칙은 회원가입과 같다. 성공하면 토큰을 지우고(1회용),
+        그 사용자의 refreshToken을 폐기해 기존 세션은 재발급할 수 없다. 이미 발급된 accessToken은 만료(1시간) 전까지 유효하다. 토큰은 회원가입과 같은 것을 쓴다(현재 구현 기준).
+        권한: ALL(비로그인 허용).'
+      operationId: resetPassword
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthPasswordResetRequest'
+      responses:
+        '200':
+          description: 재설정 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: 비밀번호가 변경되었습니다.
+        '400':
+          description: 'INVALID_INPUT: emailVerifiedToken이 비어 있거나 newPassword가 규칙에 맞지 않음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 'newPassword: 8~20자 영문/숫자/특수문자이며 특수문자를 포함해야 합니다.'
+        '403':
+          description: 'EMAIL_NOT_VERIFIED: emailVerifiedToken이 없거나 만료됨'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                EMAIL_NOT_VERIFIED:
+                  value:
+                    code: EMAIL_NOT_VERIFIED
+                    message: 이메일 인증이 완료되지 않았습니다.
+        '404':
+          description: 'USER_NOT_FOUND: 토큰의 이메일로 가입한 사용자가 없음 (토큰은 지우지 않음)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                USER_NOT_FOUND:
+                  value:
+                    code: USER_NOT_FOUND
+                    message: 가입되지 않은 이메일입니다.
+        '500':
+          description: 'INTERNAL_SERVER_ERROR: Redis·DB 장애. 비밀번호는 바뀌지 않으며 같은 토큰으로 다시 시도할 수 있음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INTERNAL_SERVER_ERROR:
+                  value:
+                    code: INTERNAL_SERVER_ERROR
+                    message: 일시적인 서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.
   /auth/signup:
     post:
       tags:
@@ -2479,6 +2549,23 @@ components:
           type: string
           description: 로그인 시 발급받은 리프레시 토큰
           example: eyJhbGci...
+    AuthPasswordResetRequest:
+      type: object
+      required:
+      - emailVerifiedToken
+      - newPassword
+      properties:
+        emailVerifiedToken:
+          type: string
+          description: 이메일 OTP 검증으로 받은 인증 완료 토큰(600초 유효, 1회용). 회원가입과 같은 토큰
+          example: 3f2a9c1e-7b4d-4e8a-9c2f-1d5e6a7b8c9d
+        newPassword:
+          type: string
+          minLength: 8
+          maxLength: 20
+          pattern: ^(?=.*[^A-Za-z0-9])[\x21-\x7E]{8,20}$
+          description: 새 비밀번호. 회원가입 password와 같은 규칙(8~20자, 특수문자 1개 이상, 공백을 뺀 ASCII)
+          example: NewPassword1!
     AuthSignupRequest:
       type: object
       required:

@@ -13,6 +13,8 @@ import app.xquare.xquareopenapi.domain.auth.presentation.dto.EmailVerifiedTokenR
 import app.xquare.xquareopenapi.domain.auth.presentation.dto.MessageResponse
 import app.xquare.xquareopenapi.domain.auth.usecase.SendEmailOtpUseCase
 import app.xquare.xquareopenapi.domain.auth.usecase.VerifyEmailOtpUseCase
+import app.xquare.xquareopenapi.domain.auth.presentation.dto.PasswordResetRequest
+import app.xquare.xquareopenapi.domain.auth.usecase.ResetPasswordUseCase
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.PostMapping
@@ -29,6 +31,7 @@ class AuthController(
     private val signupUseCase: SignupUseCase,
     private val loginUseCase: LoginUseCase,
     private val reissueUseCase: ReissueUseCase,
+    private val resetPasswordUseCase: ResetPasswordUseCase,
 ) {
 
     @PostMapping("/email/otp")
@@ -51,4 +54,8 @@ class AuthController(
     @PostMapping("/reissue")
     fun reissue(@RequestBody @Valid request: ReissueRequest): TokenResponse =
         reissueUseCase.execute(request)
+
+    @PostMapping("/password/reset")
+    fun resetPassword(@RequestBody @Valid request: PasswordResetRequest): MessageResponse =
+        resetPasswordUseCase.execute(request)
 }
