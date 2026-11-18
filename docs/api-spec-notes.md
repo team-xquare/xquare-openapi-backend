@@ -77,6 +77,7 @@
 - 키는 `X-API-Key` 헤더로 받는다. JWT의 `Authorization`과 헤더를 나눠서 둘을 같이 보내도 헷갈리지 않게 했다
 - 키 인증 대상은 지금 있는 조회 API(`GET /students`, `/students/{id}`, `/teachers`, `/teachers/{id}`)와 같은 경로의 HEAD. Spring MVC가 GET 매핑에 HEAD도 자동으로 응답해서, 빼면 토큰만으로 200/404를 보고 존재 여부를 알 수 있다. 노션 API 명세서에는 타겟이 USER(JWT)로 적혀 있지만 태스크("조회 API는 API 키")를 따랐다
 - 경로와 분야: `/students`, `/students/*` → `STUDENT`, `/teachers`, `/teachers/*` → `TEACHER`. `SecurityConfig.API_KEY_READ_PATHS`에 경로→분야로 적는다. 동아리·일정·자습 감독 조회 API(`/clubs`, `/clubs/*`, `/schedules`, `/schedules/*`, `/study-supervisors`, `/study-supervisors/*`, `/study-supervisors/day`)는 아직 이 브랜치에 없어서 넣지 않았고, 병합되면 한 줄씩(`"/clubs" to ApiKeyField.CLUB`) 추가한다
+- 키 삭제(OPN-96)는 `DELETE /api-keys/me`. 로그인한 본인 키와 모든 신청 기록을 지워 처음 상태로 되돌린다(다시 신청하면 `FIRST`로 새 키). 명세가 이메일 인증을 신청·재발급에만 요구해서 삭제에는 요구하지 않는다. 키가 없으면 `404 API_KEY_NOT_FOUND`, 성공하면 `200 {"message":"삭제되었습니다."}`. 실제로 지운다(하드 삭제). 키 행을 먼저 지우므로 같은 키를 동시에 지우면 하나만 200이고 나머지는 404, 분야 추가와 겹치면 분야 추가가 키 행 잠금에서 기다렸다가 첫 신청으로 처리된다
 - 키가 없거나 틀리면 액세스 토큰이 있어도 `401 INVALID_API_KEY`. 키는 맞지만 경로의 분야를 신청하지 않았으면 `403 API_KEY_FIELD_FORBIDDEN`(팀 공유용 에러 코드). 키로는 등록·수정·삭제나 키 재발급을 할 수 없다(`401 INVALID_TOKEN`)
 
 # 학생·교직원

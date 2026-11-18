@@ -3,6 +3,7 @@ package app.xquare.xquareopenapi.domain.apikey
 import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 
 interface ApiKeyRepository : JpaRepository<ApiKey, Long> {
@@ -14,4 +15,9 @@ interface ApiKeyRepository : JpaRepository<ApiKey, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select k from ApiKey k where k.id = :id")
     fun findByIdForUpdate(id: Long): ApiKey?
+
+    // 조회 후 delete(entity)를 쓰면 동시 삭제 때 늦은 쪽이 0행 삭제로 500이 난다. 한 번에 지우고 지운 행 수를 돌려준다.
+    @Modifying
+    @Query("delete from ApiKey k where k.id = :id")
+    fun deleteByIdReturningCount(id: Long): Int
 }

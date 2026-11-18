@@ -445,6 +445,48 @@ paths:
                   value:
                     code: API_KEY_NOT_FOUND
                     message: 발급받은 API 키가 없습니다. 활용신청을 먼저 해 주세요.
+  /api-keys/me:
+    delete:
+      tags:
+      - API 키
+      summary: API 키 삭제
+      description: '로그인한 사용자의 API 키와 모든 활용신청 기록을 지워 처음 상태로 되돌린다. 지운 키로 조회하면 바로 `401 INVALID_API_KEY`이고, 다시 신청하면 첫 신청(`FIRST`)으로
+        새 키를 받는다. 이메일 인증은 요구하지 않는다. 권한: USER, ADMIN(로그인한 본인).'
+      operationId: deleteApiKey
+      security:
+      - bearerAuth: []
+      x-required-role: USER
+      responses:
+        '200':
+          description: 삭제됨
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: 삭제되었습니다.
+        '401':
+          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_TOKEN:
+                  value:
+                    code: INVALID_TOKEN
+                    message: 토큰이 없거나 유효하지 않습니다.
+        '404':
+          description: '`API_KEY_NOT_FOUND`: 발급받은 키가 없음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                API_KEY_NOT_FOUND:
+                  value:
+                    code: API_KEY_NOT_FOUND
+                    message: 발급받은 API 키가 없습니다. 활용신청을 먼저 해 주세요.
   /students:
     get:
       tags:
