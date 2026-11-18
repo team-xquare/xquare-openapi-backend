@@ -100,7 +100,7 @@ API 스펙이 있습니다.
 - Spring Boot 4이고 Jackson 3를 쓴다(`tools.jackson.*` 패키지). 테스트용 자동 설정 패키지도 옮겨졌다. 예: `org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc`, `org.springframework.boot.data.redis.test.autoconfigure.DataRedisTest`.
 - Kotlin DTO의 Bean Validation 어노테이션은 `@field:`를 붙여야 검증이 적용된다.
 - 목록 요소 검증(`List<@NotBlank String>`)은 컴파일 옵션 `-Xemit-jvm-type-annotations`가 있어야 바이트코드에 남아 동작한다(`build.gradle.kts`). 빼면 요소 검증이 조용히 사라진다(`MealTest`가 잡는다).
-- Kotlin에서 non-null 파라미터로 선언한 저장소 메서드(`existsByDate(LocalDate)`)를 Mockito로 스텁할 때 `any()`는 null을 돌려줘 NPE가 난다. `any(LocalDate::class.java) ?: LocalDate.MIN`처럼 매처 등록 후 아무 값이나 넘긴다.
+- Kotlin에서 non-null 파라미터로 선언한 저장소 메서드(`findIdByDate(LocalDate)`)를 Mockito로 스텁할 때 `any()`는 null을 돌려줘 NPE가 난다. `any(LocalDate::class.java) ?: LocalDate.MIN`처럼 매처 등록 후 아무 값이나 넘긴다.
 - JPA 엔티티는 `build.gradle.kts`의 `allOpen` 설정으로 자동 open 처리된다. Hibernate 지연 로딩 프록시 때문에 필요하다.
 
 ## 협업

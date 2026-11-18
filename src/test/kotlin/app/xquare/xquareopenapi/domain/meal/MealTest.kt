@@ -606,7 +606,7 @@ class MealTest @Autowired constructor(
         }
     }
 
-    // findByDate·findIdByDate는 Kotlin에서 LocalDate(non-null)로 선언돼 any()의 null을 받지 못한다. 매처를 등록한 뒤 null 대신 아무 날짜나 넘긴다.
+    // findIdByDate는 Kotlin에서 LocalDate(non-null)로 선언돼 any()의 null을 받지 못한다. 매처를 등록한 뒤 null 대신 아무 날짜나 넘긴다.
     private fun anyDate(): LocalDate = any(LocalDate::class.java) ?: LocalDate.MIN
 
     private fun otherViolation() =
