@@ -27,5 +27,6 @@ enum class ErrorCode(
     API_KEY_ALREADY_EXISTS(HttpStatus.CONFLICT, "동시에 처리된 활용신청으로 API 키가 이미 발급되었습니다. 다시 신청하면 분야가 추가됩니다."),
     API_KEY_NOT_FOUND(HttpStatus.NOT_FOUND, "발급받은 API 키가 없습니다. 활용신청을 먼저 해 주세요."),
     API_KEY_FIELD_ALREADY_APPLIED(HttpStatus.CONFLICT, "이미 신청한 분야입니다."),
+    API_KEY_APPLICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 활용신청입니다."),
     API_KEY_FIELD_FORBIDDEN(HttpStatus.FORBIDDEN, "API 키로 신청하지 않은 분야입니다. 해당 분야를 활용신청해 주세요."),
 }

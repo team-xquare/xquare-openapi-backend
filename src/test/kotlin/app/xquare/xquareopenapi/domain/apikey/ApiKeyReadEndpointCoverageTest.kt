@@ -46,6 +46,9 @@ class ApiKeyReadEndpointCoverageTest @Autowired constructor(
             "/v3/api-docs/swagger-config",
             // 로그인한 사용자 본인의 키 정보. 액세스 토큰으로 연다.
             "/api-keys/me",
+            // 관리자 활용신청 목록·상세. ADMIN 액세스 토큰으로 연다.
+            "/api-key-applications",
+            "/api-key-applications/{applicationId}",
         )
     }
 }

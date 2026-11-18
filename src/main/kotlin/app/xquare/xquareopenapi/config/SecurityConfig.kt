@@ -96,6 +96,9 @@ class SecurityConfig {
                 authorize(HttpMethod.POST, "/teachers", hasRole(ADMIN))
                 authorize(HttpMethod.PATCH, "/teachers/*", hasRole(ADMIN))
                 authorize(HttpMethod.DELETE, "/teachers/*", hasRole(ADMIN))
+                // 관리자 활용신청 목록·상세. 메서드를 정하지 않아 GET에 자동으로 붙는 HEAD도 ADMIN만 된다.
+                authorize("/api-key-applications", hasRole(ADMIN))
+                authorize("/api-key-applications/*", hasRole(ADMIN))
                 // 나머지는 로그인만 하면 된다(USER, ADMIN). 조회 API는 위의 API 키 체인이 먼저 가져간다.
                 authorize(anyRequest, authenticated)
             }

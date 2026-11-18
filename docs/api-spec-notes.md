@@ -81,6 +81,10 @@
 - 내 API 키 조회(OPN-67)는 `GET /api-keys/me`(액세스 토큰). 응답은 `issuedAt`(지금 키 값을 발급한 시각, 재발급하면 바뀜), `expiresAt`, `fields`(분야와 분야별 신청 시각, 신청 순서). 키 원문은 해시만 저장하므로 주지 않는다. 키가 없으면 `404 API_KEY_NOT_FOUND`
 - 만료: 만료 정책이 정해지지 않아 만료 기능을 만들지 않았다. `expiresAt`은 항상 `null`(만료 없음)이고, 정책이 정해지면 채운다
 - `issuedAt`을 위해 `api_keys.issued_at`(한국 시간)을 추가했다. 첫 신청과 재발급 때 기록한다
+- 관리자 활용신청 목록·상세(OPN-71)는 `GET /api-key-applications`, `GET /api-key-applications/{applicationId}`. ADMIN 액세스 토큰(JWT 체인)으로 열고, USER면 `403 FORBIDDEN`. 키 체인 대상이 아니라 `ApiKeyReadEndpointCoverageTest`의 예외 목록에 넣었다
+- 목록은 학생 목록과 같은 `page`(0~21474836)·`size`(1~100, 기본 20)와 `PageResponse` 형식. 거르기는 `field`, `type`(정확 일치, AND). 정렬은 신청 시각 역순, 같으면 id 역순. 항목은 id, 신청자 userId, 분야, 구분, 서비스 이름, 사용 목적, 신청 시각
+- 상세는 신청 내용 + 신청자 userId + `applicant`(username, name, email, studentNumber) + 그 키가 신청한 분야 전체(분야, 신청 시각). `api_keys.user_id`에 외래 키가 없어 사용자 행이 지워졌으면 `applicant`는 null. 없는 id면 `404 API_KEY_APPLICATION_NOT_FOUND`, 숫자가 아니면 `400 INVALID_INPUT`
+- 키를 삭제하면 신청 기록도 지워지므로 관리자 목록에서도 사라진다(삭제 이력은 남기지 않음)
 - 키가 없거나 틀리면 액세스 토큰이 있어도 `401 INVALID_API_KEY`. 키는 맞지만 경로의 분야를 신청하지 않았으면 `403 API_KEY_FIELD_FORBIDDEN`(팀 공유용 에러 코드). 키로는 등록·수정·삭제나 키 재발급을 할 수 없다(`401 INVALID_TOKEN`)
 
 # 학생·교직원
