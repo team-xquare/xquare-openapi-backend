@@ -4,9 +4,10 @@ import app.xquare.xquareopenapi.domain.user.Role
 import app.xquare.xquareopenapi.global.jwt.JwtProvider
 import org.hamcrest.Matchers.contains
 import org.hamcrest.Matchers.containsString
-import app.xquare.xquareopenapi.domain.apikey.ApiKey
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyApplicationRepository
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyField
 import app.xquare.xquareopenapi.domain.apikey.ApiKeyRepository
-import app.xquare.xquareopenapi.domain.apikey.ApiKeySecret
+import app.xquare.xquareopenapi.domain.apikey.saveApiKey
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -38,6 +39,7 @@ class StudentTest @Autowired constructor(
     private val mockMvc: MockMvc,
     private val studentRepository: StudentRepository,
     private val apiKeyRepository: ApiKeyRepository,
+    private val apiKeyApplicationRepository: ApiKeyApplicationRepository,
     jwtProvider: JwtProvider,
 ) {
     // 동시 등록·수정을 흉내 내려고 중복 검사만 통과시킬 때 쓴다.
@@ -50,11 +52,12 @@ class StudentTest @Autowired constructor(
     // 조회 API는 API 키로만 인증한다.
     @BeforeEach
     fun setUp() {
-        apiKeyRepository.save(ApiKey(2L, "테스트", "테스트", ApiKeySecret.hash(RAW_API_KEY)))
+        saveApiKey(apiKeyRepository, apiKeyApplicationRepository, 2L, RAW_API_KEY, ApiKeyField.STUDENT)
     }
 
     @AfterEach
     fun tearDown() {
+        apiKeyApplicationRepository.deleteAll()
         apiKeyRepository.deleteAll()
         studentRepository.deleteAll()
     }

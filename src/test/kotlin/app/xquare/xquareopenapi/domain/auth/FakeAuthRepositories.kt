@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
 import org.springframework.data.redis.RedisConnectionFailureException
 import java.time.Duration
+import java.util.concurrent.ConcurrentHashMap
 import app.xquare.xquareopenapi.domain.auth.repository.EmailOtpRepository
 import app.xquare.xquareopenapi.domain.auth.repository.OtpVerification
 import app.xquare.xquareopenapi.domain.auth.mail.OtpMailSender
@@ -40,7 +41,8 @@ class FakeEmailVerifiedTokenRepository : EmailVerifiedTokenRepository {
         ttls[token] = ttl
     }
 
-    val tokens = mutableMapOf<String, String>()
+    // API 키 동시성 테스트가 여러 스레드에서 읽고 지운다.
+    val tokens: MutableMap<String, String> = ConcurrentHashMap()
 
     override fun findEmailByToken(token: String): String? = tokens[token]
 

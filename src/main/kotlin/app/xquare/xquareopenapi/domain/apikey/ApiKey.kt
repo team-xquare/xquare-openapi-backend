@@ -8,7 +8,7 @@ import jakarta.persistence.Id
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 
-// 활용신청은 자동 승인이라 신청 내용과 발급한 키를 한 행에 둔다. 키 원문은 저장하지 않고 해시만 둔다.
+// 사용자당 키 하나. 활용신청 내용은 분야마다 ApiKeyApplication에 두고, 여기에는 키 해시만 둔다. 키 원문은 저장하지 않는다.
 @Entity
 // 제약 이름은 동시 신청으로 사용자 키가 겹쳤는지 구분하는 데 쓰므로 직접 정한다.
 @Table(
@@ -22,12 +22,6 @@ class ApiKey(
     @Column(name = "user_id", nullable = false)
     val userId: Long,
 
-    @Column(nullable = false, length = 30)
-    val serviceName: String,
-
-    @Column(nullable = false, length = 200)
-    val purpose: String,
-
     keyHash: String,
 ) {
     @Id
@@ -38,7 +32,7 @@ class ApiKey(
     var keyHash: String = keyHash
         protected set
 
-    // 해시를 바꾸면 이전 키로는 더 이상 찾을 수 없어서 바로 폐기된다.
+    // 해시를 바꾸면 이전 키로는 더 이상 찾을 수 없어서 바로 폐기된다. 신청한 분야는 키 id에 묶여 있어 그대로 남는다.
     fun reissue(keyHash: String) {
         this.keyHash = keyHash
     }

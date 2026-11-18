@@ -1,8 +1,10 @@
 package app.xquare.xquareopenapi.domain.apikey.presentation
 
-import app.xquare.xquareopenapi.domain.apikey.presentation.dto.ApiKeyRequest
+import app.xquare.xquareopenapi.domain.apikey.presentation.dto.ApiKeyApplicationRequest
+import app.xquare.xquareopenapi.domain.apikey.presentation.dto.ApiKeyApplicationResponse
 import app.xquare.xquareopenapi.domain.apikey.presentation.dto.ApiKeyResponse
-import app.xquare.xquareopenapi.domain.apikey.usecase.IssueApiKeyUseCase
+import app.xquare.xquareopenapi.domain.apikey.presentation.dto.ReissueApiKeyRequest
+import app.xquare.xquareopenapi.domain.apikey.usecase.ApplyApiKeyUseCase
 import app.xquare.xquareopenapi.domain.apikey.usecase.ReissueApiKeyUseCase
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -17,16 +19,20 @@ import org.springframework.web.bind.annotation.RestController
 @RestController
 @RequestMapping("/api-keys")
 class ApiKeyController(
-    private val issueApiKeyUseCase: IssueApiKeyUseCase,
+    private val applyApiKeyUseCase: ApplyApiKeyUseCase,
     private val reissueApiKeyUseCase: ReissueApiKeyUseCase,
 ) {
 
+    // 첫 신청이든 분야 추가든 신청 기록 하나가 생기므로 201이다.
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    fun issue(@AuthenticationPrincipal userId: Long, @RequestBody @Valid request: ApiKeyRequest): ApiKeyResponse =
-        issueApiKeyUseCase.execute(userId, request)
+    fun apply(
+        @AuthenticationPrincipal userId: Long,
+        @RequestBody @Valid request: ApiKeyApplicationRequest,
+    ): ApiKeyApplicationResponse =
+        applyApiKeyUseCase.execute(userId, request)
 
     @PostMapping("/reissue")
-    fun reissue(@AuthenticationPrincipal userId: Long): ApiKeyResponse =
-        reissueApiKeyUseCase.execute(userId)
+    fun reissue(@AuthenticationPrincipal userId: Long, @RequestBody @Valid request: ReissueApiKeyRequest): ApiKeyResponse =
+        reissueApiKeyUseCase.execute(userId, request)
 }

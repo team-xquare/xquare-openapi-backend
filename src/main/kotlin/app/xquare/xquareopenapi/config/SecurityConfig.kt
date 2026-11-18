@@ -1,6 +1,8 @@
 package app.xquare.xquareopenapi.config
 
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyApplicationRepository
 import app.xquare.xquareopenapi.domain.apikey.ApiKeyAuthenticationFilter
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyField
 import app.xquare.xquareopenapi.domain.apikey.ApiKeyRepository
 import app.xquare.xquareopenapi.domain.user.Role
 import app.xquare.xquareopenapi.global.cors.CorsProperties
@@ -29,15 +31,17 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 class SecurityConfig {
 
     // 조회 API는 API 키로만 인증한다. JWT 필터가 없는 체인을 따로 둬서 토큰이 있어도 키 없이는 401이다.
+    // 키가 맞아도 경로의 분야(API_KEY_READ_PATHS)를 신청하지 않았으면 403 API_KEY_FIELD_FORBIDDEN이다.
     @Bean
     @Order(1)
     fun apiKeySecurityFilterChain(
         http: HttpSecurity,
         apiKeyRepository: ApiKeyRepository,
+        apiKeyApplicationRepository: ApiKeyApplicationRepository,
         securityErrorResponder: SecurityErrorResponder,
     ): SecurityFilterChain {
         http {
-            securityMatcher(*API_KEY_READ_ENDPOINTS)
+            securityMatcher(*API_KEY_READ_ENDPOINTS.map { it.first }.toTypedArray())
             csrf { disable() }
             cors { }
             formLogin { disable() }
@@ -46,12 +50,15 @@ class SecurityConfig {
                 sessionCreationPolicy = SessionCreationPolicy.STATELESS
             }
             authorizeHttpRequests {
-                authorize(anyRequest, hasAuthority(ApiKeyAuthenticationFilter.AUTHORITY))
+                API_KEY_READ_ENDPOINTS.forEach { (matcher, field) -> authorize(matcher, hasAuthority(field.authority)) }
             }
             exceptionHandling {
                 authenticationEntryPoint = securityErrorResponder.invalidApiKey
+                accessDeniedHandler = securityErrorResponder.apiKeyFieldForbidden
             }
-            addFilterBefore<UsernamePasswordAuthenticationFilter>(ApiKeyAuthenticationFilter(apiKeyRepository))
+            addFilterBefore<UsernamePasswordAuthenticationFilter>(
+                ApiKeyAuthenticationFilter(apiKeyRepository, apiKeyApplicationRepository),
+            )
         }
         return http.build()
     }
@@ -115,14 +122,19 @@ class SecurityConfig {
     companion object {
         private val ADMIN = Role.ADMIN.name
 
-        // Spring MVC는 GET 매핑에 HEAD도 자동으로 응답하므로 HEAD도 같이 잡는다. 빠지면 토큰만으로 존재 여부가 드러난다.
-        // API 키로만 여는 조회 경로. SwaggerConfig도 이 목록으로 문서의 인증 방식을 정한다.
-        val API_KEY_READ_PATHS = listOf("/students", "/students/*", "/teachers", "/teachers/*")
+        // API 키로만 여는 조회 경로와 그 경로를 열 수 있는 활용신청 분야. SwaggerConfig도 이 목록으로 문서의 인증 방식을 정한다.
+        // 조회 API가 새로 생기면 한 줄씩 넣는다. 예: "/clubs" to ApiKeyField.CLUB, "/study-supervisors/day" to ApiKeyField.STUDY_SUPERVISOR
+        val API_KEY_READ_PATHS: Map<String, ApiKeyField> = linkedMapOf(
+            "/students" to ApiKeyField.STUDENT,
+            "/students/*" to ApiKeyField.STUDENT,
+            "/teachers" to ApiKeyField.TEACHER,
+            "/teachers/*" to ApiKeyField.TEACHER,
+        )
 
-        private val API_KEY_READ_ENDPOINTS = API_KEY_READ_PATHS
-            .flatMap { path ->
-                listOf(HttpMethod.GET, HttpMethod.HEAD).map { PathPatternRequestMatcher.withDefaults().matcher(it, path) }
+        // Spring MVC는 GET 매핑에 HEAD도 자동으로 응답하므로 HEAD도 같이 잡는다. 빠지면 토큰만으로 존재 여부가 드러난다.
+        private val API_KEY_READ_ENDPOINTS: List<Pair<RequestMatcher, ApiKeyField>> = API_KEY_READ_PATHS
+            .flatMap { (path, field) ->
+                listOf(HttpMethod.GET, HttpMethod.HEAD).map { PathPatternRequestMatcher.withDefaults().matcher(it, path) to field }
             }
-            .toTypedArray<RequestMatcher>()
     }
 }

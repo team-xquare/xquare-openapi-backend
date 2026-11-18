@@ -21,7 +21,7 @@ class ApiKeyReadEndpointCoverageTest @Autowired constructor(
 
     @Test
     fun `GET 매핑은 모두 API 키 체인 대상이거나 예외 목록에 있다`() {
-        val apiKeyPatterns = SecurityConfig.API_KEY_READ_PATHS.map { PathPatternParser.defaultInstance.parse(it) }
+        val apiKeyPatterns = SecurityConfig.API_KEY_READ_PATHS.keys.map { PathPatternParser.defaultInstance.parse(it) }
 
         val uncovered = handlerMapping.handlerMethods.keys
             // 메서드 조건이 없는 매핑도 GET을 받는다.

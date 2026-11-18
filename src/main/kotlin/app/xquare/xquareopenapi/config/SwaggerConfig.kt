@@ -40,7 +40,7 @@ class SwaggerConfig {
 
     @Bean
     fun apiKeyReadOperationCustomizer(): OpenApiCustomizer = OpenApiCustomizer { openApi ->
-        val patterns = SecurityConfig.API_KEY_READ_PATHS.map { PathPatternParser.defaultInstance.parse(it) }
+        val patterns = SecurityConfig.API_KEY_READ_PATHS.keys.map { PathPatternParser.defaultInstance.parse(it) }
         openApi.paths.orEmpty().forEach { (path, item) ->
             // 문서의 경로 변수 {studentId}도 한 세그먼트라 "/students/*"에 맞는다.
             if (patterns.any { it.matches(PathContainer.parsePath(path)) }) {
