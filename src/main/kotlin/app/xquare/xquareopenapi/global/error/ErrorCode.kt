@@ -26,4 +26,5 @@ enum class ErrorCode(
     INVALID_DATE_RANGE(HttpStatus.BAD_REQUEST, "조회 기간이 올바르지 않습니다."),
     MEAL_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 급식 정보입니다."),
     MEAL_ALREADY_EXISTS(HttpStatus.CONFLICT, "해당 날짜의 급식 정보가 이미 존재합니다."),
+    TIMETABLE_UNAVAILABLE(HttpStatus.BAD_GATEWAY, "나이스에서 시간표를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요."),
 }

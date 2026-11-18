@@ -115,6 +115,15 @@
 - 삭제가 소프트/하드 삭제인지, 자습 감독 삭제 시 층별 배정 처리 방식 불명확
 - 성공 응답 `{message}` 스키마는 이 조각 안에서 ScheduleMessageResponse / StudySupervisorMessageResponse로 자체 정의함
 
+### 구현하면서 정한 것 (시간표, OPN-69)
+- 노션 명세에 시간표 API가 없다(일정 API 설명이 "시간표는 컴시간 알리미"라고만 적음). 컴시간 알리미는 공식 API가 없어서, 공식 API인 나이스 고등학교시간표(`hisTimetable`)를 쓰는 `GET /timetables`를 새로 만들었다. YAML에 추가했다.
+- 파라미터: `grade`(1~3), `classNum`(1~9) 필수, `date` 선택. `date`가 속한 주(월~일)를 준다. 생략하면 오늘(서울 시간). 범위는 학번 규칙과 같다. 어기거나 형식이 틀리면 `400 INVALID_INPUT`.
+- 응답: `grade`, `classNum`, `startDate`(월), `finishDate`(일), `days`(수업 있는 날만 날짜 순, 각 날짜의 `periods`는 교시 순 `{period, subject}`). `subject`는 나이스 `ITRT_CNTNT`를 앞뒤 공백만 지워 그대로 준다.
+- 권한: USER(로그인만). 다른 조회 API와 같이 `SecurityConfig`의 기본 규칙(`authenticated`)을 따른다.
+- 저장하지 않고 요청 때 나이스에서 가져와 같은 (학년, 반, 주)는 10분 동안 서버 메모리에 둔다. DB에 저장하면 테이블·동기화 범위·삭제 규칙이 생기는데 조회 전용이고 관리자가 고칠 일이 없어서다. 캐시는 1000개가 차면 통째로 비운다. 인스턴스마다 따로이고 재시작하면 비워진다.
+- 나이스 호출이 실패하면(오류 결과 코드, 형식 이상, `list_total_count`보다 적게 받음, 네트워크 오류, `NEIS_API_KEY` 없음) `502 TIMETABLE_UNAVAILABLE`. 실패는 캐시하지 않는다. 데이터 없음(`INFO-200`)은 빈 `days`로 200.
+- 나이스 설정(`NeisProperties`, `NeisApiException`, `neisRestClient`)은 급식(#24)의 것을 그대로 쓴다.
+
 # 급식·동아리·공지
 
 ### 명세 충돌
