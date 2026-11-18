@@ -8,9 +8,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - 기능당 테스트 필수.
   - 테스트에 대한 뮤테이션 테스트도 진행 필수.
   - 뮤테이션 생존시 그것에 대한 보고 후 해결 작업 진행
-  - 루프를 이용하여 최대 5회 최소 3회 시행해주세요.
+  - 기능 테스트는 루프를 이용하여 최대 5회 최소 3회 시행해주세요.
+  - 뮤테이션 테스트(pitest)는 전체 대상으로 기능당 1회만 시행해주세요. 생존 뮤턴트는 보고하고, 아래 "명령어"의 등가 뮤턴트 목록에 해당하면(`javap`로 확인) 근거를 적고 끝냅니다. 아니면 테스트를 보강한 뒤 보강한 클래스만 대상으로 pitest를 다시 돌려(`-PpitTargets=...`) KILLED를 확인합니다.
 - /docs을 기반으로 작업해주세요.   
 API 스펙이 있습니다.
+
+
+
+## 소통 
+
+- 대화와 코드 주석은 한국어, 커밋 메시지는 영어로 쓴다. 
+-  결론을 먼저 말하고, 이유와 상세 설명은 그 뒤에 쓴다. 
+- 설계 판단(패턴 선택, 구조, 트레이드오프)이 들어간 작업은 왜 그렇게 했는지, 검토한 대안과 비교해 설명한다. 단순 수정은 짧게 보고한다. 
+- 모르는 것은 "모른다", 확인하지 못한 것은 "확인 못 함"이라고 쓴다. 추측을 사실처럼 쓰지 않는다. 
+- 라이브러리 API, 설정 키, 버전별 동작은 추측하지 않고 공식 문서나 소스 코드(의존성 소스 포함)로 확인한다.
 - 작업 내용 마지막 정리 할때 두괄식 사용해주세요.
 
 
@@ -22,6 +33,8 @@ API 스펙이 있습니다.
   - 메서드 이름이 한글 백틱 이름이라 메서드 단위는 와일드카드로 고른다: `--tests '*SignupTest.가입하면*'`
 - Gradle이 테스트 결과를 캐시한다. 코드 변경 없이 환경만 바뀌었으면(예: Docker를 켬) `--rerun`을 붙여야 다시 실행된다.
 - 뮤테이션 테스트: `./gradlew pitest` → 리포트는 `build/reports/pitest/index.html`
+  - 일부 클래스만: `./gradlew pitest -PpitTargets='app.xquare.xquareopenapi.domain.meal.*'` (쉼표로 여러 개). 기본값은 `domain.*`, `global.*` 전체.
+  - 동시 실행 수: `-PpitThreads=2` (기본 4). 미니언 JVM 하나가 수백 MB를 쓰므로 메모리가 작은 머신에서는 줄인다.
   - `avoidCallsTo = kotlin.jvm.internal, org.slf4j`: Kotlin 컴파일러가 넣는 null 체크와 로그 호출을 지우는 뮤턴트는 동작이 바뀌지 않으므로 제외한다. 이 값을 지정하면 PIT의 기본 제외 목록(로깅 라이브러리)이 덮어써지므로, 로깅 라이브러리도 직접 넣어야 한다.
   - `mutators = ALL, -EXPERIMENTAL_MEMBER_VARIABLE`: 가장 넓은 뮤테이터 그룹을 쓰되 생성자 필드 대입 제거만 뺀다. Spring 빈은 캐시된 컨텍스트에서 한 번만 생성되므로 바뀐 생성자가 실행되지 않아 가짜 생존자만 생긴다.
   - Kotlin 컴파일러가 만든 바이트코드에서 나오는 등가 뮤턴트(테스트로 죽일 수 없음):
@@ -31,9 +44,9 @@ API 스펙이 있습니다.
     - vararg 배열 크기를 +1 하는 뮤턴트(`redisTemplate.execute(script, keys, *args)`, `RestClient.uri("/emails")`). 끝에 null 칸이 하나 생길 뿐이고, Lua 스크립트는 정해진 `KEYS`/`ARGV` 인덱스만 읽으며 URI에는 치환 변수가 없다.
     - Lua가 항상 정수를 돌려주는데 `execute(...) == 1L`의 nullable `Long` null 검사를 바꾸는 뮤턴트(`RedisRefreshTokenRepository.replace`)
     - 생존자로 나오면 `javap -c -l -p`로 해당 줄의 바이트코드를 보고 위 경우인지 확인한다. 핵심 로직에서는 `if (a != null) a.b else c`처럼 써서 피했다(`LoginUseCase`, `SignupUseCase.save`).
-  - `timeoutConstInMillis = 30000`: Testcontainers 테스트가 뮤턴트를 처음 돌릴 때 컨테이너를 띄우느라 기본 제한 시간을 넘겨 TIMED_OUT이 난다. 30초로 늘려도 가끔 남는데, 같은 뮤턴트가 다른 회차에서 KILLED로 나오면 환경 문제로 본다.
+  - `timeoutConstInMillis = 30000`: Testcontainers 테스트가 뮤턴트를 처음 돌릴 때 컨테이너를 띄우느라 기본 제한 시간을 넘겨 TIMED_OUT이 난다. 30초로 늘려도 가끔 남는다. TIMED_OUT·RUN_ERROR가 나오면 해당 클래스만 대상으로 다시 돌려(`-PpitTargets=...`) KILLED로 나오면 환경 문제로 본다.
   - `config` 패키지는 대상에서 뺐다. Spring 컨텍스트가 뜰 때 한 번만 실행되고 PIT은 캐시된 컨텍스트를 재사용해서, 바뀐 코드가 실행되지 않아 가짜 생존자만 생긴다. 생성자에서 한 번만 도는 코드도 같은 이유로 Spring 테스트로는 못 잡으니 단위 테스트(`JwtProviderTest`처럼)로 검증한다.
-- `RedisAuthRepositoriesTest`와 `ReissueConcurrencyTest`는 Redis를, `UserUniqueConstraintMySqlTest`는 MySQL을 Testcontainers로 띄운다. Docker가 꺼져 있으면 실패하지 않고 건너뛴다.
+- `RedisAuthRepositoriesTest`와 `ReissueConcurrencyTest`는 Redis를, `UserUniqueConstraintMySqlTest`와 `StudentRepositoryMySqlTest`는 MySQL을 Testcontainers로 띄운다. Docker가 꺼져 있으면 실패하지 않고 건너뛴다.
 - `ReissueConcurrencyTest`는 실제 HTTP 서버에 같은 리프레시 토큰으로 8개 요청을 동시에 보내는 검증을 3회 반복한다. 성공 1개·401 응답 7개, Redis에 저장된 토큰과 성공 응답의 일치, 새 토큰의 재발급과 이전 토큰 재사용 거부를 확인한다. 테스트 종료 시 컨텍스트를 닫으므로 H2 DB 이름도 다른 테스트와 분리한다.
 
 ## 로컬 실행에 필요한 환경변수
@@ -52,9 +65,17 @@ API 스펙이 있습니다.
 
 - 패키지 구성: 기능별 `domain/<기능>/{presentation, usecase, repository}`, 공통 기능은 `global/{error, jwt}`, Spring 설정은 `config/`.
   - 비즈니스 로직은 API 하나당 UseCase 클래스 하나(`SignupUseCase.execute`)로 나눈다. OpenAPI 특성상 기능이 계속 늘어나서 서비스 하나에 몰리지 않게 하려는 것이다(PR #3 리뷰).
-- 에러 처리: `XquareException(ErrorCode.X)`를 던지면 `GlobalExceptionHandler`가 `{ "code", "message" }` 응답으로 바꾼다. 새 에러는 명세의 에러 코드 이름 그대로 `ErrorCode`에 추가한다. 일반 입력 검증 실패와 JSON 파싱 실패는 `400 INVALID_INPUT`이다. OTP 발송·검증의 이메일 형식 오류(빈 문자열 포함)는 `400 INVALID_EMAIL_FORMAT`이다.
-- 보안: `SecurityConfig`는 `POST /auth/signup`, `/auth/login`, `/auth/reissue`, `/auth/email/otp`, `/auth/email/otp/verify` 외의 모든 요청에 인증을 요구한다. 공개 엔드포인트를 새로 만들면 여기에 `permitAll`을 추가해야 하고, 빠뜨리면 403이 난다. `ERROR` 디스패치(`/error` 포워드)도 허용해 둬야 한다. 막으면 415·500 같은 원래 응답이 모두 403으로 바뀐다. MockMvc는 이 포워드를 흉내 내지 않으므로 `ErrorDispatchTest`처럼 실제 서버로 확인한다. `PasswordEncoder`(BCrypt) 빈도 여기서 만든다.
+- 에러 처리: `XquareException(ErrorCode.X)`를 던지면 `GlobalExceptionHandler`가 `{ "code", "message" }` 응답으로 바꾼다. 새 에러는 명세의 에러 코드 이름 그대로 `ErrorCode`에 추가한다. 일반 입력 검증 실패와 JSON 파싱 실패는 `400 INVALID_INPUT`이다. OTP 발송·검증의 이메일 형식 오류(빈 문자열 포함)는 `400 INVALID_EMAIL_FORMAT`이다. Redis·DB 장애(`DataAccessException`)는 `500 INTERNAL_SERVER_ERROR`로 응답한다. 어느 제약인지 구분하지 못한 무결성 위반도 여기에 걸려 같은 500이 된다.
+- 보안: `SecurityConfig`는 `POST /auth/signup`, `/auth/login`, `/auth/reissue`, `/auth/email/otp`, `/auth/email/otp/verify`와 Swagger 경로(`GET /swagger-ui.html`, `/swagger-ui/**`, `/v3/api-docs/**`) 외의 모든 요청에 인증을 요구한다. 공개 엔드포인트를 새로 만들면 여기에 `permitAll`을 추가해야 하고, 빠뜨리면 토큰 없는 요청이 `401 INVALID_TOKEN`이 된다. `ERROR` 디스패치(`/error` 포워드)도 허용해 둬야 한다. 막으면 415·500 같은 원래 응답이 모두 401로 바뀐다. MockMvc는 이 포워드를 흉내 내지 않으므로 `ErrorDispatchTest`처럼 실제 서버로 확인한다. `PasswordEncoder`(BCrypt) 빈도 여기서 만든다.
+- 인증: `JwtAuthenticationFilter`가 `Authorization: Bearer {accessToken}`을 검증해 principal=userId, 권한=`ROLE_{Role}`로 인증한다. 토큰이 없거나 유효하지 않으면 인증하지 않고 넘기고, 인증이 필요한 경로면 `SecurityErrorResponder`가 `401 INVALID_TOKEN`, 권한이 부족하면 `403 FORBIDDEN`으로 응답한다. 이 둘은 Security 필터에서 막히므로 `GlobalExceptionHandler`를 거치지 않는다. 필터는 빈으로 등록하지 않는다(Spring Boot가 서블릿 필터로도 등록해 두 번 실행된다).
 - CORS: `SecurityConfig`의 `cors { }`가 `corsConfigurationSource` 빈을 쓴다. 설정 값은 `global/cors/CorsProperties`에 있고, 허용 메서드는 GET/POST/PUT/PATCH/DELETE, 허용 헤더는 `Authorization`/`Content-Type`이다. 토큰을 헤더로 주고받으므로 credentials(쿠키)는 허용하지 않는다. preflight는 인증 검사보다 먼저 처리돼서 토큰 없이 통과한다.
+- 권한: `/students`, `/teachers` 등록·수정·삭제처럼 ADMIN 전용 API는 `SecurityConfig`에 `hasRole(ADMIN)`으로 메서드와 경로를 적는다. 나머지는 `authenticated`라서 USER와 ADMIN 모두 통과한다. ADMIN 계정을 만드는 API는 없어서 DB에서 `users.role`을 직접 바꿔야 한다.
+- 수정 API(PATCH)는 등록과 같은 요청 DTO로 모든 필드를 받아 통째로 바꾼다(`StudentRequest`, `TeacherRequest`). 그래서 교직원의 nullable 필드(`grade`, `classNum`)를 null로 보내면 값을 지운다.
+- 목록 조회는 `@ModelAttribute` 검색 DTO로 받는다. `page`(0 이상)·`size`(1~100)는 Bean Validation으로 검사하고, 응답은 `global/dto/PageResponse`. 쿼리 값의 타입이 틀리면 `GlobalExceptionHandler`가 `형식이 올바르지 않습니다.`로 바꿔 400을 준다.
+  - 부분 일치 검색은 `like concat('%', :x, '%') escape '!'`로 쓰고, 값은 `escapeLike()`(`global/jpa`)를 거쳐 넘긴다. 그래야 입력의 `%`·`_`가 글자 그대로 찾아진다. MySQL은 문자열 안의 `\`를 이스케이프로 읽으므로 이스케이프 문자로 쓰지 않는다.
+  - 쿼리에서 산술에 쓰는 검색 값(학생 `grade * 1000` 등)은 DTO에서 범위를 막는다. 막지 않으면 큰 값에서 넘쳐 500이 난다.
+- 삭제는 조회 후 `delete(entity)`가 아니라 `@Modifying` JPQL delete로 지우고, 지운 행 수가 0이면 404를 던진다. 조회 후 삭제하면 동시 삭제 때 늦은 쪽이 커밋하며 0행 삭제로 500이 난다(`DeleteStudentConcurrencyTest`).
+- `students`의 unique 제약 이름 `uk_students_student_number`도 계약이다. 동시 등록·수정으로 중복 검사를 통과한 요청이 제약에 걸리면 이 이름으로 구분해 409로 바꾼다(`DataIntegrityViolationException.violates`).
 - Redis 저장소는 인터페이스(`EmailVerifiedTokenRepository`, `RefreshTokenRepository`) 뒤에 둔다. 인증 API 테스트(`SignupTest`, `LoginTest`, `ReissueTest`)는 `FakeAuthRepositories`를 `@Import`해 `@Primary` 가짜 구현으로 바꿔 끼워서 Redis 없이 돈다. 저장소 인터페이스에 메서드를 추가하면 가짜 구현에도 넣는다.
 - Redis 키 형식은 다른 기능과 맞춰야 하는 계약이다:
   - `email_otp:{email}` → 6자리 OTP. TTL 300초이며 재발송은 덮어쓴다. 검증은 Lua 스크립트로 비교·삭제를 원자적으로 수행한다. 발송 실패 시 저장값이 해당 발송의 OTP와 같을 때만 Lua로 OTP와 횟수 키를 삭제하고 삭제 실패는 로그만 남긴다.
@@ -64,7 +85,7 @@ API 스펙이 있습니다.
 - `users`의 unique 제약 이름(`uk_users_username`, `uk_users_email`)도 계약이다. 동시 가입으로 중복 검사를 통과한 요청이 제약에 걸리면, `UserUniqueConstraint`가 이 이름으로 어떤 값이 겹쳤는지 구분해 409로 바꾼다. 운영 DB의 제약 이름이 다르면 구분하지 못하고 500이 난다.
 - JWT: `sub`=userId, `type`=`access`/`refresh`, 액세스 토큰에만 `role`을 넣는다. 모든 토큰에 `jti`(UUID)를 넣는다. 빼면 같은 초에 발급한 토큰이 똑같아져, 재발급 직후에도 폐기한 토큰이 통한다. `generateRefreshToken`은 토큰과 TTL을 함께 돌려주며, Redis에 저장할 때 이 TTL을 그대로 쓴다. `parseRefreshToken`은 서명 오류·만료·액세스 토큰이면 예외 대신 null을 돌려준다.
 
-- 메일: `OtpMailSender` 뒤의 `ResendOtpMailSender`가 Thymeleaf `email/otp` 템플릿을 렌더링해 Resend HTTP API로 보낸다. `resend.base-url`은 기본 `https://api.resend.com`이며 테스트에서는 로컬 HTTP 서버로 바꾼다. 연결 제한은 `resend.connect-timeout`(기본 5초), 읽기 제한은 `resend.read-timeout`(기본 10초)이며 초과 시 EMAIL_SEND_FAILED로 처리한다. SMTP 설정은 사용하지 않는다.
+- 메일: `OtpMailSender` 뒤의 `ResendOtpMailSender`가 Thymeleaf `email/otp` 템플릿을 렌더링해 Resend HTTP API로 보낸다. `resend.base-url`은 기본 `https://api.resend.com`이며 테스트에서는 로컬 HTTP 서버로 바꾼다. 연결 제한은 `resend.connect-timeout`(기본 5초), 읽기 제한은 `resend.read-timeout`(기본 10초)이며 초과 시 EMAIL_SEND_FAILED로 처리한다. 응답 읽기 타임아웃처럼 발송 여부를 알 수 없으면 OTP는 지우지 않는다. SMTP 설정은 사용하지 않는다.
 
 ## 버전별 주의점
 

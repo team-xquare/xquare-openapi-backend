@@ -1,0 +1,27 @@
+name: CI
+
+# develop push는 deploy-stag.yml이 테스트까지 돌리므로 여기서는 PR과 main만 맡는다.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # public 레포라 외부 PR 코드가 실행될 수 있으므로 self-hosted runner를 쓰지 않는다.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v6
+      - run: ./gradlew test
