@@ -56,6 +56,22 @@ class ApiKeyRepositoryMySqlTest @Autowired constructor(
         assertNull(apiKeyRepository.findByIdForUpdate(apiKey.id!! + 1))
     }
 
+    @Test
+    fun `키 id로 신청 기록을 신청 순서대로 읽는다`() {
+        val apiKey = apiKeyRepository.saveAndFlush(ApiKey(2L, ApiKeySecret.hash("first")))
+        val other = apiKeyRepository.saveAndFlush(ApiKey(3L, ApiKeySecret.hash("other")))
+        val first = apiKeyApplicationRepository.saveAndFlush(
+            ApiKeyApplication(apiKey.id!!, ApiKeyField.TEACHER, ApiKeyApplicationType.FIRST, "급식 알리미", "급식 공유"),
+        )
+        apiKeyApplicationRepository.saveAndFlush(application(other.id!!, ApiKeyApplicationType.FIRST))
+        val second = apiKeyApplicationRepository.saveAndFlush(application(apiKey.id!!, ApiKeyApplicationType.ADD_FIELD))
+
+        val applications = apiKeyApplicationRepository.findAllByApiKeyIdOrderByIdAsc(apiKey.id!!)
+
+        assertEquals(listOf(first.id, second.id), applications.map { it.id })
+        assertTrue(first.id!! < second.id!!)
+    }
+
     private fun application(apiKeyId: Long, type: ApiKeyApplicationType) =
         ApiKeyApplication(apiKeyId, ApiKeyField.STUDENT, type, "급식 알리미", "급식 공유")
 
