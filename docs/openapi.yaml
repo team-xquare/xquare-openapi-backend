@@ -2499,7 +2499,7 @@ components:
         apiKey:
           type: string
           description: 발급한 API 키 원문. `xq_` 뒤에 43자. 이 응답에서만 볼 수 있다.
-          example: xq_Qm9vZ2llV29vZ2llQm9vZ2llV29vZ2llQm9vZ2ll
+          example: xq_UNhY4JhezH9gQYqvDMWrWH9CwlcKiECVqejMrND2VFw
     ErrorResponse:
       type: object
       required:
