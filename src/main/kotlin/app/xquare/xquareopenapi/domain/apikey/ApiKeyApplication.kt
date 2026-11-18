@@ -10,7 +10,6 @@ import jakarta.persistence.Id
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 import java.time.LocalDateTime
-import java.time.ZoneId
 
 // 활용신청 기록. 키 하나에 분야마다 한 행이 쌓이고, 서비스 이름·사용 목적은 신청마다 따로 둔다.
 @Entity
@@ -39,9 +38,8 @@ class ApiKeyApplication(
     @Column(nullable = false, length = 200)
     val purpose: String,
 
-    // 서버 시간대와 상관없이 한국 시간으로 남긴다.
     @Column(nullable = false)
-    val appliedAt: LocalDateTime = LocalDateTime.now(SEOUL),
+    val appliedAt: LocalDateTime = nowInSeoul(),
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -49,6 +47,5 @@ class ApiKeyApplication(
 
     companion object {
         const val FIELD_UNIQUE_CONSTRAINT = "uk_api_key_applications_api_key_id_field"
-        private val SEOUL = ZoneId.of("Asia/Seoul")
     }
 }
