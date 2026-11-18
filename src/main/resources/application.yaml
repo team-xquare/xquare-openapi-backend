@@ -21,6 +21,9 @@ spring:
 # 앞단(Ingress/LB)이 지켜야 할 조건은 docs/api-spec-notes.md의 "OTP 발송 제한" 항목 참고.
 # - SERVER_TOMCAT_REMOTEIP_INTERNAL_PROXIES: 헤더를 믿을 프록시 대역(쉼표로 구분한 CIDR). 클러스터 대역만 남기는 식으로 좁힐 때 쓴다.
 # - SERVER_TOMCAT_REMOTEIP_TRUSTED_PROXIES: 내부망이 아닌 프록시(Cloudflare 등) 대역. 기본값은 없음.
+# 두 값 모두 CIDR만 받는다(단일 IP는 /32, IPv6는 /128). "/"가 없는 값은 Tomcat이 정규식으로 읽는다.
+# INTERNAL_PROXIES를 빈 문자열로 주면 기본값이 아니라 빈 값이 들어와 Tomcat이 내부망 프록시를 믿지 않게 된다.
+# 둘 다 TrustedProxyRangesValidator가 시작할 때 막는다. 기본 대역을 쓰려면 변수를 아예 지운다.
 server:
   forward-headers-strategy: ${SERVER_FORWARD_HEADERS_STRATEGY:native}
   tomcat:
