@@ -1,0 +1,44 @@
+# 스테이징 배포용. 비밀값은 같은 폴더의 .env(커밋하지 않음)에 둔다.
+# 필요한 키: DB_USERNAME, DB_PASSWORD, MYSQL_ROOT_PASSWORD, JWT_SECRET, CORS_ALLOWED_ORIGINS
+# 프로젝트 이름을 고정해야 폴더를 옮겨도 기존 볼륨(xquare-openapi-backend_mysql-data)을 그대로 쓴다.
+name: xquare-openapi-backend
+
+services:
+  app:
+    build: .
+    ports: ["8080:8080"]
+    env_file: .env
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/xquare?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      mysql: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: xquare
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes: [mysql-data:/var/lib/mysql]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+    restart: unless-stopped
+
+volumes:
+  mysql-data:
+  redis-data:

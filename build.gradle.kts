@@ -29,6 +29,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("io.jsonwebtoken:jjwt-api:0.12.6")
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.2.0")
     runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
     runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
@@ -62,8 +63,10 @@ pitest {
     pitestVersion = "1.30.0"
     junit5PluginVersion = "1.2.3"
     // config는 Spring 컨텍스트 시작 시 한 번만 실행돼 캐시된 컨텍스트에서는 뮤턴트가 실행되지 않으므로 제외한다.
-    targetClasses = listOf("app.xquare.xquareopenapi.domain.*", "app.xquare.xquareopenapi.global.*")
-    threads = 4
+    // -PpitTargets=a.b.*,c.d.* 로 일부 클래스만 다시 돌릴 수 있다(생존·TIMED_OUT 뮤턴트 재확인용).
+    targetClasses = (findProperty("pitTargets") as String?)?.split(",")?.map { it.trim() }
+        ?: listOf("app.xquare.xquareopenapi.domain.*", "app.xquare.xquareopenapi.global.*")
+    threads = (findProperty("pitThreads") as String?)?.toInt() ?: 4
     // Testcontainers 테스트는 뮤턴트를 처음 실행할 때 컨테이너를 띄우느라 기본 제한 시간(4초)을 넘겨,
     // 실제로 잡히는지와 상관없이 TIMED_OUT으로 끝난다. 판정이 나도록 여유를 준다.
     timeoutConstInMillis = 30000
