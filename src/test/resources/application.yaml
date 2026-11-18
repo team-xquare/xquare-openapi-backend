@@ -32,3 +32,4 @@ neis:
   office-code: G10
   school-code: 7430310
   meal-sync-cron: "-"
+  schedule-sync-cron: "-"

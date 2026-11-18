@@ -1006,8 +1006,8 @@ paths:
       tags:
       - 일정
       summary: 일정 등록
-      description: '학사 일정을 등록한다. 시간표는 컴시간 알리미, 자습 감독은 /study-supervisors에서 따로 다루므로 학사 일정만 담당한다. 제목은 1~50자이며 content는 생략 가능하다.
-        권한: ADMIN'
+      description: '학사 일정을 등록한다. 시간표는 컴시간 알리미, 자습 감독은 /study-supervisors에서 따로 다루므로 학사 일정만 담당한다. 제목은 1~50자(공백만은 불가)이며 content는 생략 가능하고 1000자까지다.
+        등록한 일정은 학교 일정(source=SCHOOL)이며, 같은 날짜·제목의 나이스 일정이 있어도 막지 않는다. 권한: ADMIN'
       operationId: createSchedule
       security:
       - bearerAuth: []
@@ -1034,6 +1034,17 @@ paths:
                 type: string
                 format: uri
               example: /schedules/1
+        '400':
+          description: '`INVALID_INPUT`: date·title 누락 또는 null, 날짜 형식 오류, title이 공백이거나 50자 초과, content 1000자 초과, JSON 파싱 실패'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
         '401':
           description: 'INVALID_TOKEN: 토큰이 없거나 유효하지 않음'
           content:
@@ -1083,6 +1094,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ScheduleResponse'
+        '400':
+          description: '`INVALID_INPUT`: scheduleId가 숫자가 아님'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
         '401':
           description: 'INVALID_TOKEN: 토큰이 없거나 유효하지 않음'
           content:
@@ -1109,7 +1131,8 @@ paths:
       tags:
       - 일정
       summary: 일정 수정
-      description: '학교에서 직접 입력한 일정(source=SCHOOL)만 수정할 수 있다. 나이스에서 동기화한 일정은 409를 반환한다. 제목 1~50자, content 생략 가능. 권한: ADMIN'
+      description: '학교에서 직접 입력한 일정(source=SCHOOL)만 수정할 수 있다. 나이스에서 동기화한 일정은 409를 반환한다. 제목 1~50자, content 생략 가능(1000자까지).
+        등록과 같은 값을 모두 받아 통째로 바꾼다. content를 생략하거나 null로 보내면 기존 내용을 지운다. 권한: ADMIN'
       operationId: updateSchedule
       security:
       - bearerAuth: []
@@ -1131,6 +1154,17 @@ paths:
                 $ref: '#/components/schemas/MessageResponse'
               example:
                 message: 수정되었습니다.
+        '400':
+          description: '`INVALID_INPUT`: date·title 누락 또는 null, 날짜 형식 오류, title이 공백이거나 50자 초과, content 1000자 초과, JSON 파싱 실패, scheduleId가 숫자가 아님'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
         '401':
           description: 'INVALID_TOKEN: 토큰이 없거나 유효하지 않음'
           content:
@@ -1195,6 +1229,17 @@ paths:
                 $ref: '#/components/schemas/MessageResponse'
               example:
                 message: 삭제되었습니다.
+        '400':
+          description: '`INVALID_INPUT`: scheduleId가 숫자가 아님'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
         '401':
           description: 'INVALID_TOKEN: 토큰이 없거나 유효하지 않음'
           content:
@@ -2897,8 +2942,11 @@ components:
           description: 일정 제목(1~50자)
           example: 체육대회
         content:
-          type: string
-          description: 일정 설명(생략 가능)
+          type:
+          - string
+          - 'null'
+          maxLength: 1000
+          description: 일정 설명(생략 가능, 1000자까지)
           example: 우천 시 9월 12일로 순연
     ScheduleUpdateRequest:
       type: object
@@ -2918,8 +2966,11 @@ components:
           description: 일정 제목(1~50자)
           example: 체육대회
         content:
-          type: string
-          description: 일정 설명(생략 가능)
+          type:
+          - string
+          - 'null'
+          maxLength: 1000
+          description: 일정 설명(생략 가능, 1000자까지)
           example: 우천으로 순연됨
     ScheduleResponse:
       type: object
@@ -2952,7 +3003,7 @@ components:
           enum:
           - NEIS
           - SCHOOL
-          description: 일정 출처. NEIS(나이스 동기화), SCHOOL(학교 직접 입력). 나이스에서 동기화한 일정은 직접 수정할 수 없다.
+          description: 일정 출처. NEIS(나이스 학사일정 동기화), SCHOOL(학교 직접 입력). 나이스에서 동기화한 일정은 직접 수정·삭제할 수 없다.
           example: SCHOOL
     StudySupervisorAssignmentRequest:
       type: object

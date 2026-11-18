@@ -26,4 +26,6 @@ enum class ErrorCode(
     INVALID_DATE_RANGE(HttpStatus.BAD_REQUEST, "조회 기간이 올바르지 않습니다."),
     MEAL_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 급식 정보입니다."),
     MEAL_ALREADY_EXISTS(HttpStatus.CONFLICT, "해당 날짜의 급식 정보가 이미 존재합니다."),
+    SCHEDULE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 일정입니다."),
+    NEIS_SCHEDULE_NOT_EDITABLE(HttpStatus.CONFLICT, "나이스에서 동기화한 일정은 수정하거나 삭제할 수 없습니다."),
 }
