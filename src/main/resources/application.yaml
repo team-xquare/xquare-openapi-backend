@@ -23,3 +23,10 @@ jwt:
 # 쉼표로 구분한 허용 origin 목록. 비워 두면 다른 origin의 요청을 모두 막는다.
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+
+resend:
+  api-key: ${RESEND_API_KEY:}
+  from: ${MAIL_FROM:}
+  base-url: https://api.resend.com
+  connect-timeout: 5s
+  read-timeout: 10s
