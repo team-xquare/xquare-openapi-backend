@@ -22,19 +22,21 @@
 
 ### 빈 곳
 - 회원가입 400 INVALID_INPUT: API 명세서에 없음. 현재 구현 기준으로만 추가함
-- OTP 발송/검증의 요청 값 검증 실패 시 응답(상태 코드/에러 코드) 미정의. 특히 otp 6자리 형식 위반, email 형식 위반(검증 API)
+- OTP 발송·검증 이메일은 `^[^@\s]+@dsm\.hs\.kr$`로 검사하며 빈 문자열도 `400 INVALID_EMAIL_FORMAT`으로 정함. 누락·null·깨진 JSON 및 빈 OTP는 `400 INVALID_INPUT`. 비어 있지 않은 OTP의 자리수·숫자 형식은 검사하지 않고 비교 결과에 따라 `OTP_MISMATCH` 또는 `OTP_NOT_FOUND`를 반환함.
 - 로그인·재발급 필드 누락: 명세에 없어 회원가입과 같은 `400 INVALID_INPUT`으로 정함(#10)
 - 로그인 계정 잠금(ACCOUNT_LOCKED)의 해제 조건 및 잠금 기간 미정(기능 명세서에도 "미정"으로 기재). 정해질 때까지 구현하지 않기로 함(#10)
 - 로그인 실패 횟수 카운트 기준(누적/연속, 초기화 시점, 아이디 기준 여부) 미정
 - 오류 응답의 message 문구: 두 명세서 모두 정의하지 않아 YAML의 message 예시는 설명을 한국어로 옮긴 임의 문구임
-- OTP 재발송 제한(횟수/쿨다운), 기존 OTP 덮어쓰기 여부, OTP 검증 실패 횟수 제한 미정
+- OTP 재발송은 기존 값을 덮어쓰고 TTL 300초를 다시 설정함. 재발송 횟수·쿨다운은 미정이므로 미구현. 검증은 로그인 잠금 기준 5회와 맞춰 같은 OTP가 5회 틀리면 폐기함(5번째 OTP_MISMATCH, 이후 OTP_NOT_FOUND로 재발송 필요). 재발송·성공은 시도 횟수를 초기화함. 저장·발송 실패는 `500 EMAIL_SEND_FAILED`이며 저장값이 해당 발송의 OTP와 같을 때만 원자적으로 정리하고 원래 실패 원인과 정리 실패는 로그로 남김.
+- Resend 연결 타임아웃은 기본 5초(`resend.connect-timeout`), 읽기 타임아웃은 기본 10초(`resend.read-timeout`)로 정함. 타임아웃도 `500 EMAIL_SEND_FAILED`로 처리함. 다만 요청을 보낸 뒤 응답을 받지 못한 경우(읽기 타임아웃, 응답 전 연결 끊김 등)는 Resend가 메일을 받아들였을 수 있어 OTP를 지우지 않음(#20 리뷰). 받은 메일의 코드로 검증할 수 있게 하려는 것. 연결 거부·호스트 조회 실패처럼 요청이 나가지 않은 게 확실한 경우와 Resend 오류 응답(4xx·5xx), 저장 실패는 기존처럼 OTP를 정리함. 연결 타임아웃은 읽기 타임아웃과 같은 예외(`SocketTimeoutException`)라 구분하지 않고 OTP를 남김.
+- 메일 제공자는 Resend HTTP API로 정함. API 키가 비어 있어도 기동은 허용하고 발송 시 실패 처리함. 인증 완료 토큰은 UUID, TTL 600초이며 기존 회원가입 계약을 사용함.
 - 회원가입 시 학번 중복 처리 규칙 및 에러 코드 미정 (이메일 중복은 PR #3 리뷰에서 `409 EMAIL_ALREADY_EXISTS`로 정함)
 - emailVerifiedToken 사용 후 삭제(1회용) 여부 미정
 - 회원가입 name 길이: 명세에 없어 PR #3 리뷰에서 1~10자로 정함
 - 회원가입 password 문자 종류: 명세에 없어 공백을 뺀 ASCII(`\x21-\x7E`)로 정함. BCrypt가 72바이트를 넘는 비밀번호를 거부하는데, 글자 수 제한만으로는 이모지 등 멀티바이트 문자를 막지 못하기 때문
 - 토큰 만료 시간(access/refresh TTL), 토큰 형식(JWT 클레임) 미정. 구현은 access 1시간, refresh 14일(환경변수로 변경 가능), 클레임은 CLAUDE.md의 JWT 항목 참고
 - 재발급 시 refreshToken 저장 방식과 동시 요청 처리: 명세에 없어 Redis `refresh_token:{userId}`에 사용자당 하나만 두고, 재발급은 저장값이 요청 토큰과 같을 때만 바꾸도록(compare-and-set) 정함(#10). 그래서 다른 기기에서 로그인하면 먼저 로그인한 기기는 재발급에 실패함(사용자가 정함)
-- 오류 응답 500 EMAIL_SEND_FAILED 외 서버 내부 오류 공통 처리 미정
+- 서버 내부 오류 공통 처리: 명세에 없어 Redis·DB 장애(Spring `DataAccessException`)는 `500 INTERNAL_SERVER_ERROR` "일시적인 서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."로 정함(#20 리뷰). 그 밖의 예상하지 못한 예외는 아직 공통 처리가 없음. OTP 검증은 인증 토큰을 먼저 저장한 뒤 OTP를 소모하므로, 토큰 저장이 실패해도 OTP가 남아 같은 코드로 다시 검증할 수 있음. OTP가 틀렸거나 소모에 실패하면 미리 저장한 토큰을 지움
 - 회원가입 password의 "특수문자" 허용 문자 집합 미정 (YAML에는 minLength/maxLength만 반영)
 - 로그인 password 길이/형식 위반 시 INVALID_CREDENTIALS인지 검증 오류인지: 명세에 없어 빈 값만 `400 INVALID_INPUT`, 나머지는 `401 INVALID_CREDENTIALS`로 정함(#10). 형식 규칙이 바뀌어도 기존 계정이 로그인할 수 있게 하려는 것
 
