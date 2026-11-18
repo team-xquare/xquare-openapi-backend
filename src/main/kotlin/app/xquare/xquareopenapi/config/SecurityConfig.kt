@@ -116,7 +116,10 @@ class SecurityConfig {
         private val ADMIN = Role.ADMIN.name
 
         // Spring MVC는 GET 매핑에 HEAD도 자동으로 응답하므로 HEAD도 같이 잡는다. 빠지면 토큰만으로 존재 여부가 드러난다.
-        private val API_KEY_READ_ENDPOINTS = listOf("/students", "/students/*", "/teachers", "/teachers/*")
+        // API 키로만 여는 조회 경로. SwaggerConfig도 이 목록으로 문서의 인증 방식을 정한다.
+        val API_KEY_READ_PATHS = listOf("/students", "/students/*", "/teachers", "/teachers/*")
+
+        private val API_KEY_READ_ENDPOINTS = API_KEY_READ_PATHS
             .flatMap { path ->
                 listOf(HttpMethod.GET, HttpMethod.HEAD).map { PathPatternRequestMatcher.withDefaults().matcher(it, path) }
             }
