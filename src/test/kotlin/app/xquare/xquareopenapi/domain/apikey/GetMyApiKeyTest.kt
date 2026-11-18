@@ -79,8 +79,9 @@ class GetMyApiKeyTest @Autowired constructor(
 
     @Test
     fun `재발급하면 발급 시각이 바뀐다`() {
-        val apiKey = saveApiKey(apiKeyRepository, apiKeyApplicationRepository, userId, "xq_old", ApiKeyField.STUDENT)
-        val issuedAt = apiKey.issuedAt
+        saveApiKey(apiKeyRepository, apiKeyApplicationRepository, userId, "xq_old", ApiKeyField.STUDENT)
+        // 메모리의 값은 나노초까지 있고 DB는 마이크로초로 반올림해 저장한다. 같은 기준으로 비교하려고 DB에서 다시 읽는다.
+        val issuedAt = apiKeyRepository.findAll().single().issuedAt
         emailVerifiedTokens.tokens["reissue"] = EMAIL
 
         mockMvc.post("/api-keys/reissue") {
