@@ -48,6 +48,10 @@ class ApplyApiKeyTest @Autowired constructor(
     @MockitoSpyBean
     private lateinit var spiedApiKeyRepository: ApiKeyRepository
 
+    // MySQL REPEATABLE READ에서 중복 확인이 옛 스냅샷을 보는 상황을 흉내 낼 때 쓴다.
+    @MockitoSpyBean
+    private lateinit var spiedApplicationRepository: ApiKeyApplicationRepository
+
     private var userId = 0L
     private lateinit var userToken: String
 
@@ -180,6 +184,31 @@ class ApplyApiKeyTest @Autowired constructor(
 
         apply(body(), token).andExpectEmailNotVerified()
         assertEquals(0, apiKeyRepository.count())
+    }
+
+    @Test
+    fun `중복 확인이 앞 요청의 분야를 못 보고 분야 제약에 걸려도 API_KEY_FIELD_ALREADY_APPLIED`() {
+        val apiKey = saveApiKey(apiKeyRepository, apiKeyApplicationRepository, userId, "xq_existing", ApiKeyField.STUDENT)
+        doReturn(false).`when`(spiedApplicationRepository).existsByApiKeyIdAndField(apiKey.id!!, ApiKeyField.STUDENT)
+
+        apply(body(field = "STUDENT")).andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("API_KEY_FIELD_ALREADY_APPLIED") }
+        }
+        assertEquals(1, apiKeyApplicationRepository.count())
+        assertEquals(EMAIL, emailVerifiedTokens.tokens[TOKEN])
+    }
+
+    @Test
+    fun `분야를 더할 때 분야 제약이 아닌 무결성 위반은 409로 바꾸지 않고 500 INTERNAL_SERVER_ERROR`() {
+        saveApiKey(apiKeyRepository, apiKeyApplicationRepository, userId, "xq_existing", ApiKeyField.STUDENT)
+        doThrow(DataIntegrityViolationException("다른 제약 위반")).`when`(spiedApplicationRepository).saveAndFlush(any())
+
+        apply(body(field = "TEACHER")).andExpect {
+            status { isInternalServerError() }
+            jsonPath("$.code") { value("INTERNAL_SERVER_ERROR") }
+        }
+        assertEquals(1, apiKeyApplicationRepository.count())
     }
 
     @Test
