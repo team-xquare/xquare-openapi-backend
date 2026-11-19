@@ -1,8 +1,11 @@
 package app.xquare.xquareopenapi.domain.student
 
+import jakarta.persistence.LockModeType
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
+import org.springframework.data.jpa.repository.EntityGraph
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 
@@ -11,6 +14,8 @@ interface StudentRepository : JpaRepository<Student, Long> {
 
     // name은 escapeLike()를 거친 값이어야 한다.
     // 학년·반은 학번에서 나온다. 2학년은 2000~2999, 3반은 학번을 1000으로 나눈 나머지가 300~399다.
+    // 응답에 소속 동아리를 넣으므로 같이 읽어 학생마다 한 번씩 더 조회하지 않게 한다.
+    @EntityGraph(attributePaths = ["club"])
     @Query(
         """
         select s from Student s
@@ -20,6 +25,21 @@ interface StudentRepository : JpaRepository<Student, Long> {
         """,
     )
     fun search(name: String?, grade: Int?, classNum: Int?, pageable: Pageable): Page<Student>
+
+    // 동아리 등록·수정이 쓴다. 다른 동아리 등록·수정이 같은 학생을 동시에 넣지 못하게 행을 잠그고 읽는다.
+    // 요청마다 잠글 학생을 이 메서드 한 번으로 id 순으로 잠가야 동아리 요청끼리 엇갈려 기다리는 데드락이 나지 않는다.
+    // 학생 삭제는 순서가 반대라(학생 → ON DELETE SET NULL로 동아리) 동아리 수정과 겹치면 데드락이 날 수 있다(UpdateClubUseCase 참고).
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from Student s where s.id in :ids order by s.id")
+    fun findAllByIdInForUpdate(ids: Collection<Long>): List<Student>
+
+    // 동아리 수정이 기존 구성원을 잠그기 전에 id만 읽는다. 엔티티를 읽지 않아야 잠근 뒤 읽은 값을 쓴다.
+    @Query("select s.id from Student s where s.club.id = :clubId")
+    fun findIdsByClubId(clubId: Long): List<Long>
+
+    // 동아리 구성원을 학번 순으로 읽는다.
+    @Query("select s from Student s where s.club.id in :clubIds order by s.studentNumber")
+    fun findAllByClubIdIn(clubIds: Collection<Long>): List<Student>
 
     // 조회 후 삭제하면 동시 삭제 때 늦은 쪽이 커밋하며 0행 삭제로 500이 난다. 한 번에 지우고 지운 행 수를 돌려준다.
     @Modifying
