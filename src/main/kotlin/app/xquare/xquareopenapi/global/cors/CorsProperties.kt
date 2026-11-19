@@ -10,6 +10,7 @@ data class CorsProperties(
 ) {
     // 토큰은 Authorization 헤더로만 주고받으므로 쿠키(credentials)는 허용하지 않는다.
     // 생성 API는 Location 헤더로 새 리소스 URI를 돌려준다. 노출하지 않으면 브라우저 JS가 읽지 못한다.
+    // OTP 발송 제한(429)은 Retry-After 헤더로 남은 시간을 알린다. 이것도 노출해야 브라우저 JS가 읽는다.
     fun toCorsConfiguration(): CorsConfiguration {
         val configuration = CorsConfiguration()
         configuration.allowedOrigins = allowedOrigins
@@ -23,7 +24,7 @@ data class CorsProperties(
     companion object {
         private val ALLOWED_METHODS = listOf("GET", "POST", "PUT", "PATCH", "DELETE")
         private val ALLOWED_HEADERS = listOf("Authorization", "Content-Type")
-        private val EXPOSED_HEADERS = listOf("Location")
+        private val EXPOSED_HEADERS = listOf("Location", "Retry-After")
         private val MAX_AGE = Duration.ofHours(1)
     }
 }
