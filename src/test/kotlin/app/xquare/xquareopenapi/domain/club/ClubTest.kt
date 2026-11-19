@@ -9,7 +9,6 @@ import app.xquare.xquareopenapi.domain.teacher.TeacherSubject
 import app.xquare.xquareopenapi.domain.user.Role
 import app.xquare.xquareopenapi.global.jwt.JwtProvider
 import jakarta.persistence.EntityManagerFactory
-import jakarta.servlet.ServletException
 import org.hibernate.SessionFactory
 import org.hamcrest.Matchers.contains
 import org.hamcrest.Matchers.containsString
@@ -43,8 +42,7 @@ import org.hibernate.exception.ConstraintViolationException
 import java.sql.SQLException
 import java.time.LocalDate
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertSame
+
 
 // 목록 조회의 쿼리 수를 세려고 Hibernate 통계를 켠다. 스파이 빈 때문에 어차피 이 테스트만의 컨텍스트라 다른 테스트에 영향이 없다.
 @SpringBootTest(properties = ["spring.jpa.properties.hibernate.generate_statistics=true"])
@@ -275,18 +273,18 @@ class ClubTest @Autowired constructor(
     }
 
     @Test
-    fun `교실, 교직원 제약이 아닌 무결성 위반은 원래 예외를 그대로 던진다`() {
+    fun `등록 중 알 수 없는 무결성 위반은 500 INTERNAL_SERVER_ERROR`() {
         val manager = student(2315)
         val violation = DataIntegrityViolationException("다른 제약 위반")
         doThrow(violation).`when`(spiedClubRepository).saveAndFlush(any())
 
-        val thrown = assertFailsWith<ServletException> {
-            mockMvc.post("/clubs") {
-                bearer(adminToken)
-                json(body(manager = manager.id!!, member = listOf(manager.id!!)))
-            }
+        mockMvc.post("/clubs") {
+            bearer(adminToken)
+            json(body(manager = manager.id!!, member = listOf(manager.id!!)))
+        }.andExpect {
+            status { isInternalServerError() }
+            jsonPath("$.code") { value("INTERNAL_SERVER_ERROR") }
         }
-        assertSame(violation, thrown.cause)
     }
 
     @Test
@@ -644,18 +642,18 @@ class ClubTest @Autowired constructor(
     }
 
     @Test
-    fun `수정할 때 교실, 교직원 제약이 아닌 무결성 위반은 원래 예외를 그대로 던진다`() {
+    fun `수정 중 알 수 없는 무결성 위반은 500 INTERNAL_SERVER_ERROR`() {
         val club = club()
         val violation = DataIntegrityViolationException("다른 제약 위반")
         doThrow(violation).`when`(spiedClubRepository).flush()
 
-        val thrown = assertFailsWith<ServletException> {
-            mockMvc.patch("/clubs/${club.id}") {
-                bearer(adminToken)
-                json(body(manager = club.manager!!.id!!, member = memberIds(club)))
-            }
+        mockMvc.patch("/clubs/${club.id}") {
+            bearer(adminToken)
+            json(body(manager = club.manager!!.id!!, member = memberIds(club)))
+        }.andExpect {
+            status { isInternalServerError() }
+            jsonPath("$.code") { value("INTERNAL_SERVER_ERROR") }
         }
-        assertSame(violation, thrown.cause)
     }
 
     @Test

@@ -7,7 +7,6 @@ import app.xquare.xquareopenapi.domain.teacher.TeacherSubject
 import app.xquare.xquareopenapi.domain.user.Role
 import app.xquare.xquareopenapi.global.jwt.JwtProvider
 import jakarta.persistence.EntityManagerFactory
-import jakarta.servlet.ServletException
 import org.hamcrest.Matchers.contains
 import org.hamcrest.Matchers.containsString
 import org.hibernate.SessionFactory
@@ -37,8 +36,7 @@ import org.springframework.test.web.servlet.post
 import java.sql.SQLException
 import java.time.LocalDate
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertSame
+
 
 // 조회의 쿼리 수를 세려고 Hibernate 통계를 켠다. 스파이 빈 때문에 어차피 이 테스트만의 컨텍스트라 다른 테스트에 영향이 없다.
 @SpringBootTest(properties = ["spring.jpa.properties.hibernate.generate_statistics=true"])
@@ -146,18 +144,18 @@ class StudySupervisorTest @Autowired constructor(
     }
 
     @Test
-    fun `날짜 제약이 아닌 무결성 오류는 그대로 던진다`() {
+    fun `등록 중 날짜 제약이 아닌 무결성 오류는 500 INTERNAL_SERVER_ERROR`() {
         val teacher = teacher("이진경")
         val violation = otherViolation()
         doThrow(violation).`when`(spiedStudySupervisorRepository).saveAndFlush(any())
 
-        val thrown = assertFailsWith<ServletException> {
-            mockMvc.post("/study-supervisors") {
-                bearer(adminToken)
-                json(body(assignments = listOf(2 to teacher.id!!)))
-            }
+        mockMvc.post("/study-supervisors") {
+            bearer(adminToken)
+            json(body(assignments = listOf(2 to teacher.id!!)))
+        }.andExpect {
+            status { isInternalServerError() }
+            jsonPath("$.code") { value("INTERNAL_SERVER_ERROR") }
         }
-        assertSame(violation, thrown.cause)
     }
 
     @Test
@@ -506,19 +504,19 @@ class StudySupervisorTest @Autowired constructor(
     }
 
     @Test
-    fun `수정 중 날짜 제약이 아닌 무결성 오류는 그대로 던진다`() {
+    fun `수정 중 날짜 제약이 아닌 무결성 오류는 500 INTERNAL_SERVER_ERROR`() {
         val teacher = teacher("이진경")
         val supervision = supervision(LocalDate.of(2026, 9, 14), 2 to teacher)
         val violation = otherViolation()
         doThrow(violation).`when`(spiedStudySupervisorRepository).flush()
 
-        val thrown = assertFailsWith<ServletException> {
-            mockMvc.patch("/study-supervisors/${supervision.id}") {
-                bearer(adminToken)
-                json(body(date = "2026-09-15", assignments = listOf(3 to teacher.id!!)))
-            }
+        mockMvc.patch("/study-supervisors/${supervision.id}") {
+            bearer(adminToken)
+            json(body(date = "2026-09-15", assignments = listOf(3 to teacher.id!!)))
+        }.andExpect {
+            status { isInternalServerError() }
+            jsonPath("$.code") { value("INTERNAL_SERVER_ERROR") }
         }
-        assertSame(violation, thrown.cause)
     }
 
     @Test
