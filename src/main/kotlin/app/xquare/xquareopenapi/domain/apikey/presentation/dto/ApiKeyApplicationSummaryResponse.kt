@@ -3,7 +3,8 @@ package app.xquare.xquareopenapi.domain.apikey.presentation.dto
 import app.xquare.xquareopenapi.domain.apikey.ApiKeyApplication
 import app.xquare.xquareopenapi.domain.apikey.ApiKeyApplicationType
 import app.xquare.xquareopenapi.domain.apikey.ApiKeyField
-import java.time.LocalDateTime
+import app.xquare.xquareopenapi.domain.apikey.withSeoulOffset
+import java.time.OffsetDateTime
 
 data class ApiKeyApplicationSummaryResponse(
     val id: Long,
@@ -12,7 +13,8 @@ data class ApiKeyApplicationSummaryResponse(
     val type: ApiKeyApplicationType,
     val serviceName: String,
     val purpose: String,
-    val appliedAt: LocalDateTime,
+    // 한국 시간(+09:00)
+    val appliedAt: OffsetDateTime,
 ) {
     companion object {
         fun of(application: ApiKeyApplication, userId: Long) = ApiKeyApplicationSummaryResponse(
@@ -22,7 +24,7 @@ data class ApiKeyApplicationSummaryResponse(
             type = application.type,
             serviceName = application.serviceName,
             purpose = application.purpose,
-            appliedAt = application.appliedAt,
+            appliedAt = application.appliedAt.withSeoulOffset(),
         )
     }
 }

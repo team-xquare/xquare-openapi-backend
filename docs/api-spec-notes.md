@@ -108,6 +108,7 @@
 - 목록은 학생 목록과 같은 `page`(0~21474836)·`size`(1~100, 기본 20)와 `PageResponse` 형식. 거르기는 `field`, `type`(정확 일치, AND). 정렬은 신청 시각 역순, 같으면 id 역순. 항목은 id, 신청자 userId, 분야, 구분, 서비스 이름, 사용 목적, 신청 시각
 - 상세는 신청 내용 + 신청자 userId + `applicant`(username, name, email, studentNumber) + 그 키가 신청한 분야 전체(분야, 신청 시각). `api_keys.user_id`에 외래 키가 없어 사용자 행이 지워졌으면 `applicant`는 null. 없는 id면 `404 API_KEY_APPLICATION_NOT_FOUND`, 숫자가 아니면 `400 INVALID_INPUT`
 - 키를 삭제하면 신청 기록도 지워지므로 관리자 목록에서도 사라진다(삭제 이력은 남기지 않음)
+- 격리 수준: 운영 DB는 MySQL 기본 `REPEATABLE READ`를 쓴다고 가정한다(#48 리뷰). 목록·상세는 신청과 키를 여러 SELECT로 나눠 읽는데, 이 격리 수준에서는 한 트랜잭션이 같은 스냅샷을 보므로 그 사이 키가 지워져도 500이 나지 않는다. `READ COMMITTED`로 바꾸면 동시 삭제 때 키가 사라져 500이 날 수 있으니 그때는 조회를 다시 봐야 한다
 - 키가 없거나 틀리면 액세스 토큰이 있어도 `401 INVALID_API_KEY`. 키는 맞지만 경로의 분야를 신청하지 않았으면 `403 API_KEY_FIELD_FORBIDDEN`(팀 공유용 에러 코드). 키로는 등록·수정·삭제나 키 재발급을 할 수 없다(`401 INVALID_TOKEN`)
 
 # 학생·교직원

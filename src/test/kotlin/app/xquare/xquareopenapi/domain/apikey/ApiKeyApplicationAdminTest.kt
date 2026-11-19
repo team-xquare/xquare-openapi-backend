@@ -63,7 +63,7 @@ class ApiKeyApplicationAdminTest @Autowired constructor(
             jsonPath("$.content[0].type") { value("ADD_FIELD") }
             jsonPath("$.content[0].serviceName") { value("TEACHER 서비스") }
             jsonPath("$.content[0].purpose") { value("TEACHER 목적") }
-            jsonPath("$.content[0].appliedAt") { value("2026-11-03T09:00:00") }
+            jsonPath("$.content[0].appliedAt") { value("2026-11-03T09:00:00+09:00") }
             jsonPath("$.content[1].userId") { value(minjiId) }
             jsonPath("$.page") { value(0) }
             jsonPath("$.size") { value(20) }
@@ -147,14 +147,14 @@ class ApiKeyApplicationAdminTest @Autowired constructor(
             jsonPath("$.type") { value("FIRST") }
             jsonPath("$.serviceName") { value("STUDENT 서비스") }
             jsonPath("$.purpose") { value("STUDENT 목적") }
-            jsonPath("$.appliedAt") { value("2026-11-01T09:00:00") }
+            jsonPath("$.appliedAt") { value("2026-11-01T09:00:00+09:00") }
             jsonPath("$.userId") { value(junseoId) }
             jsonPath("$.applicant.username") { value("junseo") }
             jsonPath("$.applicant.name") { value("김준서") }
             jsonPath("$.applicant.email") { value("junseo@dsm.hs.kr") }
             jsonPath("$.applicant.studentNumber") { value(2315) }
             jsonPath("$.fields[*].field") { value(contains("STUDENT", "TEACHER")) }
-            jsonPath("$.fields[1].appliedAt") { value("2026-11-03T09:00:00") }
+            jsonPath("$.fields[1].appliedAt") { value("2026-11-03T09:00:00+09:00") }
         }
     }
 

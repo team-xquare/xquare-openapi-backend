@@ -3218,8 +3218,8 @@ components:
         appliedAt:
           type: string
           format: date-time
-          description: 신청 시각. 한국 시간, 오프셋 없음
-          example: '2026-11-18T09:30:00'
+          description: 신청 시각. 한국 시간(Asia/Seoul) +09:00 오프셋을 붙인 RFC 3339 형식
+          example: '2026-11-18T09:30:00+09:00'
     ApiKeyApplicationPageResponse:
       type: object
       properties:
@@ -3281,7 +3281,8 @@ components:
         appliedAt:
           type: string
           format: date-time
-          example: '2026-11-18T09:30:00'
+          description: 신청 시각. 한국 시간(Asia/Seoul) +09:00 오프셋을 붙인 RFC 3339 형식
+          example: '2026-11-18T09:30:00+09:00'
         userId:
           type: integer
           format: int64

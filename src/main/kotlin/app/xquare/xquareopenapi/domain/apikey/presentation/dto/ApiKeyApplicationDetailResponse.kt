@@ -3,8 +3,9 @@ package app.xquare.xquareopenapi.domain.apikey.presentation.dto
 import app.xquare.xquareopenapi.domain.apikey.ApiKeyApplication
 import app.xquare.xquareopenapi.domain.apikey.ApiKeyApplicationType
 import app.xquare.xquareopenapi.domain.apikey.ApiKeyField
+import app.xquare.xquareopenapi.domain.apikey.withSeoulOffset
 import app.xquare.xquareopenapi.domain.user.User
-import java.time.LocalDateTime
+import java.time.OffsetDateTime
 
 data class ApiKeyApplicationDetailResponse(
     val id: Long,
@@ -12,7 +13,8 @@ data class ApiKeyApplicationDetailResponse(
     val type: ApiKeyApplicationType,
     val serviceName: String,
     val purpose: String,
-    val appliedAt: LocalDateTime,
+    // 한국 시간(+09:00)
+    val appliedAt: OffsetDateTime,
     val userId: Long,
     // api_keys.user_id에 외래 키가 없어서 사용자 행이 지워졌으면 null이다.
     val applicant: Applicant?,
@@ -38,7 +40,7 @@ data class ApiKeyApplicationDetailResponse(
             type = application.type,
             serviceName = application.serviceName,
             purpose = application.purpose,
-            appliedAt = application.appliedAt,
+            appliedAt = application.appliedAt.withSeoulOffset(),
             userId = userId,
             applicant = if (user != null) Applicant(user.username, user.name, user.email, user.studentNumber) else null,
             fields = applications.map(AppliedFieldResponse::from),
