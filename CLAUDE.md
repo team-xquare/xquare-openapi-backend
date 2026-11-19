@@ -46,14 +46,16 @@ API 스펙이 있습니다.
     - 생존자로 나오면 `javap -c -l -p`로 해당 줄의 바이트코드를 보고 위 경우인지 확인한다. 핵심 로직에서는 `if (a != null) a.b else c`처럼 써서 피했다(`LoginUseCase`, `SignupUseCase.save`).
   - `timeoutConstInMillis = 30000`: Testcontainers 테스트가 뮤턴트를 처음 돌릴 때 컨테이너를 띄우느라 기본 제한 시간을 넘겨 TIMED_OUT이 난다. 30초로 늘려도 가끔 남는다. TIMED_OUT·RUN_ERROR가 나오면 해당 클래스만 대상으로 다시 돌려(`-PpitTargets=...`) KILLED로 나오면 환경 문제로 본다.
   - `config` 패키지는 대상에서 뺐다. Spring 컨텍스트가 뜰 때 한 번만 실행되고 PIT은 캐시된 컨텍스트를 재사용해서, 바뀐 코드가 실행되지 않아 가짜 생존자만 생긴다. 생성자에서 한 번만 도는 코드도 같은 이유로 Spring 테스트로는 못 잡으니 단위 테스트(`JwtProviderTest`처럼)로 검증한다.
-- `RedisAuthRepositoriesTest`와 `ReissueConcurrencyTest`는 Redis를, `UserUniqueConstraintMySqlTest`, `StudentRepositoryMySqlTest`, `ApiKeyRepositoryMySqlTest`는 MySQL을 Testcontainers로 띄운다. Docker가 꺼져 있으면 실패하지 않고 건너뛴다.
+- `RedisAuthRepositoriesTest`와 `ReissueConcurrencyTest`는 Redis를, `UserUniqueConstraintMySqlTest`, `StudentRepositoryMySqlTest`, `ApiKeyRepositoryMySqlTest`, `ApplyApiKeyMySqlConcurrencyTest`는 MySQL을 Testcontainers로 띄운다. Docker가 꺼져 있으면 실패하지 않고 건너뛴다.
 - `ReissueConcurrencyTest`는 실제 HTTP 서버에 같은 리프레시 토큰으로 8개 요청을 동시에 보내는 검증을 3회 반복한다. 성공 1개·401 응답 7개, Redis에 저장된 토큰과 성공 응답의 일치, 새 토큰의 재발급과 이전 토큰 재사용 거부를 확인한다. 테스트 종료 시 컨텍스트를 닫으므로 H2 DB 이름도 다른 테스트와 분리한다.
+- `@MockitoSpyBean`으로 감싼 Spring Data 저장소는 JDK 프록시라 진짜 스파이가 아니라 위임 목이다. `doAnswer` 안에서 `callRealMethod()`는 실패하므로 `mockingDetails(목).mockCreationSettings.defaultAnswer.answer(invocation)`로 실제 동작을 부른다.
 
 ## 로컬 실행에 필요한 환경변수
 
 `RESEND_API_KEY`(빈 값이면 기동은 가능하나 메일 발송 실패), `MAIL_FROM`(예: `XQUARE <noreply@example.com>`), `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `REDIS_HOST`, `REDIS_PORT`, `JWT_SECRET`(32바이트 이상이어야 하고, 짧으면 앱이 뜨지 않음).
 `CORS_ALLOWED_ORIGINS`는 쉼표로 구분한 허용 origin 목록이다(예: `http://localhost:3000,https://example.com`). 비워 두면 브라우저의 다른 origin 요청이 모두 막힌다.
 `JPA_DDL_AUTO`는 기본값이 `validate`다. 마이그레이션 도구가 없으므로 빈 DB에서는 테이블이 먼저 있어야 한다.
+나이스 급식 동기화: `NEIS_API_KEY`(없으면 동기화를 건너뛰고 경고 로그만 남김), `NEIS_OFFICE_CODE`(기본 `G10`), `NEIS_SCHOOL_CODE`(기본 `7430310`, 대덕소프트웨어마이스터고), `NEIS_MEAL_SYNC_CRON`(기본 `0 0 4 * * *`, 서울 시간, `-`이면 끔).
 
 `src/test/resources/application.yaml`은 main 설정을 덮는 게 아니라 통째로 대신한다(H2, 테스트용 JWT secret). 새 설정 키를 추가하면 두 파일 모두에 넣는다.
 
@@ -70,13 +72,19 @@ API 스펙이 있습니다.
 - 인증: `JwtAuthenticationFilter`가 `Authorization: Bearer {accessToken}`을 검증해 principal=userId, 권한=`ROLE_{Role}`로 인증한다. 토큰이 없거나 유효하지 않으면 인증하지 않고 넘기고, 인증이 필요한 경로면 `SecurityErrorResponder`가 `401 INVALID_TOKEN`, 권한이 부족하면 `403 FORBIDDEN`으로 응답한다. 이 둘은 Security 필터에서 막히므로 `GlobalExceptionHandler`를 거치지 않는다. 필터는 빈으로 등록하지 않는다(Spring Boot가 서블릿 필터로도 등록해 두 번 실행된다).
 - API 키 인증: 조회 API(`GET`·`HEAD` `/students`, `/students/*`, `/teachers`, `/teachers/*`)는 `SecurityConfig.apiKeySecurityFilterChain`(`@Order(1)`)이 먼저 가져가 `X-API-Key`로만 인증한다. 이 체인에는 `ApiKeyAuthenticationFilter`만 있고 JWT 필터가 없어서, 토큰만 보내면 `401 INVALID_API_KEY`다. 반대로 JWT 체인에는 키 필터가 없어서 키로는 등록·수정·삭제를 못 한다. 필터는 키가 신청한 분야마다 `ApiKeyField.authority`(`API_KEY_FIELD_STUDENT` 등) 권한을 주고, 체인이 경로별로 그 권한을 검사해 없으면 `403 API_KEY_FIELD_FORBIDDEN`이다. 조회 API를 새로 만들면 `SecurityConfig.API_KEY_READ_PATHS`에 `경로 to 분야`를 한 줄 넣는다. 빠뜨리면 JWT 체인으로 가서 토큰으로 조회된다. `ApiKeyReadEndpointCoverageTest`가 GET 매핑을 전부 훑어서, 이 목록에도 예외 목록(`/error`, Swagger 등)에도 없는 경로가 있으면 실패한다. 키 없이 여는 GET(예: 급식)은 그 테스트의 예외 목록에 넣는다. Swagger 문서도 이 목록을 읽어 해당 GET에만 `X-API-Key` 인증(`apiKeyAuth`)을 붙인다. Spring MVC는 GET 매핑에 HEAD도 자동으로 응답하므로 매처는 GET과 HEAD를 함께 만든다.
 - CORS: `SecurityConfig`의 `cors { }`가 `corsConfigurationSource` 빈을 쓴다. 설정 값은 `global/cors/CorsProperties`에 있고, 허용 메서드는 GET/POST/PUT/PATCH/DELETE, 허용 헤더는 `Authorization`/`Content-Type`/`X-API-Key`다. 토큰을 헤더로 주고받으므로 credentials(쿠키)는 허용하지 않는다. preflight는 인증 검사보다 먼저 처리돼서 토큰 없이 통과한다.
+- 공개(ALL) API: `GET /meals`, `GET /meals/*`는 `permitAll`이다. 유효하지 않은 토큰을 보내도 필터가 인증 없이 넘기므로 401 없이 200이다.
 - 권한: `/students`, `/teachers` 등록·수정·삭제와 관리자 활용신청 목록·상세(`/api-key-applications`, `/api-key-applications/*`, 메서드 없이 걸어 HEAD도 막음)처럼 ADMIN 전용 API는 `SecurityConfig`에 `hasRole(ADMIN)`으로 메서드와 경로를 적는다. 나머지는 `authenticated`라서 USER와 ADMIN 모두 통과한다(조회 API는 위의 API 키 체인이 먼저 가져간다). ADMIN 계정을 만드는 API는 없어서 DB에서 `users.role`을 직접 바꿔야 한다.
 - 수정 API(PATCH)는 등록과 같은 요청 DTO로 모든 필드를 받아 통째로 바꾼다(`StudentRequest`, `TeacherRequest`). 그래서 교직원의 nullable 필드(`grade`, `classNum`)를 null로 보내면 값을 지운다.
 - 목록 조회는 `@ModelAttribute` 검색 DTO로 받는다. `page`(0 이상)·`size`(1~100)는 Bean Validation으로 검사하고, 응답은 `global/dto/PageResponse`. 쿼리 값의 타입이 틀리면 `GlobalExceptionHandler`가 `형식이 올바르지 않습니다.`로 바꿔 400을 준다.
   - 부분 일치 검색은 `like concat('%', :x, '%') escape '!'`로 쓰고, 값은 `escapeLike()`(`global/jpa`)를 거쳐 넘긴다. 그래야 입력의 `%`·`_`가 글자 그대로 찾아진다. MySQL은 문자열 안의 `\`를 이스케이프로 읽으므로 이스케이프 문자로 쓰지 않는다.
   - 쿼리에서 산술에 쓰는 검색 값(학생 `grade * 1000` 등)은 DTO에서 범위를 막는다. 막지 않으면 큰 값에서 넘쳐 500이 난다.
 - 삭제는 조회 후 `delete(entity)`가 아니라 `@Modifying` JPQL delete로 지우고, 지운 행 수가 0이면 404를 던진다. 조회 후 삭제하면 동시 삭제 때 늦은 쪽이 커밋하며 0행 삭제로 500이 난다(`DeleteStudentConcurrencyTest`).
+- `meals`의 unique 제약 이름 `uk_meals_meal_date`도 같은 방식으로 409(`MEAL_ALREADY_EXISTS`)로 바꾸는 데 쓴다.
 - `students`의 unique 제약 이름 `uk_students_student_number`도 계약이다. 동시 등록·수정으로 중복 검사를 통과한 요청이 제약에 걸리면 이 이름으로 구분해 409로 바꾼다(`DataIntegrityViolationException.violates`).
+- 나이스 급식 동기화(`domain/meal/neis`): `NeisMealSyncScheduler`가 cron마다 이번 달·다음 달을 `NeisMealClient`(RestClient, `config/NeisConfig`의 `neisRestClient`)로 가져와 `SyncNeisMealsUseCase`로 저장한다. `Meal.editedByAdmin`이 true(관리자가 등록·수정)인 날짜는 덮어쓰지 않는다. 동기화는 `findAllByDateIn`으로 행을 잠그고 읽어 관리자 수정과 겹쳐도 관리자 수정을 지우지 않는다.
+- 급식 '급식 없음' 표시: 급식 삭제 API가 없어서 세 끼가 모두 빈 행(`Meal.isNoMeal`, `editedByAdmin = true`)을 '급식 없음' 표시로 쓴다. 조회 API에서 빼고(단건 404), 등록·날짜 이동에서는 없는 급식으로 본다. 수정으로 날짜를 옮기면 원래 날짜에 표시를 남긴다. 급식 조회 쿼리를 새로 만들면 표시를 빼야 한다. 등록이 표시를 새 메뉴로 고치거나 날짜 이동이 표시를 지울 때는 `findIdByDate`로 id만 읽고 `findByIdForUpdate`로 잠근 뒤 다시 읽는다. 잠그지 않으면 같은 날짜의 등록·수정이 겹칠 때 먼저 쓴 급식이 에러 없이 사라진다(`CreateMealConcurrencyTest`, `UpdateMealConcurrencyTest`).
+  - 테스트는 실제 나이스를 부르지 않는다. `MockRestServiceServer.bindTo(RestClient.builder())`로 만든 RestClient를 넣어 클라이언트·스케줄러를 직접 만든다(`NeisMealClientTest`, `NeisMealSyncTest`). 테스트 설정은 `neis.meal-sync-cron: "-"`로 스케줄을 끈다.
+  - "이번 달" 같은 날짜 계산은 `Clock` 빈(`config/ClockConfig`, Asia/Seoul)을 주입받아 한다. 테스트는 `Clock.fixed`를 넣는다.
 - Redis 저장소는 인터페이스(`EmailVerifiedTokenRepository`, `RefreshTokenRepository`) 뒤에 둔다. 인증 API 테스트(`SignupTest`, `LoginTest`, `ReissueTest`)는 `FakeAuthRepositories`를 `@Import`해 `@Primary` 가짜 구현으로 바꿔 끼워서 Redis 없이 돈다. 저장소 인터페이스에 메서드를 추가하면 가짜 구현에도 넣는다.
 - Redis 키 형식은 다른 기능과 맞춰야 하는 계약이다:
   - `email_otp:{email}` → 6자리 OTP. TTL 300초이며 재발송은 덮어쓴다. 검증은 Lua 스크립트로 비교·삭제를 원자적으로 수행한다. 발송 실패 시 저장값이 해당 발송의 OTP와 같을 때만 Lua로 OTP와 횟수 키를 삭제하고 삭제 실패는 로그만 남긴다.
@@ -93,6 +101,8 @@ API 스펙이 있습니다.
 
 - Spring Boot 4이고 Jackson 3를 쓴다(`tools.jackson.*` 패키지). 테스트용 자동 설정 패키지도 옮겨졌다. 예: `org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc`, `org.springframework.boot.data.redis.test.autoconfigure.DataRedisTest`.
 - Kotlin DTO의 Bean Validation 어노테이션은 `@field:`를 붙여야 검증이 적용된다.
+- 목록 요소 검증(`List<@NotBlank String>`)은 컴파일 옵션 `-Xemit-jvm-type-annotations`가 있어야 바이트코드에 남아 동작한다(`build.gradle.kts`). 빼면 요소 검증이 조용히 사라진다(`MealTest`가 잡는다).
+- Kotlin에서 non-null 파라미터로 선언한 저장소 메서드(`findIdByDate(LocalDate)`)를 Mockito로 스텁할 때 `any()`는 null을 돌려줘 NPE가 난다. `any(LocalDate::class.java) ?: LocalDate.MIN`처럼 매처 등록 후 아무 값이나 넘긴다.
 - JPA 엔티티는 `build.gradle.kts`의 `allOpen` 설정으로 자동 open 처리된다. Hibernate 지연 로딩 프록시 때문에 필요하다.
 
 ## 협업

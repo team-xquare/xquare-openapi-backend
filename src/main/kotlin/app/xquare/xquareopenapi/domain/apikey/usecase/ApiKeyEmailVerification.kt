@@ -1,6 +1,7 @@
 package app.xquare.xquareopenapi.domain.apikey.usecase
 
 import app.xquare.xquareopenapi.domain.auth.repository.EmailVerifiedTokenRepository
+import app.xquare.xquareopenapi.domain.auth.usecase.normalizeEmail
 import app.xquare.xquareopenapi.domain.user.UserRepository
 import app.xquare.xquareopenapi.global.error.ErrorCode
 import app.xquare.xquareopenapi.global.error.XquareException
@@ -23,7 +24,10 @@ class ApiKeyEmailVerification(
     fun verify(userId: Long, emailVerifiedToken: String) {
         // a?.b ?: c로 쓰면 null이 될 수 없는 email에 대한 두 번째 null 검사가 생겨 죽일 수 없는 뮤턴트가 남는다.
         val user = userRepository.findByIdOrNull(userId) ?: throw XquareException(ErrorCode.EMAIL_NOT_VERIFIED)
-        if (emailVerifiedTokenRepository.findEmailByToken(emailVerifiedToken) != user.email) {
+        // OTP 인증은 소문자로 정규화한 이메일을 토큰에 저장하지만, 정규화 전에 가입한 계정은 대문자가 섞인 원문 그대로다.
+        // 회원가입과 같은 normalizeEmail(앞뒤 공백 제거·소문자화)로 양쪽을 맞춰 비교한다. 토큰이 없으면 계속 거절한다.
+        val verifiedEmail = emailVerifiedTokenRepository.findEmailByToken(emailVerifiedToken)
+        if (verifiedEmail == null || normalizeEmail(verifiedEmail) != normalizeEmail(user.email)) {
             throw XquareException(ErrorCode.EMAIL_NOT_VERIFIED)
         }
         TransactionSynchronizationManager.registerSynchronization(object : TransactionSynchronization {

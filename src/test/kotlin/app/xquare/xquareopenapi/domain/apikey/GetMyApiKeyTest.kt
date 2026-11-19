@@ -1,5 +1,6 @@
 package app.xquare.xquareopenapi.domain.apikey
 
+import app.xquare.xquareopenapi.domain.apikey.presentation.dto.AppliedFieldResponse
 import app.xquare.xquareopenapi.domain.auth.FakeAuthRepositories
 import app.xquare.xquareopenapi.domain.auth.FakeEmailVerifiedTokenRepository
 import app.xquare.xquareopenapi.domain.user.Role
@@ -19,6 +20,8 @@ import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import tools.jackson.databind.json.JsonMapper
 import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -70,11 +73,20 @@ class GetMyApiKeyTest @Autowired constructor(
         }.andReturn().response.contentAsString
 
         val json = jsonMapper.readTree(body)
-        assertEquals(apiKey.issuedAt, LocalDateTime.parse(json["issuedAt"].asString()))
+        assertEquals(apiKey.issuedAt, seoulTime(json["issuedAt"].asString()))
         assertTrue(apiKey.issuedAt in before..after, "${apiKey.issuedAt}")
-        assertEquals(applications.map { it.appliedAt }, (0 until json["fields"].size()).map { LocalDateTime.parse(json["fields"][it]["appliedAt"].asString()) })
+        assertEquals(applications.map { it.appliedAt }, (0 until json["fields"].size()).map { seoulTime(json["fields"][it]["appliedAt"].asString()) })
         assertEquals(setOf("issuedAt", "expiresAt", "fields"), json.properties().map { it.key }.toSet())
         assertFalse(body.contains("xq_"))
+    }
+
+    @Test
+    fun `응답 시각은 서버 시간대와 상관없이 한국 시간 오프셋을 붙인 RFC 3339 형식이다`() {
+        val time = LocalDateTime.of(2026, 11, 18, 9, 30)
+
+        val json = jsonMapper.writeValueAsString(AppliedFieldResponse(ApiKeyField.STUDENT, time.withSeoulOffset()))
+
+        assertEquals("""{"field":"STUDENT","appliedAt":"2026-11-18T09:30:00+09:00"}""", json)
     }
 
     @Test
@@ -93,7 +105,7 @@ class GetMyApiKeyTest @Autowired constructor(
         val reissuedAt = apiKeyRepository.findAll().single().issuedAt
         assertTrue(reissuedAt > issuedAt, "$issuedAt -> $reissuedAt")
         val body = getMine().andReturn().response.contentAsString
-        assertEquals(reissuedAt, LocalDateTime.parse(jsonMapper.readTree(body)["issuedAt"].asString()))
+        assertEquals(reissuedAt, seoulTime(jsonMapper.readTree(body)["issuedAt"].asString()))
     }
 
     @Test
@@ -142,6 +154,14 @@ class GetMyApiKeyTest @Autowired constructor(
     }
 
     private fun getMine() = mockMvc.get("/api-keys/me") { header("Authorization", "Bearer $userToken") }
+
+    // 응답 시각은 RFC 3339 date-time이라 +09:00 오프셋이 붙어 있어야 한다. 저장한 한국 시간과 비교할 수 있게 오프셋을 떼어 돌려준다.
+    private fun seoulTime(value: String): LocalDateTime {
+        assertTrue(Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?\+09:00$""").matches(value), value)
+        val parsed = OffsetDateTime.parse(value)
+        assertEquals(ZoneOffset.ofHours(9), parsed.offset)
+        return parsed.toLocalDateTime()
+    }
 
     companion object {
         private const val EMAIL = "junseo@dsm.hs.kr"

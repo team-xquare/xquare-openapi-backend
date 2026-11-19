@@ -1,8 +1,10 @@
 package app.xquare.xquareopenapi.domain.apikey
 
 import app.xquare.xquareopenapi.domain.apikey.presentation.dto.ApiKeyApplicationRequest
+import app.xquare.xquareopenapi.domain.apikey.presentation.dto.ReissueApiKeyRequest
 import app.xquare.xquareopenapi.domain.apikey.usecase.ApplyApiKeyUseCase
 import app.xquare.xquareopenapi.domain.apikey.usecase.DeleteApiKeyUseCase
+import app.xquare.xquareopenapi.domain.apikey.usecase.ReissueApiKeyUseCase
 import app.xquare.xquareopenapi.domain.auth.FakeAuthRepositories
 import app.xquare.xquareopenapi.domain.auth.FakeEmailVerifiedTokenRepository
 import app.xquare.xquareopenapi.domain.user.UserRepository
@@ -24,6 +26,7 @@ import kotlin.test.assertTrue
 class DeleteApiKeyConcurrencyTest @Autowired constructor(
     private val deleteApiKeyUseCase: DeleteApiKeyUseCase,
     private val applyApiKeyUseCase: ApplyApiKeyUseCase,
+    private val reissueApiKeyUseCase: ReissueApiKeyUseCase,
     private val apiKeyRepository: ApiKeyRepository,
     private val apiKeyApplicationRepository: ApiKeyApplicationRepository,
     private val userRepository: UserRepository,
@@ -90,6 +93,34 @@ class DeleteApiKeyConcurrencyTest @Autowired constructor(
         val keyIds = apiKeyRepository.findAll().map { it.id }.toSet()
         assertTrue(apiKeyApplicationRepository.findAll().all { it.apiKeyId in keyIds })
         assertTrue(apiKeyRepository.count() <= 1)
+    }
+
+    @RepeatedTest(3)
+    fun `삭제와 재발급이 겹치면 삭제는 성공하고 재발급은 성공하거나 API_KEY_NOT_FOUND이며 키는 남지 않는다`() {
+        emailVerifiedTokens.tokens["token"] = "junseo@dsm.hs.kr"
+        val barrier = CyclicBarrier(2)
+        val executor = Executors.newFixedThreadPool(2)
+        val delete = executor.submit {
+            barrier.await()
+            deleteApiKeyUseCase.execute(userId)
+        }
+        val reissue = executor.submit<ErrorCode?> {
+            barrier.await()
+            try {
+                reissueApiKeyUseCase.execute(userId, ReissueApiKeyRequest("token"))
+                null
+            } catch (e: XquareException) {
+                e.errorCode
+            }
+        }
+        // 재발급이 먼저 잠그면 새 키를 받은 뒤 삭제가 지우고, 삭제가 먼저면 재발급은 404다. 500(stale state)은 get()에서 터진다.
+        delete.get()
+        val reissued = reissue.get()
+        executor.shutdown()
+
+        assertTrue(reissued == null || reissued == ErrorCode.API_KEY_NOT_FOUND, "$reissued")
+        assertEquals(0, apiKeyRepository.count())
+        assertEquals(0, apiKeyApplicationRepository.count())
     }
 
     companion object {
