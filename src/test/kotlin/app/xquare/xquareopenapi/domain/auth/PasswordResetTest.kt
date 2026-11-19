@@ -33,7 +33,8 @@ class PasswordResetTest @Autowired constructor(
     fun tearDown() {
         userRepository.deleteAll()
         emailVerifiedTokens.tokens.clear()
-        emailVerifiedTokens.failOnDelete = false
+        emailVerifiedTokens.failOnConsume = false
+        emailVerifiedTokens.beforeConsume = {}
         refreshTokens.clear()
     }
 
@@ -104,7 +105,7 @@ class PasswordResetTest @Autowired constructor(
     }
 
     @Test
-    fun `리프레시 토큰 삭제에 실패하면 500이고 비밀번호와 인증 토큰은 그대로다`() {
+    fun `리프레시 토큰 삭제에 실패하면 500이고 비밀번호는 그대로지만 인증 토큰은 이미 소비됐다`() {
         val user = saveUser()
         refreshTokens.tokens[user.id!!] = "old-refresh"
         refreshTokens.failOnDelete = true
@@ -116,18 +117,58 @@ class PasswordResetTest @Autowired constructor(
         }
 
         assertTrue(passwordEncoder.matches(OLD_PASSWORD, userRepository.findById(user.id!!).get().password))
-        assertEquals(EMAIL, emailVerifiedTokens.tokens[TOKEN])
+        assertEquals("old-refresh", refreshTokens.tokens[user.id!!])
+        // 롤백돼도 토큰은 되살리지 않는다. 같은 토큰으로 다시 하면 403이다.
+        assertNull(emailVerifiedTokens.tokens[TOKEN])
+        refreshTokens.failOnDelete = false
+        reset().andExpect { jsonPath("$.code") { value("EMAIL_NOT_VERIFIED") } }
     }
 
     @Test
-    fun `인증 토큰 삭제에 실패해도 재설정은 성공한다`() {
+    fun `인증 토큰 소비에 실패하면 500이고 비밀번호와 리프레시 토큰은 그대로다`() {
+        val user = saveUser()
+        refreshTokens.tokens[user.id!!] = "old-refresh"
+        emailVerifiedTokens.tokens[TOKEN] = EMAIL
+        emailVerifiedTokens.failOnConsume = true
+
+        reset().andExpect {
+            status { isInternalServerError() }
+            jsonPath("$.code") { value("INTERNAL_SERVER_ERROR") }
+        }
+
+        assertTrue(passwordEncoder.matches(OLD_PASSWORD, userRepository.findById(user.id!!).get().password))
+        assertEquals("old-refresh", refreshTokens.tokens[user.id!!])
+    }
+
+    @Test
+    fun `같은 인증 토큰으로 두 번째 재설정은 403이고 첫 번째 비밀번호가 남는다`() {
         val user = saveUser()
         emailVerifiedTokens.tokens[TOKEN] = EMAIL
-        emailVerifiedTokens.failOnDelete = true
 
         reset().andExpect { status { isOk() } }
+        reset(newPassword = "Another1!").andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("EMAIL_NOT_VERIFIED") }
+        }
 
         assertTrue(passwordEncoder.matches(NEW_PASSWORD, userRepository.findById(user.id!!).get().password))
+    }
+
+    @Test
+    fun `토큰을 확인한 뒤 다른 요청이 먼저 소비했으면 403이고 비밀번호와 리프레시 토큰은 그대로다`() {
+        val user = saveUser()
+        refreshTokens.tokens[user.id!!] = "old-refresh"
+        emailVerifiedTokens.tokens[TOKEN] = EMAIL
+        // 이 요청이 토큰을 읽고 사용자를 찾은 뒤, 같은 토큰을 쓴 다른 요청이 먼저 소비한 상황
+        emailVerifiedTokens.beforeConsume = { emailVerifiedTokens.tokens.remove(TOKEN) }
+
+        reset().andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("EMAIL_NOT_VERIFIED") }
+        }
+
+        assertTrue(passwordEncoder.matches(OLD_PASSWORD, userRepository.findById(user.id!!).get().password))
+        assertEquals("old-refresh", refreshTokens.tokens[user.id!!])
     }
 
     @Test

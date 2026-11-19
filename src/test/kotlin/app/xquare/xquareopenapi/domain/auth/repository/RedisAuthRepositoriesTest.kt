@@ -64,6 +64,36 @@ class RedisAuthRepositoriesTest @Autowired constructor(
     }
 
     @Test
+    fun `이메일 인증 토큰을 소비하면 이메일을 돌려주고 키를 지우며 다시 소비하면 null이다`() {
+        redisTemplate.opsForValue().set("email_verified_token:token-1", "example@dsm.hs.kr")
+        redisTemplate.opsForValue().set("email_verified_token:token-2", "other@dsm.hs.kr")
+
+        assertEquals("example@dsm.hs.kr", emailVerifiedTokenRepository.consume("token-1"))
+        assertEquals(false, redisTemplate.hasKey("email_verified_token:token-1"))
+        assertNull(emailVerifiedTokenRepository.consume("token-1"))
+        assertEquals("other@dsm.hs.kr", redisTemplate.opsForValue().get("email_verified_token:token-2"))
+    }
+
+    @Test
+    fun `동시에 같은 이메일 인증 토큰을 소비하면 하나만 이메일을 받는다`() {
+        redisTemplate.opsForValue().set("email_verified_token:token-1", "example@dsm.hs.kr")
+        val executor = java.util.concurrent.Executors.newFixedThreadPool(8)
+        try {
+            val start = java.util.concurrent.CountDownLatch(1)
+            val tasks = (1..8).map {
+                executor.submit<String?> {
+                    start.await()
+                    emailVerifiedTokenRepository.consume("token-1")
+                }
+            }
+            start.countDown()
+            assertEquals(listOf("example@dsm.hs.kr"), tasks.mapNotNull { it.get() })
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
     fun `리프레시 토큰을 사용자 id 키에 TTL과 함께 저장한다`() {
         refreshTokenRepository.save(7L, "refresh-token", Duration.ofDays(14))
 

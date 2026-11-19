@@ -88,7 +88,7 @@ API 스펙이 있습니다.
 - Redis 키 형식은 다른 기능과 맞춰야 하는 계약이다:
   - `email_otp:{email}` → 6자리 OTP. TTL 300초이며 재발송은 덮어쓴다. 검증은 Lua 스크립트로 비교·삭제를 원자적으로 수행한다. 발송 실패 시 저장값이 해당 발송의 OTP와 같을 때만 Lua로 OTP와 횟수 키를 삭제하고 삭제 실패는 로그만 남긴다.
   - `email_otp_attempts:{email}` → OTP 불일치 횟수. 검증 Lua에서 증가시키며 TTL은 OTP의 남은 PTTL과 맞춘다. 5회 불일치하면 OTP와 횟수 키를 폐기한다(5번째는 OTP_MISMATCH, 이후는 OTP_NOT_FOUND). 성공·재발송 시 횟수 키를 삭제하며 재발송 저장과 횟수 초기화도 원자적으로 처리한다.
-  - `email_verified_token:{token}` → 이메일. 이메일 OTP 인증 API가 TTL 600초로 저장하고, 회원가입과 비밀번호 재설정이 읽은 뒤 지운다(용도 구분 없음).
+  - `email_verified_token:{token}` → 이메일. 이메일 OTP 인증 API가 TTL 600초로 저장하고, 회원가입은 읽고 커밋 뒤에 지우고, 비밀번호 재설정은 `consume`(GETDEL)으로 커밋 전에 원자적으로 소비한다(용도 구분 없음).
   - `refresh_token:{userId}` → 리프레시 토큰. TTL은 `jwt.refresh-expiration`. 사용자당 하나라 다시 로그인하면 이전 토큰은 폐기된다(사용자가 정함). 재발급은 저장값이 요청 토큰과 같을 때만 Lua 스크립트로 한 번에 바꾼다(`replace`). GET과 SET을 따로 하면 동시 재발급이나 그 사이의 재로그인 때 폐기된 토큰이 새 토큰을 덮어쓴다. 비밀번호 재설정은 커밋 전에 이 키를 지운다.
 - `users`의 unique 제약 이름(`uk_users_username`, `uk_users_email`)도 계약이다. 동시 가입으로 중복 검사를 통과한 요청이 제약에 걸리면, `UserUniqueConstraint`가 이 이름으로 어떤 값이 겹쳤는지 구분해 409로 바꾼다. 운영 DB의 제약 이름이 다르면 구분하지 못하고 500이 난다.
 - JWT: `sub`=userId, `type`=`access`/`refresh`, 액세스 토큰에만 `role`을 넣는다. 모든 토큰에 `jti`(UUID)를 넣는다. 빼면 같은 초에 발급한 토큰이 똑같아져, 재발급 직후에도 폐기한 토큰이 통한다. `generateRefreshToken`은 토큰과 TTL을 함께 돌려주며, Redis에 저장할 때 이 TTL을 그대로 쓴다. `parseRefreshToken`은 서명 오류·만료·액세스 토큰이면 예외 대신 null을 돌려준다.
