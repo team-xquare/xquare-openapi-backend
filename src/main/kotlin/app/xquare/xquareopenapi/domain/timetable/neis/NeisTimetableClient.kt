@@ -8,6 +8,7 @@ import org.springframework.web.client.body
 import tools.jackson.databind.JsonNode
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
 
 // 나이스 고등학교시간표(hisTimetable)를 가져온다. 학교 코드·인증키·RestClient는 급식 동기화와 같은 것을 쓴다.
 @Component
@@ -53,20 +54,45 @@ class NeisTimetableClient(
         }
         val code = headResult.path("CODE").asString()
         if (code != OK) throw NeisApiException(code, headResult.path("MESSAGE").asString())
+        // 건수가 없거나 정수가 아니면 asInt()가 0을 줘서 아래 검사를 그냥 통과하므로 형식부터 확인한다.
+        val totalCount = head.path(0).path("list_total_count")
+        if (!totalCount.isInt) {
+            throw NeisApiException(UNEXPECTED_RESPONSE, "나이스 시간표 응답 형식이 예상과 다릅니다.")
+        }
         // 키 없이 부르면 나이스가 샘플 5건만 준다(list_total_count는 실제 건수). 교시가 빠진 시간표를 정상으로 주지 않는다.
-        if (head.path(0).path("list_total_count").asInt() > rows.size()) {
+        if (totalCount.intValue() > rows.size()) {
             throw NeisApiException(UNEXPECTED_RESPONSE, "나이스 시간표를 일부만 받았습니다.")
         }
         return rows.values()
-            .map {
-                NeisTimetable(
-                    date = LocalDate.parse(it.path("ALL_TI_YMD").asString(), DATE_FORMAT),
-                    period = it.path("PERIO").asString().toInt(),
-                    subject = it.path("ITRT_CNTNT").asString().trim(),
-                )
-            }
+            .map(::toTimetable)
             .sortedWith(compareBy(NeisTimetable::date, NeisTimetable::period))
     }
+
+    // 날짜·교시·과목 중 하나라도 없거나 읽을 수 없는 행이 있으면 응답 전체를 깨진 것으로 본다.
+    // 빈 과목을 정상 시간표로 주고 10분 동안 캐시하지 않으려는 것이다. 실패는 GetTimetableUseCase가 캐시하지 않는다.
+    private fun toTimetable(row: JsonNode): NeisTimetable {
+        val date = row.requiredString("ALL_TI_YMD")?.let(::parseDate)
+        val period = row.requiredString("PERIO")?.toIntOrNull()
+        val subject = row.requiredString("ITRT_CNTNT")
+        if (date == null || period == null || subject == null) {
+            throw NeisApiException(UNEXPECTED_RESPONSE, "나이스 시간표 행에 날짜, 교시, 과목이 올바르지 않습니다.")
+        }
+        return NeisTimetable(date, period, subject)
+    }
+
+    // 문자열이고 앞뒤 공백을 지워도 비어 있지 않을 때만 지운 값을 준다.
+    private fun JsonNode.requiredString(field: String): String? {
+        val node = path(field)
+        if (!node.isString) return null
+        return node.stringValue().trim().ifEmpty { null }
+    }
+
+    private fun parseDate(value: String): LocalDate? =
+        try {
+            LocalDate.parse(value, DATE_FORMAT)
+        } catch (e: DateTimeParseException) {
+            null
+        }
 
     companion object {
         private const val PATH = "/hub/hisTimetable"

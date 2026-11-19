@@ -147,6 +147,49 @@ class NeisTimetableClientTest {
     }
 
     @Test
+    fun `전체 건수가 없거나 null이거나 정수가 아니면 NeisApiException`() {
+        // asInt()로 읽으면 모두 0이 되어 일부만 받은 응답도 통과하던 경우다.
+        listOf("{}", """{"list_total_count":null}""", """{"list_total_count":"1"}""", """{"list_total_count":1.5}""")
+            .forEach { countHead ->
+                server.reset()
+                respond(
+                    """{"hisTimetable":[{"head":[$countHead,{"RESULT":{"CODE":"INFO-000","MESSAGE":"정상 처리되었습니다."}}]},""" +
+                        """{"row":[${row("20261116", "1", "국어")}]}]}""",
+                )
+
+                val thrown = assertFailsWith<NeisApiException>(countHead) { client.fetch(1, 1, monday, sunday) }
+                assertEquals("UNEXPECTED_RESPONSE 나이스 시간표 응답 형식이 예상과 다릅니다.", thrown.message)
+            }
+    }
+
+    @Test
+    fun `행의 날짜, 교시, 과목이 없거나 비었거나 읽을 수 없으면 NeisApiException`() {
+        val valid = mapOf("ALL_TI_YMD" to "\"20261116\"", "PERIO" to "\"1\"", "ITRT_CNTNT" to "\"국어\"")
+        val broken = listOf(null, "null", "\"\"", "\"  \"", "1")
+        val cases = valid.keys.flatMap { field -> broken.map { field to it } } +
+            listOf("ALL_TI_YMD" to "\"2026-11-16\"", "ALL_TI_YMD" to "\"20261132\"", "PERIO" to "\"1교시\"")
+        cases.forEach { (field, value) ->
+            val fields = valid.toMutableMap()
+            if (value == null) fields.remove(field) else fields[field] = value
+            val brokenRow = fields.entries.joinToString(",", "{", "}") { (k, v) -> "\"$k\":$v" }
+            server.reset()
+            // 정상 행과 섞여 있어도 응답 전체를 실패로 본다.
+            respond(rows(row("20261116", "2", "수학"), brokenRow))
+
+            val thrown = assertFailsWith<NeisApiException>(brokenRow) { client.fetch(1, 1, monday, sunday) }
+            assertEquals("UNEXPECTED_RESPONSE 나이스 시간표 행에 날짜, 교시, 과목이 올바르지 않습니다.", thrown.message)
+        }
+    }
+
+    @Test
+    fun `행이 객체가 아니면 NeisApiException`() {
+        respond(rows("null"))
+
+        val thrown = assertFailsWith<NeisApiException> { client.fetch(1, 1, monday, sunday) }
+        assertEquals("UNEXPECTED_RESPONSE 나이스 시간표 행에 날짜, 교시, 과목이 올바르지 않습니다.", thrown.message)
+    }
+
+    @Test
     fun `HTTP 오류는 그대로 던진다`() {
         server.expect(requestTo(startsWith("https://open.neis.go.kr/hub/hisTimetable?")))
             .andRespond(withServerError())
