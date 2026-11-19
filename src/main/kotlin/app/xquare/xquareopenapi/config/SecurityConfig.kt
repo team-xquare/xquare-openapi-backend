@@ -1,5 +1,9 @@
 package app.xquare.xquareopenapi.config
 
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyApplicationRepository
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyAuthenticationFilter
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyField
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyRepository
 import app.xquare.xquareopenapi.domain.user.Role
 import app.xquare.xquareopenapi.global.cors.CorsProperties
 import app.xquare.xquareopenapi.global.error.SecurityErrorResponder
@@ -8,6 +12,7 @@ import app.xquare.xquareopenapi.global.jwt.JwtProvider
 import jakarta.servlet.DispatcherType
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.annotation.Order
 import org.springframework.http.HttpMethod
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.invoke
@@ -16,14 +21,50 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher
 import org.springframework.security.web.util.matcher.DispatcherTypeRequestMatcher
+import org.springframework.security.web.util.matcher.RequestMatcher
 import org.springframework.web.cors.CorsConfigurationSource
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 
 @Configuration
 class SecurityConfig {
 
+    // 조회 API는 API 키로만 인증한다. JWT 필터가 없는 체인을 따로 둬서 토큰이 있어도 키 없이는 401이다.
+    // 키가 맞아도 경로의 분야(API_KEY_READ_PATHS)를 신청하지 않았으면 403 API_KEY_FIELD_FORBIDDEN이다.
     @Bean
+    @Order(1)
+    fun apiKeySecurityFilterChain(
+        http: HttpSecurity,
+        apiKeyRepository: ApiKeyRepository,
+        apiKeyApplicationRepository: ApiKeyApplicationRepository,
+        securityErrorResponder: SecurityErrorResponder,
+    ): SecurityFilterChain {
+        http {
+            securityMatcher(*API_KEY_READ_ENDPOINTS.map { it.first }.toTypedArray())
+            csrf { disable() }
+            cors { }
+            formLogin { disable() }
+            httpBasic { disable() }
+            sessionManagement {
+                sessionCreationPolicy = SessionCreationPolicy.STATELESS
+            }
+            authorizeHttpRequests {
+                API_KEY_READ_ENDPOINTS.forEach { (matcher, field) -> authorize(matcher, hasAuthority(field.authority)) }
+            }
+            exceptionHandling {
+                authenticationEntryPoint = securityErrorResponder.invalidApiKey
+                accessDeniedHandler = securityErrorResponder.apiKeyFieldForbidden
+            }
+            addFilterBefore<UsernamePasswordAuthenticationFilter>(
+                ApiKeyAuthenticationFilter(apiKeyRepository, apiKeyApplicationRepository),
+            )
+        }
+        return http.build()
+    }
+
+    @Bean
+    @Order(2)
     fun securityFilterChain(
         http: HttpSecurity,
         jwtProvider: JwtProvider,
@@ -58,6 +99,9 @@ class SecurityConfig {
                 authorize(HttpMethod.POST, "/teachers", hasRole(ADMIN))
                 authorize(HttpMethod.PATCH, "/teachers/*", hasRole(ADMIN))
                 authorize(HttpMethod.DELETE, "/teachers/*", hasRole(ADMIN))
+                // 관리자 활용신청 목록·상세. 메서드를 정하지 않아 GET에 자동으로 붙는 HEAD도 ADMIN만 된다.
+                authorize("/api-key-applications", hasRole(ADMIN))
+                authorize("/api-key-applications/*", hasRole(ADMIN))
                 authorize(HttpMethod.POST, "/meals", hasRole(ADMIN))
                 authorize(HttpMethod.PATCH, "/meals/*", hasRole(ADMIN))
                 authorize(HttpMethod.POST, "/clubs", hasRole(ADMIN))
@@ -69,7 +113,7 @@ class SecurityConfig {
                 authorize(HttpMethod.POST, "/notices", hasRole(ADMIN))
                 authorize(HttpMethod.PATCH, "/notices/*", hasRole(ADMIN))
                 authorize(HttpMethod.DELETE, "/notices/*", hasRole(ADMIN))
-                // 나머지는 로그인만 하면 된다(USER, ADMIN).
+                // 나머지는 로그인만 하면 된다(USER, ADMIN). 조회 API는 위의 API 키 체인이 먼저 가져간다.
                 authorize(anyRequest, authenticated)
             }
             exceptionHandling {
@@ -94,5 +138,20 @@ class SecurityConfig {
 
     companion object {
         private val ADMIN = Role.ADMIN.name
+
+        // API 키로만 여는 조회 경로와 그 경로를 열 수 있는 활용신청 분야. SwaggerConfig도 이 목록으로 문서의 인증 방식을 정한다.
+        // 조회 API가 새로 생기면 한 줄씩 넣는다. 예: "/clubs" to ApiKeyField.CLUB, "/study-supervisors/day" to ApiKeyField.STUDY_SUPERVISOR
+        val API_KEY_READ_PATHS: Map<String, ApiKeyField> = linkedMapOf(
+            "/students" to ApiKeyField.STUDENT,
+            "/students/*" to ApiKeyField.STUDENT,
+            "/teachers" to ApiKeyField.TEACHER,
+            "/teachers/*" to ApiKeyField.TEACHER,
+        )
+
+        // Spring MVC는 GET 매핑에 HEAD도 자동으로 응답하므로 HEAD도 같이 잡는다. 빠지면 토큰만으로 존재 여부가 드러난다.
+        private val API_KEY_READ_ENDPOINTS: List<Pair<RequestMatcher, ApiKeyField>> = API_KEY_READ_PATHS
+            .flatMap { (path, field) ->
+                listOf(HttpMethod.GET, HttpMethod.HEAD).map { PathPatternRequestMatcher.withDefaults().matcher(it, path) to field }
+            }
     }
 }
