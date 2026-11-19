@@ -1,6 +1,5 @@
 package app.xquare.xquareopenapi.domain.auth.presentation.dto
 
-import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
@@ -23,8 +22,8 @@ data class SignupRequest(
     @field:Size(max = 10)
     val name: String,
 
-    @field:Email
-    @field:Pattern(regexp = "^[^@\\s]+@dsm\\.hs\\.kr$", message = "@dsm.hs.kr 이메일만 사용할 수 있습니다.")
+    // OTP API와 같은 규칙으로 검사한다(앞뒤 공백 제거·소문자화 후 로컬 파트 허용 목록). 저장은 SignupUseCase가 정규화한 값으로 한다.
+    @field:SchoolEmail
     val email: String,
 
     @field:NotBlank
