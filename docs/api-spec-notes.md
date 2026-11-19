@@ -55,6 +55,11 @@
 - 회원가입 password의 "특수문자" 허용 문자 집합 미정 (YAML에는 minLength/maxLength만 반영)
 - 로그인 password 길이/형식 위반 시 INVALID_CREDENTIALS인지 검증 오류인지: 명세에 없어 빈 값만 `400 INVALID_INPUT`, 나머지는 `401 INVALID_CREDENTIALS`로 정함(#10). 형식 규칙이 바뀌어도 기존 계정이 로그인할 수 있게 하려는 것
 
+### 구현하면서 정한 것 (내 정보, OPN-66)
+- 두 명세서에 API 정의가 없어 경로를 `GET /users/me`로 정함. 사용자 id는 요청으로 받지 않고 액세스 토큰의 `sub`에서 꺼냄. 권한은 USER·ADMIN 모두.
+- 응답 필드는 `User`에 있는 값 중 비밀번호 해시를 뺀 `id`, `username`, `name`, `studentNumber`, `email`, `role`.
+- 토큰은 유효하지만 사용자가 DB에 없으면(탈퇴 API가 없어 DB에서 직접 지운 경우뿐) 토큰의 주인이 없다고 보고 `401 INVALID_TOKEN`으로 응답함. 404용 에러 코드를 새로 만들지 않음.
+
 # 학생·교직원
 
 ### 명세 충돌

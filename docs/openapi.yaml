@@ -8,6 +8,7 @@ info:
     권한: `security: []`인 API는 인증 없이 호출할 수 있고, 나머지는 `Authorization: Bearer <accessToken>`이 필요합니다. 필요한 권한은 `x-required-role`(USER, ADMIN)에 적었습니다.
 tags:
 - name: 인증/인가
+- name: 사용자
 - name: 학생
 - name: 교직원
 - name: 자습 감독
@@ -316,6 +317,35 @@ paths:
                   value:
                     code: EMAIL_ALREADY_EXISTS
                     message: 이미 사용 중인 이메일입니다.
+  /users/me:
+    get:
+      tags:
+      - 사용자
+      summary: 내 정보 조회
+      description: '액세스 토큰의 사용자 id(sub)로 로그인한 사용자 자신의 정보를 조회한다. 비밀번호는 응답에 포함하지 않는다. 토큰은 유효하지만 해당 사용자가 없으면(DB에서 삭제됨)
+        401 INVALID_TOKEN으로 응답한다(현재 구현 기준). 권한: USER, ADMIN.'
+      operationId: getMyInfo
+      security:
+      - bearerAuth: []
+      x-required-role: USER
+      responses:
+        '200':
+          description: 내 정보
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserMyInfoResponse'
+        '401':
+          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음, 또는 토큰의 사용자가 존재하지 않음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_TOKEN:
+                  value:
+                    code: INVALID_TOKEN
+                    message: 토큰이 없거나 유효하지 않습니다.
   /students:
     get:
       tags:
@@ -2747,6 +2777,38 @@ components:
           type: string
           description: 리프레시 토큰. 액세스 토큰 재발급에 사용
           example: eyJhbGci...
+    UserMyInfoResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 사용자 id (액세스 토큰의 sub)
+          example: 1
+        username:
+          type: string
+          description: 로그인 아이디
+          example: Jun227
+        name:
+          type: string
+          description: 이름
+          example: 장윤호
+        studentNumber:
+          type: integer
+          format: int32
+          description: 가입 시 입력한 학번
+          example: 2315
+        email:
+          type: string
+          description: 가입한 이메일
+          example: example@dsm.hs.kr
+        role:
+          type: string
+          enum:
+          - USER
+          - ADMIN
+          description: 권한
+          example: USER
     StudentClub:
       type: &id010
       - object
