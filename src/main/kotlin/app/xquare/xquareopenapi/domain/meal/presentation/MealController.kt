@@ -9,6 +9,7 @@ import app.xquare.xquareopenapi.domain.meal.usecase.GetMealUseCase
 import app.xquare.xquareopenapi.domain.meal.usecase.GetMealsUseCase
 import app.xquare.xquareopenapi.domain.meal.usecase.UpdateMealUseCase
 import app.xquare.xquareopenapi.global.dto.MessageResponse
+import io.swagger.v3.oas.annotations.security.SecurityRequirements
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
@@ -31,6 +32,7 @@ class MealController(
     private val updateMealUseCase: UpdateMealUseCase,
 ) {
 
+    @SecurityRequirements
     @GetMapping
     fun getMeals(@ModelAttribute request: MealSearchRequest): MealListResponse =
         getMealsUseCase.execute(request)
@@ -41,6 +43,7 @@ class MealController(
         return ResponseEntity.created(URI.create("/meals/$mealId")).body(MessageResponse("생성되었습니다."))
     }
 
+    @SecurityRequirements
     @GetMapping("/{mealId}")
     fun getMeal(@PathVariable mealId: Long): MealResponse =
         getMealUseCase.execute(mealId)
