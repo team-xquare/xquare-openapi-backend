@@ -18,13 +18,13 @@ class VerifyEmailOtpUseCase(
     private val emailVerifiedTokenRepository: EmailVerifiedTokenRepository,
 ) {
     fun execute(request: EmailOtpVerifyRequest): EmailVerifiedTokenResponse {
-        validateOtpEmail(request.email)
+        val email = normalizeOtpEmail(request.email)
         // 토큰을 먼저 저장하고 OTP를 소모한다. 반대 순서면 OTP를 지운 뒤 토큰 저장이 실패했을 때 코드를 다시 받아야 한다.
         // 토큰은 OTP가 맞을 때만 응답으로 나가므로, 틀렸거나 소모에 실패하면 지운다.
         val token = UUID.randomUUID().toString()
-        emailVerifiedTokenRepository.save(token, request.email, Duration.ofSeconds(600))
+        emailVerifiedTokenRepository.save(token, email, Duration.ofSeconds(600))
         val verification = try {
-            emailOtpRepository.consume(request.email, request.otp)
+            emailOtpRepository.consume(email, request.otp)
         } catch (e: Exception) {
             deleteToken(token)
             throw e
