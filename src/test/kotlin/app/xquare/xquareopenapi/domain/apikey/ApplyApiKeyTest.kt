@@ -171,6 +171,24 @@ class ApplyApiKeyTest @Autowired constructor(
     }
 
     @Test
+    fun `대문자가 섞인 이메일로 가입한 계정도 소문자로 저장된 인증 토큰으로 신청할 수 있다`() {
+        val mixedCase = userRepository.saveUser("mixed", email = "MixedCase@DSM.hs.kr")
+        emailVerifiedTokens.tokens[OTHER_TOKEN] = "mixedcase@dsm.hs.kr"
+
+        apply(body(token = OTHER_TOKEN), jwtProvider.generateAccessToken(mixedCase.id!!, Role.USER)).andExpect {
+            status { isCreated() }
+        }
+        assertEquals(mixedCase.id, apiKeyRepository.findAll().single().userId)
+    }
+
+    @Test
+    fun `정규화 전에 대문자 그대로 저장된 인증 토큰도 같은 이메일이면 받는다`() {
+        emailVerifiedTokens.tokens[OTHER_TOKEN] = " JunSeo@dsm.hs.kr "
+
+        apply(body(token = OTHER_TOKEN)).andExpect { status { isCreated() } }
+    }
+
+    @Test
     fun `분야를 더할 때도 이메일 인증이 필요하다`() {
         saveApiKey(apiKeyRepository, apiKeyApplicationRepository, userId, "xq_existing", ApiKeyField.STUDENT)
 
