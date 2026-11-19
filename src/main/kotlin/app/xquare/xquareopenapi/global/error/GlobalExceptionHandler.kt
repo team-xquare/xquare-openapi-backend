@@ -2,6 +2,7 @@ package app.xquare.xquareopenapi.global.error
 
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataAccessException
+import org.springframework.dao.PessimisticLockingFailureException
 import org.springframework.http.HttpHeaders
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
@@ -41,6 +42,12 @@ class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException::class)
     fun handleNotReadableException(e: HttpMessageNotReadableException): ResponseEntity<ErrorResponse> =
         invalidInput(ErrorCode.INVALID_INPUT.message)
+
+    // 데드락이나 잠금 대기 시간 초과로 DB가 트랜잭션을 되돌린 경우다(CannotAcquireLockException 등).
+    // 다시 보내면 처리되는 실패라 형식 없는 500 대신 409로 알려 준다.
+    @ExceptionHandler(PessimisticLockingFailureException::class)
+    fun handleLockFailure(e: PessimisticLockingFailureException): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(ErrorCode.CONCURRENT_UPDATE.status).body(ErrorResponse.of(ErrorCode.CONCURRENT_UPDATE))
 
     // Redis·DB 장애(Spring이 DataAccessException으로 바꿔 던짐)도 기본 오류 응답 대신 {code, message} 형식의 500으로 응답한다.
     @ExceptionHandler(DataAccessException::class)
