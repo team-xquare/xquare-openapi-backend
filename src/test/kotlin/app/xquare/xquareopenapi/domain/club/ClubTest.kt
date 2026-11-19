@@ -1,5 +1,9 @@
 package app.xquare.xquareopenapi.domain.club
 
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyApplicationRepository
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyField
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyRepository
+import app.xquare.xquareopenapi.domain.apikey.saveApiKey
 import app.xquare.xquareopenapi.domain.student.Student
 import app.xquare.xquareopenapi.domain.student.StudentRepository
 import app.xquare.xquareopenapi.domain.teacher.Teacher
@@ -13,6 +17,7 @@ import org.hibernate.SessionFactory
 import org.hamcrest.Matchers.contains
 import org.hamcrest.Matchers.containsString
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentMatchers.anyLong
@@ -54,6 +59,8 @@ class ClubTest @Autowired constructor(
     private val studentRepository: StudentRepository,
     private val teacherRepository: TeacherRepository,
     private val transactionManager: PlatformTransactionManager,
+    private val apiKeyRepository: ApiKeyRepository,
+    private val apiKeyApplicationRepository: ApiKeyApplicationRepository,
     jwtProvider: JwtProvider,
 ) {
     // 동시 등록·수정을 흉내 내려고 중복 검사만 통과시킬 때 쓴다.
@@ -67,8 +74,16 @@ class ClubTest @Autowired constructor(
     private val adminToken = jwtProvider.generateAccessToken(1L, Role.ADMIN)
     private val userToken = jwtProvider.generateAccessToken(2L, Role.USER)
 
+    // 학생·교직원 조회 API는 해당 분야를 신청한 API 키로만 인증한다.
+    @BeforeEach
+    fun setUp() {
+        saveApiKey(apiKeyRepository, apiKeyApplicationRepository, 2L, RAW_API_KEY, ApiKeyField.STUDENT, ApiKeyField.TEACHER)
+    }
+
     @AfterEach
     fun tearDown() {
+        apiKeyApplicationRepository.deleteAll()
+        apiKeyRepository.deleteAll()
         clubRepository.deleteAll()
         studentRepository.deleteAll()
         teacherRepository.deleteAll()
@@ -567,7 +582,7 @@ class ClubTest @Autowired constructor(
             bearer(userToken)
         }.andExpect { jsonPath("$.teacher") { value(null as Any?) } }
         mockMvc.get("/teachers/${teacherRepository.findAll().single().id}") {
-            bearer(userToken)
+            apiKey()
         }.andExpect { jsonPath("$.club") { value(null as Any?) } }
     }
 
@@ -731,7 +746,7 @@ class ClubTest @Autowired constructor(
         assertEquals(2, studentRepository.count())
         members.forEach { expectStudentClub(it, null) }
         mockMvc.get("/teachers/${teacherRepository.findAll().single().id}") {
-            bearer(userToken)
+            apiKey()
         }.andExpect { jsonPath("$.club") { value(null as Any?) } }
         mockMvc.delete("/clubs/${club.id}") {
             bearer(adminToken)
@@ -761,14 +776,14 @@ class ClubTest @Autowired constructor(
         val noClubTeacher = teacher("김선생")
 
         mockMvc.get("/students/${club.manager!!.id}") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             jsonPath("$.club.id") { value(club.id!!) }
             jsonPath("$.club.name") { value("DMS") }
             jsonPath("$.club.logo") { value("logo.png") }
         }
         mockMvc.get("/students") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             jsonPath("$.content[*].studentNumber") { value(contains(2101, 2315, 3101)) }
             jsonPath("$.content[0].club.name") { value("DMS") }
@@ -776,17 +791,17 @@ class ClubTest @Autowired constructor(
             jsonPath("$.content[2].club") { value(null as Any?) }
         }
         mockMvc.get("/students/${noClub.id}") {
-            bearer(userToken)
+            apiKey()
         }.andExpect { jsonPath("$.club") { value(null as Any?) } }
         mockMvc.get("/teachers/${teacher.id}") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             jsonPath("$.club.id") { value(club.id!!) }
             jsonPath("$.club.name") { value("DMS") }
             jsonPath("$.club.logo") { value("logo.png") }
         }
         mockMvc.get("/teachers") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             jsonPath("$.content[*].id") { value(contains(teacher.id!!.toInt(), noClubTeacher.id!!.toInt())) }
             jsonPath("$.content[0].club.id") { value(club.id!!) }
@@ -961,7 +976,11 @@ class ClubTest @Autowired constructor(
     private fun queryCount(uri: String): Long {
         val statistics = entityManagerFactory.unwrap(SessionFactory::class.java).statistics
         statistics.clear()
-        mockMvc.get(uri) { bearer(userToken) }.andExpect { status { isOk() } }
+        // /clubs는 토큰, /students·/teachers는 API 키로 인증하므로 둘 다 보낸다. 키 확인 쿼리는 동아리 수와 상관없다.
+        mockMvc.get(uri) {
+            bearer(userToken)
+            apiKey()
+        }.andExpect { status { isOk() } }
         return statistics.prepareStatementCount
     }
 
@@ -989,7 +1008,7 @@ class ClubTest @Autowired constructor(
 
     private fun expectStudentClub(studentId: Long, clubId: Long?) {
         mockMvc.get("/students/$studentId") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             if (clubId == null) jsonPath("$.club") { value(null as Any?) } else jsonPath("$.club.id") { value(clubId) }
         }
@@ -1031,6 +1050,8 @@ class ClubTest @Autowired constructor(
 
     private fun MockHttpServletRequestDsl.bearer(token: String) = header("Authorization", "Bearer $token")
 
+    private fun MockHttpServletRequestDsl.apiKey() = header("X-API-Key", RAW_API_KEY)
+
     private fun MockHttpServletRequestDsl.json(body: String) {
         contentType = MediaType.APPLICATION_JSON
         content = body
@@ -1053,4 +1074,8 @@ class ClubTest @Autowired constructor(
           "teacher": $teacher
         }
     """.trimIndent()
+
+    companion object {
+        private const val RAW_API_KEY = "xq_test-api-key"
+    }
 }
