@@ -20,6 +20,9 @@ class SecurityErrorResponder(
     override fun commence(request: HttpServletRequest, response: HttpServletResponse, e: AuthenticationException) =
         write(response, ErrorCode.INVALID_TOKEN)
 
+    // 조회 API에 API 키가 없거나 틀리면 호출된다. 조회 API용 필터 체인의 entry point로 쓴다.
+    val invalidApiKey = AuthenticationEntryPoint { _, response, _ -> write(response, ErrorCode.INVALID_API_KEY) }
+
     // 인증은 됐지만 권한이 부족하면 호출된다.
     override fun handle(request: HttpServletRequest, response: HttpServletResponse, e: AccessDeniedException) =
         write(response, ErrorCode.FORBIDDEN)
