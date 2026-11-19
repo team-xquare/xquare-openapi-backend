@@ -97,7 +97,8 @@
 - 동시에 재발급하면 각 요청이 모두 키를 받지만 마지막으로 저장된 키 하나만 남는다(받은 키 중 하나는 반드시 쓸 수 있음)
 - 키는 `X-API-Key` 헤더로 받는다. JWT의 `Authorization`과 헤더를 나눠서 둘을 같이 보내도 헷갈리지 않게 했다
 - 키 인증 대상은 지금 있는 조회 API(`GET /students`, `/students/{id}`, `/teachers`, `/teachers/{id}`)와 같은 경로의 HEAD. Spring MVC가 GET 매핑에 HEAD도 자동으로 응답해서, 빼면 토큰만으로 200/404를 보고 존재 여부를 알 수 있다. 노션 API 명세서에는 타겟이 USER(JWT)로 적혀 있지만 태스크("조회 API는 API 키")를 따랐다
-- 경로와 분야: `/students`, `/students/*` → `STUDENT`, `/teachers`, `/teachers/*` → `TEACHER`. `SecurityConfig.API_KEY_READ_PATHS`에 경로→분야로 적는다. 동아리·일정·자습 감독 조회 API(`/clubs`, `/clubs/*`, `/schedules`, `/schedules/*`, `/study-supervisors`, `/study-supervisors/*`, `/study-supervisors/day`)는 아직 이 브랜치에 없어서 넣지 않았고, 병합되면 한 줄씩(`"/clubs" to ApiKeyField.CLUB`) 추가한다
+- 경로와 분야: `/students`, `/students/*` → `STUDENT`, `/teachers`, `/teachers/*` → `TEACHER`. `SecurityConfig.API_KEY_READ_PATHS`에 경로→분야로 적는다. 동아리·일정·자습 감독 조회 API(`/clubs`, `/clubs/*`, `/schedules`, `/schedules/*`, `/study-supervisors`, `/study-supervisors/*`, `/study-supervisors/day`)는 키 체인에 아직 넣지 않았다. 동아리(`/clubs`, `/clubs/{clubId}`)·자습 감독(`/study-supervisors`, `/study-supervisors/day`) 조회는 develop에 먼저 들어와 JWT(USER)로 열려 있고, 이 PR에서는 develop 동작을 그대로 두고 `ApiKeyReadEndpointCoverageTest` 예외 목록에 적었다. 계약(GitHub #34)대로 키 체인으로 옮기는 것은 기존 동아리·자습 감독 테스트와 문서의 인증 방식을 함께 바꿔야 해서 따로 정한다. 옮길 때는 한 줄씩(`"/clubs" to ApiKeyField.CLUB`) 추가한다. 일정 조회는 아직 develop에도 없다
+- 키 없이 여는 GET: 급식(`/meals`, `/meals/{mealId}`)은 계약대로 공개(ALL)라 키 체인에 넣지 않는다. 내 정보(`/users/me`)·공지(`/notices`, `/notices/{noticeId}`)는 분야가 없는 로그인용 조회라 JWT로 연다
 - 키가 없거나 틀리면 액세스 토큰이 있어도 `401 INVALID_API_KEY`. 키는 맞지만 경로의 분야를 신청하지 않았으면 `403 API_KEY_FIELD_FORBIDDEN`(팀 공유용 에러 코드). 키로는 등록·수정·삭제나 키 재발급을 할 수 없다(`401 INVALID_TOKEN`)
 
 # 학생·교직원
