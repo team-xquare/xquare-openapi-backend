@@ -3013,8 +3013,8 @@ components:
         appliedAt:
           type: string
           format: date-time
-          description: 그 분야를 신청한 시각. 한국 시간(Asia/Seoul), 오프셋 없음
-          example: '2026-11-18T09:30:00'
+          description: 그 분야를 신청한 시각. 한국 시간(Asia/Seoul) +09:00 오프셋을 붙인 RFC 3339 형식
+          example: '2026-11-18T09:30:00+09:00'
     MyApiKeyResponse:
       type: object
       required:
@@ -3025,8 +3025,8 @@ components:
         issuedAt:
           type: string
           format: date-time
-          description: 지금 키 값을 발급한 시각(첫 신청 또는 마지막 재발급). 한국 시간, 오프셋 없음
-          example: '2026-11-18T09:30:00'
+          description: 지금 키 값을 발급한 시각(첫 신청 또는 마지막 재발급). 한국 시간(Asia/Seoul) +09:00 오프셋을 붙인 RFC 3339 형식
+          example: '2026-11-18T09:30:00+09:00'
         expiresAt:
           type:
           - string
