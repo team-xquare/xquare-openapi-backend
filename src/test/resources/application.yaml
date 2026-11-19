@@ -25,3 +25,10 @@ resend:
   base-url: https://api.resend.com
   connect-timeout: 5s
   read-timeout: 10s
+
+# 테스트에서는 나이스를 부르지 않는다. 동기화 테스트는 MockRestServiceServer로 클라이언트를 직접 만든다.
+neis:
+  api-key: ""
+  office-code: G10
+  school-code: 7430310
+  meal-sync-cron: "-"
