@@ -2,6 +2,8 @@ package app.xquare.xquareopenapi.config
 
 import org.hamcrest.Matchers.containsString
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
@@ -24,12 +26,45 @@ class SwaggerTest @Autowired constructor(
     }
 
     @Test
-    fun `API 문서에 Bearer 토큰 인증 방식이 등록되어 기본으로 적용된다`() {
+    fun `API 문서의 기본 인증 방식은 Bearer JWT다`() {
         mockMvc.get("/v3/api-docs").andExpect {
             jsonPath("$.components.securitySchemes.bearerAuth.type") { value("http") }
             jsonPath("$.components.securitySchemes.bearerAuth.scheme") { value("bearer") }
             jsonPath("$.components.securitySchemes.bearerAuth.bearerFormat") { value("JWT") }
             jsonPath("$.security[0].bearerAuth") { exists() }
+        }
+    }
+
+    @ParameterizedTest(name = "{0} {1}")
+    @CsvSource(
+        "post, /auth/signup",
+        "post, /auth/login",
+        "post, /auth/reissue",
+        "post, /auth/email/otp",
+        "post, /auth/email/otp/verify",
+        "get, /meals",
+        "get, /meals/{mealId}",
+    )
+    fun `공개 API는 기본 인증을 빈 배열로 재정의한다`(method: String, path: String) {
+        mockMvc.get("/v3/api-docs").andExpect {
+            status { isOk() }
+            val security = "\$.paths['$path'].$method.security"
+            jsonPath(security) { isArray() }
+            jsonPath("$security.length()") { value(0) }
+        }
+    }
+
+    @Test
+    fun `보호된 API는 문서의 기본 인증 방식을 상속한다`() {
+        mockMvc.get("/v3/api-docs").andExpect {
+            status { isOk() }
+            jsonPath("$.paths['/meals'].post") { exists() }
+            jsonPath("$.paths['/meals'].post.security") { doesNotHaveJsonPath() }
+            jsonPath("$.paths['/meals/{mealId}'].patch") { exists() }
+            jsonPath("$.paths['/meals/{mealId}'].patch.security") { doesNotHaveJsonPath() }
+            // 학생·교직원 조회 GET은 API 키 인증으로 재정의되므로 여기서 보지 않는다(아래 API 키 테스트가 확인).
+            jsonPath("$.paths['/students'].post") { exists() }
+            jsonPath("$.paths['/students'].post.security") { doesNotHaveJsonPath() }
         }
     }
 
