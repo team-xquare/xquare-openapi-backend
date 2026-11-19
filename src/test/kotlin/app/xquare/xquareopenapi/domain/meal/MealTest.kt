@@ -5,7 +5,6 @@ import app.xquare.xquareopenapi.domain.meal.usecase.MealSyncResult
 import app.xquare.xquareopenapi.domain.meal.usecase.SyncNeisMealsUseCase
 import app.xquare.xquareopenapi.domain.user.Role
 import app.xquare.xquareopenapi.global.jwt.JwtProvider
-import jakarta.servlet.ServletException
 import org.hamcrest.Matchers.contains
 import org.hamcrest.Matchers.containsString
 import org.hibernate.exception.ConstraintViolationException
@@ -32,9 +31,7 @@ import java.sql.SQLException
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 @SpringBootTest
@@ -147,17 +144,18 @@ class MealTest @Autowired constructor(
     }
 
     @Test
-    fun `날짜 제약이 아닌 무결성 오류는 그대로 던진다`() {
-        val violation = otherViolation()
-        doThrow(violation).`when`(spiedMealRepository).saveAndFlush(any())
+    fun `날짜 제약이 아닌 무결성 오류는 409로 바꾸지 않고 500 INTERNAL_SERVER_ERROR`() {
+        doThrow(otherViolation()).`when`(spiedMealRepository).saveAndFlush(any())
 
-        val thrown = assertFailsWith<ServletException> {
-            mockMvc.post("/meals") {
-                bearer(adminToken)
-                json(body())
-            }
+        // 원래 예외는 GlobalExceptionHandler가 로그로 남기고, 응답은 {code, message} 형식의 500이다.
+        mockMvc.post("/meals") {
+            bearer(adminToken)
+            json(body())
+        }.andExpect {
+            status { isInternalServerError() }
+            jsonPath("$.code") { value("INTERNAL_SERVER_ERROR") }
         }
-        assertSame(violation, thrown.cause)
+        assertEquals(0, mealRepository.count())
     }
 
     @Test
@@ -363,7 +361,7 @@ class MealTest @Autowired constructor(
     fun `중복 검사를 통과해도 수정한 날짜가 겹치면 MEAL_ALREADY_EXISTS`() {
         val meal = save(date = LocalDate.of(2026, 9, 1))
         save(date = LocalDate.of(2026, 9, 2))
-        doReturn(null).`when`(spiedMealRepository).findByDate(anyDate())
+        doReturn(null).`when`(spiedMealRepository).findIdByDate(anyDate())
 
         mockMvc.patch("/meals/${meal.id}") {
             bearer(adminToken)
@@ -373,18 +371,18 @@ class MealTest @Autowired constructor(
     }
 
     @Test
-    fun `수정 중 날짜 제약이 아닌 무결성 오류는 그대로 던진다`() {
+    fun `수정 중 날짜 제약이 아닌 무결성 오류는 409로 바꾸지 않고 500 INTERNAL_SERVER_ERROR`() {
         val meal = save()
-        val violation = otherViolation()
-        doThrow(violation).`when`(spiedMealRepository).flush()
+        doThrow(otherViolation()).`when`(spiedMealRepository).flush()
 
-        val thrown = assertFailsWith<ServletException> {
-            mockMvc.patch("/meals/${meal.id}") {
-                bearer(adminToken)
-                json(body())
-            }
+        mockMvc.patch("/meals/${meal.id}") {
+            bearer(adminToken)
+            json(body(date = "2026-09-02"))
+        }.andExpect {
+            status { isInternalServerError() }
+            jsonPath("$.code") { value("INTERNAL_SERVER_ERROR") }
         }
-        assertSame(violation, thrown.cause)
+        assertEquals(LocalDate.of(2026, 9, 1), mealRepository.findById(meal.id!!).get().date)
     }
 
     @Test
@@ -608,7 +606,7 @@ class MealTest @Autowired constructor(
         }
     }
 
-    // findByDate·findIdByDate는 Kotlin에서 LocalDate(non-null)로 선언돼 any()의 null을 받지 못한다. 매처를 등록한 뒤 null 대신 아무 날짜나 넘긴다.
+    // findIdByDate는 Kotlin에서 LocalDate(non-null)로 선언돼 any()의 null을 받지 못한다. 매처를 등록한 뒤 null 대신 아무 날짜나 넘긴다.
     private fun anyDate(): LocalDate = any(LocalDate::class.java) ?: LocalDate.MIN
 
     private fun otherViolation() =

@@ -38,9 +38,15 @@ class SecurityConfig {
                 sessionCreationPolicy = SessionCreationPolicy.STATELESS
             }
             authorizeHttpRequests {
+                authorize(HttpMethod.POST, "/auth/email/otp", permitAll)
+                authorize(HttpMethod.POST, "/auth/email/otp/verify", permitAll)
                 authorize(HttpMethod.POST, "/auth/signup", permitAll)
                 authorize(HttpMethod.POST, "/auth/login", permitAll)
                 authorize(HttpMethod.POST, "/auth/reissue", permitAll)
+                // Swagger UI와 API 문서(springdoc)
+                authorize(HttpMethod.GET, "/swagger-ui.html", permitAll)
+                authorize(HttpMethod.GET, "/swagger-ui/**", permitAll)
+                authorize(HttpMethod.GET, "/v3/api-docs/**", permitAll)
                 // 급식 조회는 공개(ALL)다. 토큰이 없거나 유효하지 않아도 401 없이 조회된다.
                 authorize(HttpMethod.GET, "/meals", permitAll)
                 authorize(HttpMethod.GET, "/meals/*", permitAll)

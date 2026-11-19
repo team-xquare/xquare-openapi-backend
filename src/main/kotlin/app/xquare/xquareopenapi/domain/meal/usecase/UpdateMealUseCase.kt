@@ -26,7 +26,10 @@ class UpdateMealUseCase(
         // 커밋할 때 반영하면 unique 제약 위반이 이 메서드 밖에서 나므로, 단계마다 반영해 409로 바꾼다.
         try {
             if (moved) {
-                val target = mealRepository.findByDate(request.date)
+                // 표시를 잠그지 않고 읽으면, 읽은 뒤에 등록 API가 그 표시를 급식으로 바꿔도 모르고 지워서 방금 등록한 급식이 에러 없이 사라진다(#24 리뷰).
+                // 등록과 같은 방식으로 id만 읽고 잠근 뒤 다시 읽는다(MealRepository.findByIdForUpdate 참고).
+                // 잠금을 기다리는 사이 다른 수정이 그 표시를 지우고 급식을 옮겨 왔으면 null이고, 아래에서 날짜가 겹쳐 409가 된다.
+                val target = mealRepository.findIdByDate(request.date)?.let(mealRepository::findByIdForUpdate)
                 if (target != null) {
                     if (!target.isNoMeal) throw XquareException(ErrorCode.MEAL_ALREADY_EXISTS)
                     // Hibernate는 flush 때 INSERT·UPDATE를 DELETE보다 먼저 보내므로, 표시를 먼저 지워 반영해야 unique 제약에 걸리지 않는다.

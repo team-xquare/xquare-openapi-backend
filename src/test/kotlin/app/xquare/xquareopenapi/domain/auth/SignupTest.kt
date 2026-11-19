@@ -7,7 +7,6 @@ import app.xquare.xquareopenapi.global.jwt.JwtProperties
 import com.jayway.jsonpath.JsonPath
 import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.security.Keys
-import jakarta.servlet.ServletException
 import org.hamcrest.Matchers.containsString
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -31,7 +30,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 @SpringBootTest
@@ -176,6 +174,64 @@ class SignupTest @Autowired constructor(
     }
 
     @Test
+    fun `대문자 이메일로 가입해도 소문자로 비교하고 저장한다`() {
+        emailVerifiedTokens.tokens[TOKEN] = EMAIL
+
+        mockMvc.post("/auth/signup") {
+            contentType = MediaType.APPLICATION_JSON
+            content = body(email = "Example@DSM.HS.KR")
+        }.andExpect { status { isCreated() } }
+        assertEquals(EMAIL, userRepository.findAll().single().email)
+
+        emailVerifiedTokens.tokens["other-token"] = EMAIL
+        mockMvc.post("/auth/signup") {
+            contentType = MediaType.APPLICATION_JSON
+            content = body(username = "other", email = "EXAMPLE@dsm.hs.kr", emailVerifiedToken = "other-token")
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("EMAIL_ALREADY_EXISTS") }
+        }
+        verify(spiedUserRepository, times(1)).save(any())
+    }
+
+    @Test
+    fun `정규화 전 코드가 대소문자를 그대로 저장한 인증 토큰으로도 가입된다`() {
+        // #20 코드는 요청 이메일을 그대로 토큰에 저장했다. 배포 직후 남아 있는 토큰(최대 600초)도 받아야 한다.
+        emailVerifiedTokens.tokens[TOKEN] = "Example@DSM.hs.kr"
+
+        mockMvc.post("/auth/signup") {
+            contentType = MediaType.APPLICATION_JSON
+            content = body(email = "example@dsm.hs.kr")
+        }.andExpect { status { isCreated() } }
+        assertEquals(EMAIL, userRepository.findAll().single().email)
+
+        emailVerifiedTokens.tokens["other-token"] = " Other@dsm.hs.kr "
+        mockMvc.post("/auth/signup") {
+            contentType = MediaType.APPLICATION_JSON
+            content = body(username = "other", email = "another@dsm.hs.kr", emailVerifiedToken = "other-token")
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("EMAIL_NOT_VERIFIED") }
+        }
+        mockMvc.post("/auth/signup") {
+            contentType = MediaType.APPLICATION_JSON
+            content = body(username = "other", email = "other@dsm.hs.kr", emailVerifiedToken = "other-token")
+        }.andExpect { status { isCreated() } }
+        assertEquals(setOf(EMAIL, "other@dsm.hs.kr"), userRepository.findAll().map { it.email }.toSet())
+    }
+
+    @Test
+    fun `앞뒤 공백이 있는 이메일도 OTP API처럼 받아 정규화한 값으로 비교하고 저장한다`() {
+        emailVerifiedTokens.tokens[TOKEN] = EMAIL
+
+        mockMvc.post("/auth/signup") {
+            contentType = MediaType.APPLICATION_JSON
+            content = body(email = "  Example@dsm.hs.kr ")
+        }.andExpect { status { isCreated() } }
+        assertEquals(EMAIL, userRepository.findAll().single().email)
+    }
+
+    @Test
     fun `이미 쓰는 아이디면 USERNAME_ALREADY_EXISTS`() {
         emailVerifiedTokens.tokens[TOKEN] = EMAIL
         mockMvc.post("/auth/signup") {
@@ -259,18 +315,21 @@ class SignupTest @Autowired constructor(
     }
 
     @Test
-    fun `어느 unique 제약인지 구분할 수 없는 무결성 위반은 원래 예외를 그대로 던진다`() {
+    fun `어느 unique 제약인지 구분할 수 없는 무결성 위반은 409로 바꾸지 않고 500 INTERNAL_SERVER_ERROR`() {
         val violation = DataIntegrityViolationException("다른 제약 위반")
         doThrow(violation).`when`(spiedUserRepository).save(any())
         emailVerifiedTokens.tokens[TOKEN] = EMAIL
 
-        val thrown = assertFailsWith<ServletException> {
-            mockMvc.post("/auth/signup") {
-                contentType = MediaType.APPLICATION_JSON
-                content = body()
-            }
+        // 원래 예외는 GlobalExceptionHandler가 로그로 남기고, 응답은 {code, message} 형식의 500이다.
+        mockMvc.post("/auth/signup") {
+            contentType = MediaType.APPLICATION_JSON
+            content = body()
+        }.andExpect {
+            status { isInternalServerError() }
+            jsonPath("$.code") { value("INTERNAL_SERVER_ERROR") }
         }
-        assertSame(violation, thrown.cause)
+        assertEquals(0, userRepository.count())
+        assertEquals(EMAIL, emailVerifiedTokens.tokens[TOKEN])
     }
 
     @Test
@@ -291,6 +350,12 @@ class SignupTest @Autowired constructor(
             body(email = "example@gmail.com") to "email",
             body(email = "") to "email",
             body(email = ".example@dsm.hs.kr") to "email",
+            body(email = "example+1@dsm.hs.kr") to "email",
+            body(email = "\\\"example\\\"@dsm.hs.kr") to "email",
+            body(email = "exa\\\\mple@dsm.hs.kr") to "email",
+            body(email = "example(comment)@dsm.hs.kr") to "email",
+            body(email = "exa..mple@dsm.hs.kr") to "email",
+            body(email = "example.@dsm.hs.kr") to "email",
             """{"username":"Jun227"}""" to "요청 값이 올바르지 않습니다.",
         )
 
