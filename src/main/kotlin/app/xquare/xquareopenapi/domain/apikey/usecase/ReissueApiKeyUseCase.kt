@@ -19,7 +19,10 @@ class ReissueApiKeyUseCase(
     @Transactional
     fun execute(userId: Long, request: ReissueApiKeyRequest): ApiKeyResponse {
         apiKeyEmailVerification.verify(userId, request.emailVerifiedToken)
-        val apiKey = apiKeyRepository.findByUserId(userId) ?: throw XquareException(ErrorCode.API_KEY_NOT_FOUND)
+        // 신청 흐름처럼 키 행을 잠그고 다시 읽는다. 잠그지 않으면 키 삭제와 겹칠 때 해시 update가 0행이 되어
+        // Hibernate가 stale state 예외로 500을 낸다. 잠그기 전에 삭제가 끝났으면 잠금 조회가 null이라 404다.
+        val apiKey = apiKeyRepository.findByUserId(userId)?.let { apiKeyRepository.findByIdForUpdate(it.id!!) }
+            ?: throw XquareException(ErrorCode.API_KEY_NOT_FOUND)
         val rawKey = ApiKeySecret.generate()
         apiKey.reissue(ApiKeySecret.hash(rawKey))
         return ApiKeyResponse(rawKey)
