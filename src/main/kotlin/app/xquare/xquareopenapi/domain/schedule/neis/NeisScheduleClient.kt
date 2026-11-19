@@ -18,7 +18,7 @@ class NeisScheduleClient(
 ) {
 
     // 그 달의 학사일정을 나이스가 준 순서대로 준다. 데이터가 없으면(INFO-200) 빈 목록이다.
-    // 그 밖의 결과 코드, 예상과 다른 응답, 일부만 받은 응답이면 NeisApiException을 던진다.
+    // 그 밖의 결과 코드, 예상과 다른 응답, 전체 건수(list_total_count)가 없거나 받은 건수와 다른 응답이면 NeisApiException을 던진다.
     // 동기화가 이 목록에 없는 나이스 일정을 지우므로, 덜 받은 목록을 정상으로 돌려주면 안 된다.
     fun fetchMonth(month: YearMonth): List<NeisSchedule> {
         val response = neisRestClient.get()
@@ -53,8 +53,13 @@ class NeisScheduleClient(
         }
         val code = headResult.path("CODE").asString()
         if (code != OK) throw NeisApiException(code, headResult.path("MESSAGE").asString())
-        if (head.path(0).path("list_total_count").asInt() > rows.size()) {
-            throw NeisApiException(UNEXPECTED_RESPONSE, "나이스 학사일정을 일부만 받았습니다.")
+        // asInt()는 누락·null·문자열·소수를 0이나 잘린 값으로 바꿔 검사를 통과시키므로, int 범위의 정수인지 먼저 본다.
+        val totalCount = head.path(0).path("list_total_count")
+        if (!totalCount.isIntegralNumber || !totalCount.canConvertToInt()) {
+            throw NeisApiException(UNEXPECTED_RESPONSE, "나이스 학사일정 전체 건수가 없거나 정수가 아닙니다.")
+        }
+        if (totalCount.intValue() != rows.size()) {
+            throw NeisApiException(UNEXPECTED_RESPONSE, "나이스 학사일정 전체 건수와 받은 건수가 다릅니다.")
         }
         return rows.values()
             .map {

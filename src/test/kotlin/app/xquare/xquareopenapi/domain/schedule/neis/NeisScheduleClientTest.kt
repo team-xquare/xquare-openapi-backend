@@ -119,16 +119,31 @@ class NeisScheduleClientTest {
     }
 
     @Test
-    fun `전체 건수보다 적게 받으면 NeisApiException이고, 같으면 정상이다`() {
+    fun `전체 건수가 받은 건수와 다르면 NeisApiException이고, 같으면 정상이다`() {
         // 동기화는 받은 목록에 없는 나이스 일정을 지우므로 일부만 받은 목록을 정상으로 돌려주면 안 된다.
-        respond(rows(row("20260305", "체육대회", ""), totalCount = 2))
+        listOf(2, 0).forEach { totalCount ->
+            server.reset()
+            respond(rows(row("20260305", "체육대회", ""), totalCount = totalCount.toString()))
 
-        val thrown = assertFailsWith<NeisApiException> { client.fetchMonth(YearMonth.of(2026, 3)) }
-        assertEquals("UNEXPECTED_RESPONSE 나이스 학사일정을 일부만 받았습니다.", thrown.message)
+            val thrown = assertFailsWith<NeisApiException>("$totalCount") { client.fetchMonth(YearMonth.of(2026, 3)) }
+            assertEquals("UNEXPECTED_RESPONSE 나이스 학사일정 전체 건수와 받은 건수가 다릅니다.", thrown.message)
+        }
 
         server.reset()
-        respond(rows(row("20260305", "체육대회", ""), totalCount = 1))
+        respond(rows(row("20260305", "체육대회", ""), totalCount = "1"))
         assertEquals(1, client.fetchMonth(YearMonth.of(2026, 3)).size)
+    }
+
+    @Test
+    fun `전체 건수가 없거나 int 범위의 정수가 아니면 NeisApiException`() {
+        // asInt()로 읽으면 누락·null·문자열은 0, 소수는 잘린 값, int를 넘는 수는 넘친 값(2^32+1 -> 1)이 되어 검사를 통과한다.
+        listOf(null, "null", "\"1\"", "1.0", "1.5", "4294967297").forEach { totalCount ->
+            server.reset()
+            respond(rows(row("20260305", "체육대회", ""), totalCount = totalCount))
+
+            val thrown = assertFailsWith<NeisApiException>("$totalCount") { client.fetchMonth(YearMonth.of(2026, 3)) }
+            assertEquals("UNEXPECTED_RESPONSE 나이스 학사일정 전체 건수가 없거나 정수가 아닙니다.", thrown.message)
+        }
     }
 
     @Test
@@ -150,7 +165,10 @@ class NeisScheduleClientTest {
         fun row(date: String, title: String, content: String) =
             """{"AA_YMD":"$date","EVENT_NM":"$title","EVENT_CNTNT":"$content"}"""
 
-        fun rows(vararg rows: String, totalCount: Int = rows.size) =
-            """{"SchoolSchedule":[{"head":[{"list_total_count":$totalCount},{"RESULT":{"CODE":"INFO-000","MESSAGE":"정상 처리되었습니다."}}]},{"row":[${rows.joinToString(",")}]}]}"""
+        // totalCount는 list_total_count에 들어갈 JSON 값이다. null이면 필드를 넣지 않는다.
+        fun rows(vararg rows: String, totalCount: String? = rows.size.toString()): String {
+            val count = totalCount?.let { """{"list_total_count":$it}""" } ?: "{}"
+            return """{"SchoolSchedule":[{"head":[$count,{"RESULT":{"CODE":"INFO-000","MESSAGE":"정상 처리되었습니다."}}]},{"row":[${rows.joinToString(",")}]}]}"""
+        }
     }
 }

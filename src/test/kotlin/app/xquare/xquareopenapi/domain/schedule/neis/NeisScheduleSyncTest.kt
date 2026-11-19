@@ -27,7 +27,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
+import kotlin.test.assertFailsWith
 
 @SpringBootTest
 class NeisScheduleSyncTest @Autowired constructor(
@@ -108,18 +108,33 @@ class NeisScheduleSyncTest @Autowired constructor(
     }
 
     @Test
-    fun `그 달이 아닌 나이스 일정은 읽지도 지우지도 않고, 받은 목록의 다른 달 일정은 버린다`() {
+    fun `그 달이 아닌 나이스 일정은 읽지도 지우지도 않는다`() {
         val february = save(LocalDate.of(2026, 2, 28), "졸업식", null, NEIS)
         val april = save(LocalDate.of(2026, 4, 1), "만우절", null, NEIS)
+        save(LocalDate.of(2026, 3, 5), "체육대회", null, NEIS)
 
-        val result = syncNeisSchedulesUseCase.execute(
-            march,
-            listOf(NeisSchedule(LocalDate.of(2026, 2, 28), "졸업식", "바뀜"), NeisSchedule(LocalDate.of(2026, 4, 1), "새 행사", null)),
-        )
+        val result = syncNeisSchedulesUseCase.execute(march, emptyList())
 
-        assertEquals(ScheduleSyncResult(created = 0, updated = 0, deleted = 0), result)
+        assertEquals(ScheduleSyncResult(created = 0, updated = 0, deleted = 1), result)
         assertEquals(listOf(february.id, april.id), scheduleRepository.findAll().map(Schedule::id).sortedBy { it })
-        assertNull(scheduleRepository.findById(february.id!!).get().content)
+    }
+
+    @Test
+    fun `받은 목록에 그 달 밖의 날짜가 있으면 아무것도 바꾸지 않고 예외를 던진다`() {
+        // 걸러서 쓰면 다른 달 행만 온 응답이 빈 목록이 되어 그 달 나이스 일정이 모두 지워진다.
+        val saved = save(LocalDate.of(2026, 3, 5), "체육대회", "그대로", NEIS)
+        listOf(
+            listOf(NeisSchedule(LocalDate.of(2026, 2, 28), "졸업식", null)),
+            listOf(NeisSchedule(LocalDate.of(2026, 4, 1), "새 행사", null)),
+            listOf(NeisSchedule(LocalDate.of(2026, 3, 5), "체육대회", "바뀜"), NeisSchedule(LocalDate.of(2026, 4, 1), "새 행사", null)),
+        ).forEach { neisSchedules ->
+            val thrown = assertFailsWith<IllegalArgumentException> { syncNeisSchedulesUseCase.execute(march, neisSchedules) }
+            assertEquals("2026-03 동기화에 그 달 밖의 나이스 학사일정(${neisSchedules.last().date})이 왔습니다.", thrown.message)
+        }
+
+        val schedule = scheduleRepository.findAll().single()
+        assertEquals(saved.id, schedule.id)
+        assertEquals("그대로", schedule.content)
     }
 
     @Test
@@ -203,6 +218,30 @@ class NeisScheduleSyncTest @Autowired constructor(
         server.verify()
         assertEquals(true, scheduleRepository.existsById(december.id!!))
         assertEquals(listOf("성탄절", "신정"), scheduleRepository.findAll().map(Schedule::title).sorted())
+    }
+
+    @Test
+    fun `전체 건수가 없거나 맞지 않거나 다른 달 일정만 온 달은 기존 일정을 그대로 둔다`() {
+        listOf(
+            rows(row("20261225", "성탄절", ""), totalCount = null),
+            rows(row("20261225", "성탄절", ""), totalCount = "null"),
+            rows(row("20261225", "성탄절", ""), totalCount = "2"),
+            rows(row("20270101", "신정", "")),
+        ).forEach { decemberBody ->
+            server.reset()
+            scheduleRepository.deleteAll()
+            val december = listOf(save(LocalDate.of(2026, 12, 24), "종업식", null, NEIS), save(LocalDate.of(2026, 12, 31), "송년회", "내용", NEIS))
+            expectMonth("20261201", "20261231", decemberBody)
+            expectMonth("20270101", "20270131", rows(row("20270104", "개학식", "")))
+
+            scheduler().sync()
+
+            server.verify()
+            val schedules = scheduleRepository.findAll().sortedBy(Schedule::date)
+            assertEquals(december.map(Schedule::id), schedules.filter { it.date.year == 2026 }.map(Schedule::id), decemberBody)
+            assertEquals(listOf(null, "내용"), schedules.filter { it.date.year == 2026 }.map(Schedule::content), decemberBody)
+            assertEquals(listOf(LocalDate.of(2027, 1, 4)), schedules.filter { it.date.year == 2027 }.map(Schedule::date), decemberBody)
+        }
     }
 
     @Test
