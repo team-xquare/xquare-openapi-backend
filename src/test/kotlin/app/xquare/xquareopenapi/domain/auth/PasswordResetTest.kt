@@ -1,7 +1,9 @@
 package app.xquare.xquareopenapi.domain.auth
 
+import app.xquare.xquareopenapi.domain.auth.usecase.TokenIssuer
 import app.xquare.xquareopenapi.domain.user.User
 import app.xquare.xquareopenapi.domain.user.UserRepository
+import com.jayway.jsonpath.JsonPath
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -27,6 +29,7 @@ class PasswordResetTest @Autowired constructor(
     private val passwordEncoder: PasswordEncoder,
     private val emailVerifiedTokens: FakeEmailVerifiedTokenRepository,
     private val refreshTokens: FakeRefreshTokenRepository,
+    private val tokenIssuer: TokenIssuer,
 ) {
 
     @AfterEach
@@ -77,6 +80,37 @@ class PasswordResetTest @Autowired constructor(
 
         assertNull(refreshTokens.tokens[user.id!!])
         assertEquals("other-refresh", refreshTokens.tokens[other.id!!])
+    }
+
+    @Test
+    fun `재설정 전에 옛 비밀번호로 검증을 마친 로그인이 삭제 뒤에 저장한 리프레시 토큰은 재발급에 쓸 수 없다`() {
+        saveUser()
+        emailVerifiedTokens.tokens[TOKEN] = EMAIL
+        // 로그인이 사용자를 읽고 옛 비밀번호를 검증한 시점
+        val staleUser = userRepository.findByUsername("Jun227")!!
+        assertTrue(passwordEncoder.matches(OLD_PASSWORD, staleUser.password))
+
+        reset().andExpect { status { isOk() } }
+        // 재설정이 리프레시 토큰을 지운 뒤에 그 로그인이 토큰을 발급·저장한다.
+        val staleRefreshToken = tokenIssuer.issue(staleUser).refreshToken
+        assertEquals(staleRefreshToken, refreshTokens.tokens[staleUser.id!!])
+
+        reissue(staleRefreshToken).andExpect {
+            status { isUnauthorized() }
+            jsonPath("$.code") { value("INVALID_REFRESH_TOKEN") }
+        }
+    }
+
+    @Test
+    fun `재설정 뒤 새 비밀번호로 로그인한 리프레시 토큰은 재발급된다`() {
+        saveUser()
+        emailVerifiedTokens.tokens[TOKEN] = EMAIL
+        reset().andExpect { status { isOk() } }
+
+        val response = login(NEW_PASSWORD).andReturn().response.contentAsString
+        val refreshToken = JsonPath.read<String>(response, "$.refreshToken")
+
+        reissue(refreshToken).andExpect { status { isOk() } }
     }
 
     @Test
@@ -207,6 +241,12 @@ class PasswordResetTest @Autowired constructor(
         mockMvc.post("/auth/password/reset") {
             contentType = MediaType.APPLICATION_JSON
             content = """{"emailVerifiedToken":"$token","newPassword":"$newPassword"}"""
+        }
+
+    private fun reissue(refreshToken: String): ResultActionsDsl =
+        mockMvc.post("/auth/reissue") {
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"refreshToken":"$refreshToken"}"""
         }
 
     private fun login(password: String): ResultActionsDsl =

@@ -91,7 +91,7 @@ API 스펙이 있습니다.
   - `email_verified_token:{token}` → 이메일. 이메일 OTP 인증 API가 TTL 600초로 저장하고, 회원가입은 읽고 커밋 뒤에 지우고, 비밀번호 재설정은 `consume`(GETDEL)으로 커밋 전에 원자적으로 소비한다(용도 구분 없음).
   - `refresh_token:{userId}` → 리프레시 토큰. TTL은 `jwt.refresh-expiration`. 사용자당 하나라 다시 로그인하면 이전 토큰은 폐기된다(사용자가 정함). 재발급은 저장값이 요청 토큰과 같을 때만 Lua 스크립트로 한 번에 바꾼다(`replace`). GET과 SET을 따로 하면 동시 재발급이나 그 사이의 재로그인 때 폐기된 토큰이 새 토큰을 덮어쓴다. 비밀번호 재설정은 커밋 전에 이 키를 지운다.
 - `users`의 unique 제약 이름(`uk_users_username`, `uk_users_email`)도 계약이다. 동시 가입으로 중복 검사를 통과한 요청이 제약에 걸리면, `UserUniqueConstraint`가 이 이름으로 어떤 값이 겹쳤는지 구분해 409로 바꾼다. 운영 DB의 제약 이름이 다르면 구분하지 못하고 500이 난다.
-- JWT: `sub`=userId, `type`=`access`/`refresh`, 액세스 토큰에만 `role`을 넣는다. 모든 토큰에 `jti`(UUID)를 넣는다. 빼면 같은 초에 발급한 토큰이 똑같아져, 재발급 직후에도 폐기한 토큰이 통한다. `generateRefreshToken`은 토큰과 TTL을 함께 돌려주며, Redis에 저장할 때 이 TTL을 그대로 쓴다. `parseRefreshToken`은 서명 오류·만료·액세스 토큰이면 예외 대신 null을 돌려준다.
+- JWT: `sub`=userId, `type`=`access`/`refresh`, 액세스 토큰에만 `role`을 넣는다. 모든 토큰에 `jti`(UUID)를 넣는다. 빼면 같은 초에 발급한 토큰이 똑같아져, 재발급 직후에도 폐기한 토큰이 통한다. `generateRefreshToken`은 토큰과 TTL을 함께 돌려주며, Redis에 저장할 때 이 TTL을 그대로 쓴다. `parseRefreshToken`은 서명 오류·만료·액세스 토큰이면 예외 대신 null을 돌려준다. 리프레시 토큰에는 발급 근거가 된 비밀번호 해시의 HMAC(`pwd`)을 넣고, 재발급은 DB의 지금 해시 지문과 다르면 거절한다(비밀번호 재설정과 동시에 진행된 로그인 차단). 그래서 `TokenIssuer.issue`에는 비밀번호를 검증할 때 읽은 `User`를 넘겨야 한다.
 
 - 메일: `OtpMailSender` 뒤의 `ResendOtpMailSender`가 Thymeleaf `email/otp` 템플릿을 렌더링해 Resend HTTP API로 보낸다. `resend.base-url`은 기본 `https://api.resend.com`이며 테스트에서는 로컬 HTTP 서버로 바꾼다. 연결 제한은 `resend.connect-timeout`(기본 5초), 읽기 제한은 `resend.read-timeout`(기본 10초)이며 초과 시 EMAIL_SEND_FAILED로 처리한다. 응답 읽기 타임아웃처럼 발송 여부를 알 수 없으면 OTP는 지우지 않는다. SMTP 설정은 사용하지 않는다.
 

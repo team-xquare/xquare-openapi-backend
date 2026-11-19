@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.time.Duration
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
@@ -32,12 +33,14 @@ class JwtProviderTest {
     }
 
     @Test
-    fun `리프레시 토큰에는 사용자 id와 만료시각만 담긴다`() {
-        val refreshToken = jwtProvider.generateRefreshToken(7L)
+    fun `리프레시 토큰에는 사용자 id, 비밀번호 지문, 만료시각이 담기고 해시 자체는 담기지 않는다`() {
+        val refreshToken = jwtProvider.generateRefreshToken(7L, HASH)
         val claims = parse(refreshToken.value)
 
         assertEquals("7", claims.subject)
         assertEquals("refresh", claims["type"])
+        assertEquals(jwtProvider.passwordFingerprint(HASH), claims["pwd"])
+        assertFalse(refreshToken.value.contains(HASH))
         assertNull(claims["role"])
         assertEquals(properties.refreshExpiration.toMillis(), claims.expiration.time - claims.issuedAt.time)
         assertEquals(properties.refreshExpiration, refreshToken.ttl)
@@ -46,12 +49,26 @@ class JwtProviderTest {
     @Test
     fun `같은 순간에 발급해도 리프레시 토큰은 매번 다르다`() {
         // 같은 초에 재발급하면 iat·exp가 같아 새 토큰이 이전 토큰과 똑같아지고, 폐기한 토큰이 계속 통한다.
-        assertNotEquals(jwtProvider.generateRefreshToken(7L).value, jwtProvider.generateRefreshToken(7L).value)
+        assertNotEquals(jwtProvider.generateRefreshToken(7L, HASH).value, jwtProvider.generateRefreshToken(7L, HASH).value)
     }
 
     @Test
-    fun `리프레시 토큰을 검증하면 사용자 id를 돌려준다`() {
-        assertEquals(7L, jwtProvider.parseRefreshToken(jwtProvider.generateRefreshToken(7L).value))
+    fun `리프레시 토큰을 검증하면 사용자 id와 비밀번호 지문을 돌려준다`() {
+        assertEquals(
+            RefreshTokenPayload(7L, jwtProvider.passwordFingerprint(HASH)),
+            jwtProvider.parseRefreshToken(jwtProvider.generateRefreshToken(7L, HASH).value),
+        )
+    }
+
+    @Test
+    fun `비밀번호 지문은 해시가 같으면 같고 해시나 서명 키가 다르면 다르다`() {
+        val otherKey = JwtProvider(properties.copy(secret = "another-secret-key-must-be-32-bytes-long!"))
+
+        assertEquals(jwtProvider.passwordFingerprint(HASH), jwtProvider.passwordFingerprint(HASH))
+        assertNotEquals(jwtProvider.passwordFingerprint(HASH), jwtProvider.passwordFingerprint(HASH + "x"))
+        assertNotEquals(jwtProvider.passwordFingerprint(HASH), otherKey.passwordFingerprint(HASH))
+        // HMAC-SHA256 32바이트를 패딩 없는 base64url로
+        assertEquals(43, jwtProvider.passwordFingerprint(HASH).length)
     }
 
     @Test
@@ -61,7 +78,7 @@ class JwtProviderTest {
 
     @Test
     fun `만료된 리프레시 토큰은 인정하지 않는다`() {
-        val expired = JwtProvider(properties.copy(refreshExpiration = Duration.ofSeconds(-1))).generateRefreshToken(7L)
+        val expired = JwtProvider(properties.copy(refreshExpiration = Duration.ofSeconds(-1))).generateRefreshToken(7L, HASH)
 
         assertNull(jwtProvider.parseRefreshToken(expired.value))
     }
@@ -70,7 +87,7 @@ class JwtProviderTest {
     fun `다른 키로 서명했거나 형식이 깨진 토큰은 인정하지 않는다`() {
         val otherKey = JwtProvider(properties.copy(secret = "another-secret-key-must-be-32-bytes-long!"))
 
-        assertNull(jwtProvider.parseRefreshToken(otherKey.generateRefreshToken(7L).value))
+        assertNull(jwtProvider.parseRefreshToken(otherKey.generateRefreshToken(7L, HASH).value))
         assertNull(jwtProvider.parseRefreshToken("not-a-jwt"))
         assertNull(jwtProvider.parseRefreshToken(""))
     }
@@ -83,7 +100,7 @@ class JwtProviderTest {
 
     @Test
     fun `리프레시 토큰은 액세스 토큰으로 인정하지 않는다`() {
-        assertNull(jwtProvider.parseAccessToken(jwtProvider.generateRefreshToken(7L).value))
+        assertNull(jwtProvider.parseAccessToken(jwtProvider.generateRefreshToken(7L, HASH).value))
     }
 
     @Test
@@ -107,9 +124,13 @@ class JwtProviderTest {
     }
 
     @Test
-    fun `같은 키로 서명했어도 sub가 올바르지 않은 리프레시 토큰은 인정하지 않는다`() {
-        assertNull(jwtProvider.parseRefreshToken(sign(mapOf("type" to "refresh"))))
-        assertNull(jwtProvider.parseRefreshToken(sign(mapOf("type" to "refresh", "sub" to "abc"))))
+    fun `같은 키로 서명했어도 sub나 비밀번호 지문이 올바르지 않은 리프레시 토큰은 인정하지 않는다`() {
+        assertNull(jwtProvider.parseRefreshToken(sign(mapOf("type" to "refresh", "pwd" to "fp"))))
+        assertNull(jwtProvider.parseRefreshToken(sign(mapOf("type" to "refresh", "sub" to "abc", "pwd" to "fp"))))
+        // 지문 검사를 넣기 전에 발급한 토큰
+        assertNull(jwtProvider.parseRefreshToken(sign(mapOf("type" to "refresh", "sub" to "7"))))
+        assertNull(jwtProvider.parseRefreshToken(sign(mapOf("type" to "refresh", "sub" to "7", "pwd" to 1))))
+        assertEquals(RefreshTokenPayload(7L, "fp"), jwtProvider.parseRefreshToken(sign(mapOf("type" to "refresh", "sub" to "7", "pwd" to "fp"))))
     }
 
     @Test
@@ -131,4 +152,8 @@ class JwtProviderTest {
             .build()
             .parseSignedClaims(token)
             .payload
+
+    companion object {
+        private const val HASH = "\$2a\$10\$a6wfPHMLhYVTckAbxAd5WO2x3.p1./7F8M2qxp0sOaRVs7izLkgwK"
+    }
 }

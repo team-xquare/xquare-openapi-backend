@@ -58,7 +58,7 @@ class AccessTokenAuthenticationTest @Autowired constructor(
             .generateAccessToken(7L, Role.USER)
 
         listOf(
-            "Bearer ${jwtProvider.generateRefreshToken(7L).value}",
+            "Bearer ${jwtProvider.generateRefreshToken(7L, "hash").value}",
             "Bearer $expired",
             "Bearer $otherKey",
             "Bearer not-a-jwt",

@@ -219,7 +219,8 @@ paths:
       - 인증/인가
       summary: 토큰 재발급
       description: '로그인 시 발급받은 refreshToken으로 새 accessToken과 refreshToken을 발급한다. 사용된 refreshToken은 폐기된다. 사용자당 가장 최근에 발급한 refreshToken
-        하나만 유효해서, 이미 재발급에 썼거나 그 뒤 다시 로그인한 refreshToken은 INVALID_REFRESH_TOKEN이다. refreshToken이 비어 있으면 400 INVALID_INPUT(현재 구현 기준).
+        하나만 유효해서, 이미 재발급에 썼거나 그 뒤 다시 로그인한 refreshToken은 INVALID_REFRESH_TOKEN이다. 발급 뒤 비밀번호가 바뀐 refreshToken(비밀번호 재설정과
+        동시에 진행된 로그인이 받은 것 포함)과 비밀번호 지문이 없는 예전 형식의 refreshToken도 INVALID_REFRESH_TOKEN이다. refreshToken이 비어 있으면 400 INVALID_INPUT(현재 구현 기준).
         권한: ALL(비로그인 허용).'
       operationId: reissueToken
       security: []
@@ -248,7 +249,7 @@ paths:
                     code: INVALID_INPUT
                     message: 요청 값이 올바르지 않습니다.
         '401':
-          description: 'INVALID_REFRESH_TOKEN: 리프레시 토큰이 없거나 만료·폐기됨 (재로그인 필요)'
+          description: 'INVALID_REFRESH_TOKEN: 리프레시 토큰이 없거나 만료·폐기됨, 또는 발급 뒤 비밀번호가 바뀜 (재로그인 필요)'
           content:
             application/json:
               schema:
@@ -265,7 +266,7 @@ paths:
       summary: 비밀번호 재설정
       description: '이메일 OTP 발송(`/auth/email/otp`)·검증(`/auth/email/otp/verify`)으로 받은 emailVerifiedToken과 새 비밀번호로 비밀번호를 바꾼다. 이메일은 요청으로 받지
         않고 토큰에 저장된 값을 쓰며, 그 이메일로 가입한 사용자의 비밀번호를 BCrypt로 인코딩해 저장한다. 새 비밀번호 규칙은 회원가입과 같다. 토큰은 비밀번호를 바꾸기 전에
-        원자적으로 소비하므로(1회용) 같은 토큰으로 동시에 요청해도 하나만 성공하고 나머지는 403이다. 성공하면 그 사용자의 refreshToken을 폐기해 기존 세션은 재발급할 수 없다. 이미 발급된 accessToken은 만료(1시간) 전까지 유효하다. 토큰은 회원가입과 같은 것을 쓴다(현재 구현 기준).
+        원자적으로 소비하므로(1회용) 같은 토큰으로 동시에 요청해도 하나만 성공하고 나머지는 403이다. 성공하면 그 사용자의 refreshToken을 폐기하고, 재설정과 동시에 옛 비밀번호로 로그인해 받은 refreshToken도 재발급에서 거절되어 기존 세션은 재발급할 수 없다. 이미 발급된 accessToken은 만료(1시간) 전까지 유효하다. 토큰은 회원가입과 같은 것을 쓴다(현재 구현 기준).
         권한: ALL(비로그인 허용).'
       operationId: resetPassword
       security: []
