@@ -91,6 +91,7 @@
 - 동아리 담당 교직원의 삭제가 그 동아리 수정과 겹치면 `409 CONCURRENT_UPDATE`가 날 수 있다(#25, 명세의 삭제 에러 표에 없음). 아래 동아리 항목 참고.
 - 같은 학급의 담임이 여러 명이어도 막지 않는다. 명세에 에러 코드가 없다.
 - 응답의 `club`은 담당 동아리(id, name, logo), 없으면 null(#25). 담당 교직원을 지우면 그 동아리의 `teacher`가 null이 된다.
+- 자습 감독을 맡은 교직원을 지우면 그 배정만 지워지고 자습 감독 정보는 남는다. 그 층은 `teacher`가 null로 나온다(#27).
 
 # 일정·자습 감독
 
@@ -116,6 +117,25 @@
 - 삭제가 소프트/하드 삭제인지, 자습 감독 삭제 시 층별 배정 처리 방식 불명확
 - 성공 응답 `{message}` 스키마는 이 조각 안에서 ScheduleMessageResponse / StudySupervisorMessageResponse로 자체 정의함
 
+### 구현하면서 정한 것 (자습 감독, #27)
+- 날짜 하나에 자습 감독 정보 하나다(`study_supervisors.supervision_date` unique `uk_study_supervisors_supervision_date`). id는 그 날짜 정보의 id이고, 층별 배정은 `study_supervisor_assignments`에 따로 둔다.
+- `floor`는 명세 예시대로 2~4층만 받는다. 다른 값은 `400 INVALID_INPUT`. 실제 층이 정해지면 `StudySupervisor.FLOORS`와 `StudySupervisorAssignmentRequest`의 범위 상수만 고치면 된다.
+- 일부 층만 보내도 된다. 같은 층을 두 번 보내면 `400 INVALID_INPUT`(응답의 층마다 `teacher`가 하나라서). 한 교직원이 여러 층을 맡는 것은 막지 않는다. 명세에 에러 코드가 없다.
+- `supervisors` 빈 리스트는 `400 INVALID_INPUT`. 배정을 모두 없애려면 삭제를 쓴다. `date`·`supervisors`·`floor`·`teacherId`는 모두 필수, 목록에 null이 섞여도 `400 INVALID_INPUT`.
+- 조회: 기간 안의 모든 날짜를 날짜 순으로 준다. 정보가 없는 날짜는 `supervisors`가 빈 배열, 정보가 있는 날짜는 2~4층을 모두 주고 배정이 없는 층은 `teacher`가 null이다.
+- 조회 응답에 `id`(명세에 없음)를 넣었다. 정보가 없는 날짜는 null. 단건 조회가 없어서 이게 없으면 등록 때의 `Location` 말고는 수정·삭제할 id를 알 수 없다.
+- `Location`은 명세대로 `/study-supervisors/{id}`를 주지만 단건 조회 API는 만들지 않았다(명세에 없음). 그 URI에 GET을 보내면 405다.
+- 기간 조회 `startDate`/`finishDate`는 명세대로 필수다. 급식과 달리 기본값(이번 달)이 없어서 `Clock`은 쓰지 않는다. 빠지거나 날짜 형식이 틀리면 `400 INVALID_INPUT`. 기간은 급식 월간 조회와 같이 시작일·종료일을 포함해 최대 92일이고, `finishDate`가 `startDate`보다 이르거나 92일을 넘으면 `400 INVALID_DATE_RANGE`. 하루(같은 날짜)는 된다.
+- 일별 조회 `date`도 필수. 빠지거나 형식이 틀리면 `400 INVALID_INPUT`.
+- 날짜(등록·수정 `date`, 기간 조회 `startDate`/`finishDate`, 일별 조회 `date`)는 MySQL DATE 범위인 1000-01-01~9999-12-31만 받는다. 벗어나면 `400 INVALID_INPUT`("date: 1000-01-01부터 9999-12-31까지의 날짜여야 합니다."). ISO 날짜는 `+999999999-12-31` 같은 확장 연도도 읽혀서(쿼리에서는 `%2B`로 보낼 때), 막지 않으면 조회의 다음 날 계산이 500, 범위 밖 날짜 저장이 MySQL에서 500이었다(#28 리뷰).
+- 수정(PATCH)은 학생·교직원처럼 모든 필드를 받아 통째로 바꾼다. `supervisors`는 명세대로 전체 교체라서 빠진 층은 배정이 없어진다. 다른 정보가 있는 날짜로 옮기면 `409 SUPERVISION_ALREADY_EXISTS`(수정 에러 표에 없지만 등록과 같은 코드). 날짜를 그대로 두는 수정은 된다.
+- 검사 순서: 입력 형식(400) → (수정) 정보 존재 `SUPERVISION_NOT_FOUND`(404) → 교직원 존재 `TEACHER_NOT_FOUND`(404) → 날짜 중복(409).
+- 동시 등록·수정으로 중복 검사를 통과해도 unique 제약에 걸리면 같은 409로 바꾼다. 같은 정보를 동시에 수정하면 배정 교체가 섞이지 않게 행을 잠그고 읽는다.
+- 수정은 `409 CONCURRENT_UPDATE`를 낼 수 있다(명세에 없음, 공통 응답이라 YAML에는 안 넣음). MySQL(REPEATABLE READ)에서 기존 배정을 지우는 delete가 `(study_supervisor_id, floor_number)` unique 인덱스에 gap lock을 잡아서, 배정이 0건인 정보 두 개를 동시에 수정하면 서로의 gap 때문에 insert가 막혀 데드락이 나고 한쪽이 되돌려진다. 다시 보내면 성공한다(#28 리뷰, H2로는 재현되지 않고 MySQL로도 확인 안 함).
+- 삭제는 실제로 지운다(하드 삭제). 층별 배정은 DB가 함께 지우고(`ON DELETE CASCADE`) 교직원은 남는다. 같은 정보를 동시에 지우면 하나만 200, 나머지는 `404 SUPERVISION_NOT_FOUND`.
+- 감독 교직원을 지우면 그 교직원의 배정만 DB가 지운다(`study_supervisor_assignments.teacher_id ON DELETE CASCADE`). 자습 감독 정보는 남고 그 층은 `teacher`가 null로 나온다. 모든 층의 교직원이 지워져도 정보는 남아 수정·삭제할 수 있다. 교직원 삭제 코드는 그대로다.
+- 기능 명세서의 `수정된 내력이 없습니다.`는 에러 코드가 없어서 만들지 않았다. 같은 값으로 수정해도 200이다.
+
 # 급식·동아리·공지
 
 ### 명세 충돌
@@ -130,7 +150,7 @@
 - 공지 제목/본문 길이(100/4000자)와 필수 여부는 API 명세서에 없어 기능 명세서 값으로 보강(충돌 아님, 스키마 maxLength/required 및 description에 명시)
 
 ### 빈 곳
-- 공지 등록/수정의 제목·본문 누락, 길이 초과(100/4000자) 시 HTTP status와 에러 코드 (API 명세서 에러 표에 없음; 400 응답은 YAML에 정의하지 않음)
+- 공지 등록/수정의 제목·본문 누락, 길이 초과(100/4000자) 시 HTTP status와 에러 코드 (API 명세서 에러 표에 없음) → `400 INVALID_INPUT`으로 정함(#29)
 - 급식 등록/수정 요청 필드의 필수 여부, 메뉴 배열의 빈 배열 허용 여부, 항목 길이/개수 제한 (YAML에 required 미지정)
 - 급식 수정 시 `date`를 다른 날짜로 바꿔 이미 존재하는 날짜와 겹치는 경우의 처리 (MEAL_ALREADY_EXISTS가 수정 에러 표에 없음), 수정이 부분 수정인지 전체 교체인지
 - 급식 월간 조회 `startDate`/`finishDate`의 필수 여부, 형식 오류 시 응답, 최대 조회 기간 제한, 둘 다 생략 시 동작 (기능 명세서의 "현재 월" 기본값 여부)
@@ -143,11 +163,12 @@
 - 한 학생이 여러 동아리에 속할 수 있는지, 이미 다른 동아리 소속인 학생을 member에 넣을 때의 처리
 - 동아리 삭제 시 소속 학생·교직원의 소속 정보 처리, 동아리 변경 시즌 이후 기존 정보가 사라진다는 기능 명세서 문구의 구체적 동작
 - 동아리 검색 `member` 복수 지정 시 AND/OR 의미, 검색 결과 정렬, 결과 0건일 때 응답(빈 content 추정)
-- 동아리 검색/공지 목록의 page/size 범위 위반(음수, 100 초과) 시 응답
+- 동아리 검색/공지 목록의 page/size 범위 위반(음수, 100 초과) 시 응답 → 학생·교직원과 같이 `400 INVALID_INPUT`(#25, #29)
 - 동아리 로고 이미지 키를 받는 파일 업로드 API 명세 (이 범위에 없음), logo 필수 여부와 키 유효성 검증
-- 공지 상세 조회 응답의 `updatedAt`이 수정된 적 없을 때 null인지 (목록 페이지만 null 명시; 상세는 date-time 비nullable로 작성)
-- 공지 수정/삭제를 작성자 본인만 할 수 있는지 (현재는 ADMIN이면 가능으로 해석)
-- 공지 목록의 "최신순" 기준(createdAt 내림차순 추정)
+- 공지 상세 조회 응답의 `updatedAt`이 수정된 적 없을 때 null인지 (목록 페이지만 null 명시) → 상세도 null로 정함(#29)
+- 공지 수정/삭제를 작성자 본인만 할 수 있는지 → ADMIN이면 누구나 가능으로 정함(#29)
+- 공지 목록의 "최신순" 기준 → `createdAt` 내림차순, 같으면 `id` 내림차순으로 정함(#29)
+- 공지 작성자 사용자가 지워졌을 때의 처리 → 공지는 남고 `author` null로 정함(#29)
 - 성공 응답 `message` 문구는 각 API 표대로이며, 공통 ErrorResponse 외 성공 응답 공통 스키마 이름은 도메인별(MealMessageResponse, ClubMessageResponse, NoticeMessageResponse)로 정의함
 
 ### 구현하면서 정한 것 (급식, #21)
@@ -191,3 +212,17 @@
 - 검색: 동아리명은 부분 일치, 구성원 이름은 부분 일치(명세 예시가 `성준`, `민수`처럼 이름만 있다), 선생님 이름은 교직원 검색처럼 정확히 일치. `member`를 여러 개 주면 모두 구성원에 있는 동아리만 찾는다(AND, 다른 조건과도 AND). `member`는 최대 10개. `%`, `_`는 글자 그대로 찾는다. 결과가 없으면 빈 `content`.
 - 목록은 등록 순(id), 구성원(`member`)은 학번 순. page/size 범위는 학생·교직원과 같다.
 - 학생·교직원 응답의 `club`을 이번에 채웠다. 목록 조회는 학생은 소속 동아리를 같이 읽고(fetch join), 교직원·동아리는 페이지의 id를 모아 한 번 더 읽어서 쿼리 수가 페이지 크기와 상관없다(`ClubTest`가 쿼리 수를 센다).
+
+### 구현하면서 정한 것 (공지, #29)
+- 등록·수정 요청은 `title`, `content`만 받는다. 둘 다 필수이고 `title`은 1~100자, `content`는 1~4000자. 빠지거나 null이거나 공백만 있거나 길이를 넘으면 `400 INVALID_INPUT`(명세 에러 표에 없음). body의 다른 필드(`author`, `createdAt` 등)는 무시한다.
+- 작성자는 토큰의 사용자(`users`)다. 토큰은 유효한데 그 사용자가 지워졌으면 작성자를 정할 수 없어서 `401 INVALID_TOKEN`.
+- 작성·수정일시는 `Clock` 빈(서울 시간)으로 초까지만 남긴다. 응답은 명세 예시처럼 시간대 표기 없는 `2026-09-01T09:00:00`.
+- `updatedAt`은 수정된 적이 없으면 목록·상세 모두 null. 같은 값으로 수정해도 수정한 것으로 보고 `updatedAt`을 남긴다(기능 명세서의 `수정된 내력이 없습니다.`는 에러 코드가 없어서 만들지 않았다).
+- 최신순은 `createdAt` 내림차순, 같은 시각이면 `id` 내림차순(나중에 등록한 것 먼저). 수정해도 순서는 바뀌지 않는다. page/size 범위는 학생·교직원과 같다(page 0~21474836, size 1~100, 어기면 `400 INVALID_INPUT`). 결과가 없으면 빈 `notices`.
+- 목록 필드 이름은 명세대로 `notices`라서 공통 `PageResponse`(`content`) 대신 같은 모양의 `NoticeListResponse`를 쓴다. `page`·`size`·`totalCount`·`totalPage`는 같다.
+- 수정·삭제는 작성자가 아니어도 ADMIN이면 누구나 할 수 있다. 수정해도 작성자는 처음 작성한 사람 그대로다.
+- 수정은 두 필드를 모두 받아 통째로 바꾼다. 수정·삭제 모두 조회하지 않고 JPQL 한 번으로 처리하고, 바뀐 행이 0이면 `404 NOTICE_NOT_FOUND`. 그래서 동시 삭제나 삭제와 겹친 수정도 500 없이 404로 끝난다(`NoticeConcurrencyTest`). 행 하나만 잠그므로 데드락은 없고, 잠금 대기 시간을 넘기면 공통 처리대로 `409 CONCURRENT_UPDATE`(#26)다.
+  - 수정의 "바뀐 행 0 → 404"는 MySQL Connector/J 기본값(`useAffectedRows=false`, UPDATE가 조건에 맞은 행 수를 돌려줌)에 기댄다. 운영 `DB_URL`에 `useAffectedRows=true`를 붙이면 값이 실제로 바뀐 행만 세서, 같은 초에 같은 값으로 두 번 고칠 때 두 번째가 404가 된다. 그래서 `DB_URL`에 이 옵션을 넣으면 안 된다(#30 리뷰). 삭제는 지운 행 수라 이 옵션과 상관없다.
+- 삭제는 실제로 지운다(하드 삭제).
+- 작성자 사용자를 지우면 공지는 남고 `author`가 null이 된다(`notices.author_id` 외래 키 `ON DELETE SET NULL`). 사용자 삭제 API는 아직 없지만 DB에서 지우는 경우를 위해서다. 그래서 응답의 `author`는 nullable이다.
+- `NOTICE_NOT_FOUND` 메시지는 조회·수정·삭제 모두 `이미 삭제되었거나 존재하지 않는 공지입니다.` 하나다(명세는 수정만 `존재하지 않는 공지 id`).
