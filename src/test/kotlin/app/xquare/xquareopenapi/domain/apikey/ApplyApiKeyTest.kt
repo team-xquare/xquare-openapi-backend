@@ -48,6 +48,10 @@ class ApplyApiKeyTest @Autowired constructor(
     @MockitoSpyBean
     private lateinit var spiedApiKeyRepository: ApiKeyRepository
 
+    // MySQL REPEATABLE READ에서 중복 확인이 옛 스냅샷을 보는 상황을 흉내 낼 때 쓴다.
+    @MockitoSpyBean
+    private lateinit var spiedApplicationRepository: ApiKeyApplicationRepository
+
     private var userId = 0L
     private lateinit var userToken: String
 
@@ -167,6 +171,24 @@ class ApplyApiKeyTest @Autowired constructor(
     }
 
     @Test
+    fun `대문자가 섞인 이메일로 가입한 계정도 소문자로 저장된 인증 토큰으로 신청할 수 있다`() {
+        val mixedCase = userRepository.saveUser("mixed", email = "MixedCase@DSM.hs.kr")
+        emailVerifiedTokens.tokens[OTHER_TOKEN] = "mixedcase@dsm.hs.kr"
+
+        apply(body(token = OTHER_TOKEN), jwtProvider.generateAccessToken(mixedCase.id!!, Role.USER)).andExpect {
+            status { isCreated() }
+        }
+        assertEquals(mixedCase.id, apiKeyRepository.findAll().single().userId)
+    }
+
+    @Test
+    fun `정규화 전에 대문자 그대로 저장된 인증 토큰도 같은 이메일이면 받는다`() {
+        emailVerifiedTokens.tokens[OTHER_TOKEN] = " JunSeo@dsm.hs.kr "
+
+        apply(body(token = OTHER_TOKEN)).andExpect { status { isCreated() } }
+    }
+
+    @Test
     fun `분야를 더할 때도 이메일 인증이 필요하다`() {
         saveApiKey(apiKeyRepository, apiKeyApplicationRepository, userId, "xq_existing", ApiKeyField.STUDENT)
 
@@ -180,6 +202,31 @@ class ApplyApiKeyTest @Autowired constructor(
 
         apply(body(), token).andExpectEmailNotVerified()
         assertEquals(0, apiKeyRepository.count())
+    }
+
+    @Test
+    fun `중복 확인이 앞 요청의 분야를 못 보고 분야 제약에 걸려도 API_KEY_FIELD_ALREADY_APPLIED`() {
+        val apiKey = saveApiKey(apiKeyRepository, apiKeyApplicationRepository, userId, "xq_existing", ApiKeyField.STUDENT)
+        doReturn(false).`when`(spiedApplicationRepository).existsByApiKeyIdAndField(apiKey.id!!, ApiKeyField.STUDENT)
+
+        apply(body(field = "STUDENT")).andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("API_KEY_FIELD_ALREADY_APPLIED") }
+        }
+        assertEquals(1, apiKeyApplicationRepository.count())
+        assertEquals(EMAIL, emailVerifiedTokens.tokens[TOKEN])
+    }
+
+    @Test
+    fun `분야를 더할 때 분야 제약이 아닌 무결성 위반은 409로 바꾸지 않고 500 INTERNAL_SERVER_ERROR`() {
+        saveApiKey(apiKeyRepository, apiKeyApplicationRepository, userId, "xq_existing", ApiKeyField.STUDENT)
+        doThrow(DataIntegrityViolationException("다른 제약 위반")).`when`(spiedApplicationRepository).saveAndFlush(any())
+
+        apply(body(field = "TEACHER")).andExpect {
+            status { isInternalServerError() }
+            jsonPath("$.code") { value("INTERNAL_SERVER_ERROR") }
+        }
+        assertEquals(1, apiKeyApplicationRepository.count())
     }
 
     @Test

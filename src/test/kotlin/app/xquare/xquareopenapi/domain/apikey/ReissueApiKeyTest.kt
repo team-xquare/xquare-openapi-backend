@@ -8,11 +8,13 @@ import app.xquare.xquareopenapi.global.jwt.JwtProvider
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.Mockito.doReturn
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActionsDsl
 import org.springframework.test.web.servlet.post
@@ -34,6 +36,10 @@ class ReissueApiKeyTest @Autowired constructor(
     private val jsonMapper: JsonMapper,
     private val jwtProvider: JwtProvider,
 ) {
+    // 키를 찾은 뒤 잠그기 전에 삭제가 끝난 상황을 만들 때 쓴다.
+    @MockitoSpyBean
+    private lateinit var spiedApiKeyRepository: ApiKeyRepository
+
     private var userId = 0L
     private lateinit var userToken: String
 
@@ -125,6 +131,21 @@ class ReissueApiKeyTest @Autowired constructor(
             status { isNotFound() }
             jsonPath("$.code") { value("API_KEY_NOT_FOUND") }
             jsonPath("$.message") { value("발급받은 API 키가 없습니다. 활용신청을 먼저 해 주세요.") }
+        }
+        assertEquals(0, apiKeyRepository.count())
+        assertEquals(EMAIL, emailVerifiedTokens.tokens[TOKEN])
+    }
+
+    @Test
+    fun `키를 찾은 뒤 잠그기 전에 삭제됐으면 API_KEY_NOT_FOUND이고 키를 다시 만들지 않는다`() {
+        val deleted = save(userId, "xq_old")
+        apiKeyApplicationRepository.deleteAll()
+        apiKeyRepository.deleteAll()
+        doReturn(deleted).`when`(spiedApiKeyRepository).findByUserId(userId)
+
+        reissue().andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value("API_KEY_NOT_FOUND") }
         }
         assertEquals(0, apiKeyRepository.count())
         assertEquals(EMAIL, emailVerifiedTokens.tokens[TOKEN])

@@ -44,6 +44,18 @@ class ApiKeyReadEndpointCoverageTest @Autowired constructor(
             "/v3/api-docs",
             "/v3/api-docs.yaml",
             "/v3/api-docs/swagger-config",
+            // 급식 조회는 키 없이 누구나 연다(GitHub #34 계약, ALL).
+            "/meals",
+            "/meals/{mealId}",
+            // 로그인한 본인 정보라 JWT로 연다.
+            "/users/me",
+            // develop에 먼저 들어온 조회 API. 지금은 develop 그대로 JWT로 연다. 키 체인으로 옮길지는 따로 정한다.
+            "/clubs",
+            "/clubs/{clubId}",
+            "/study-supervisors",
+            "/study-supervisors/day",
+            "/notices",
+            "/notices/{noticeId}",
             // 로그인한 사용자 본인의 키 정보. 액세스 토큰으로 연다.
             "/api-keys/me",
         )
