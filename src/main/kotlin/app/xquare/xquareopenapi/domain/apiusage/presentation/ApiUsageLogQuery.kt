@@ -24,6 +24,7 @@ data class ApiUsageLogQuery(
     val size: Int = 20,
 )
 
+@Schema(requiredProperties = ["id", "occurredAt", "method", "route", "status", "durationMs"])
 data class ApiUsageLogResponse(
     val id: Long,
     val occurredAt: Instant,

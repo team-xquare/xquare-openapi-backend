@@ -1,39 +1,125 @@
 package app.xquare.xquareopenapi.domain.apiusage
 
 import app.xquare.xquareopenapi.domain.user.Role
-import app.xquare.xquareopenapi.global.apiusage.ApiUsageLogCapture
 import app.xquare.xquareopenapi.global.jwt.JwtProvider
 import ch.qos.logback.classic.Logger
 import ch.qos.logback.classic.spi.ILoggingEvent
-import ch.qos.logback.core.read.ListAppender
+import ch.qos.logback.core.AppenderBase
+import org.junit.jupiter.api.Assertions.assertAll
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentMatchers.any
+import org.mockito.Mockito.doAnswer
+import org.mockito.Mockito.mockingDetails
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.server.LocalServerPort
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
+import org.yaml.snakeyaml.LoaderOptions
+import org.yaml.snakeyaml.Yaml
+import org.yaml.snakeyaml.constructor.SafeConstructor
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.nio.file.Files
+import java.nio.file.Path
 import java.time.Duration
+import java.time.LocalDateTime
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
+import javax.sql.DataSource
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = ["server.address=127.0.0.1", "spring.datasource.url=jdbc:h2:mem:usage-log-http;MODE=MySQL"],
+    properties = [
+        "server.address=127.0.0.1", "spring.datasource.url=jdbc:h2:mem:usage-log-http;MODE=MySQL",
+        "spring.datasource.hikari.maximum-pool-size=2", "spring.datasource.hikari.connection-timeout=1000",
+        "api-usage-log.queue-capacity=8",
+    ],
 )
 class ApiUsageLogHttpTest @Autowired constructor(
     private val jwtProvider: JwtProvider,
     private val mapper: JsonMapper,
     private val jdbc: JdbcTemplate,
+    private val dataSource: DataSource,
 ) {
+    @MockitoSpyBean
+    private lateinit var repository: ApiUsageLogRepository
+
     @LocalServerPort
     private var port = 0
+
+    @Test
+    fun `정상 경로와 동등한 percent 인코딩 경로는 같은 템플릿으로 각각 한 번 기록한다`() {
+        jdbc.update("delete from api_usage_logs")
+        for (path in listOf("/meals", "/%6Deals")) {
+            assertEquals(200, send("GET", path).statusCode())
+        }
+        val rows = awaitRows(2)
+        assertEquals(listOf("/meals", "/meals"), rows.map { it["route"] })
+        assertTrue(rows.all { it["http_status"] == 200 })
+    }
+
+    @Test
+    fun `기록이 지연되고 큐가 포화되어도 실제 HTTP 응답을 먼저 받는다`() {
+        jdbc.update("delete from api_usage_logs")
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val realSave = mockingDetails(repository).mockCreationSettings.defaultAnswer
+        doAnswer { call ->
+            entered.countDown()
+            check(release.await(15, TimeUnit.SECONDS)) { "테스트 기록 대기 시간 초과" }
+            realSave.answer(call)
+        }.`when`(repository).save(any(ApiUsageLog::class.java) ?: ApiUsageLog(LocalDateTime.MIN, "GET", "/meals", 200, 0))
+
+        val response = CLIENT.sendAsync(request("GET", "/students"), HttpResponse.BodyHandlers.ofString())
+        try {
+            observeSignals { events ->
+                assertTrue(entered.await(5, TimeUnit.SECONDS), "별도 기록 시도가 시작되어야 한다")
+                assertCode(response.get(3, TimeUnit.SECONDS), 401, "INVALID_TOKEN")
+                repeat(9) {
+                    assertCode(CLIENT.sendAsync(request("GET", "/students"), HttpResponse.BodyHandlers.ofString())
+                        .get(3, TimeUnit.SECONDS), 401, "INVALID_TOKEN")
+                }
+                assertEquals(0, jdbc.queryForObject("select count(*) from api_usage_logs", Int::class.java))
+                release.countDown()
+                assertSignal(events, "API_USAGE_LOG_QUEUE_FULL dropped=1")
+                val rows = awaitRows(9)
+                assertTrue(rows.all { it["http_status"] == 401 && it["route"] == "UNMAPPED" })
+                assertEquals(9, rows.size)
+            }
+        } finally {
+            release.countDown()
+            response.get(5, TimeUnit.SECONDS)
+        }
+    }
+
+    @Test
+    fun `조회 연결을 얻지 못해도 오류 형식을 지키고 잘못된 기간은 먼저 거절한다`() {
+        val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
+        dataSource.connection.use {
+            dataSource.connection.use {
+                assertAll(
+                    { assertCode(send("GET", "$LIST?from=2026-11-15T00:00:00Z&to=2026-11-14T00:00:00Z", admin), 400, "INVALID_INPUT") },
+                    {
+                        val unavailable = send("GET", LIST, admin)
+                        assertCode(unavailable, 500, "INTERNAL_SERVER_ERROR")
+                        assertEquals(setOf("code", "message"), json(unavailable).properties().map { it.key }.toSet())
+                    },
+                )
+            }
+        }
+        assertEquals(200, send("GET", LIST, admin).statusCode())
+    }
 
     @Test
     fun `업무 호출은 성공과 거절 및 오류를 완료 상태로 한 번씩 기록한다`() {
@@ -49,6 +135,7 @@ class ApiUsageLogHttpTest @Autowired constructor(
         assertEquals(404, send("GET", "/students/unmapped/private-path-marker", admin).statusCode())
         assertEquals(404, send("GET", "/students/876543210", admin).statusCode())
 
+        awaitRows(6)
         val result = json(send("GET", LIST, admin))
         assertEquals(6, result.path("totalCount").asInt())
         val rows = result.path("content").toList()
@@ -107,16 +194,11 @@ class ApiUsageLogHttpTest @Autowired constructor(
     }
 
     @Test
-    fun `문서 헬스 프리플라이트는 기록하지 않으며 Swagger는 관리자 JWT를 표시한다`() {
+    fun `문서 헬스 프리플라이트 및 관리자 조회는 기록하지 않는다`() {
         val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
         assertEquals(200, send("GET", LIST, admin).statusCode())
         jdbc.update("delete from api_usage_logs")
-        val openApi = json(send("GET", "/v3/api-docs"))
-        val operation = openApi.path("paths").path(LIST).path("get")
-        assertTrue(operation.path("security").get(0).path("bearerAuth").isArray)
-        assertEquals("ADMIN", operation.path("x-required-role").asString())
-        assertEquals(setOf("from", "to", "method", "status", "page", "size"), operation.path("parameters").values().map { it.path("name").asString() }.toSet())
-        assertEquals(setOf("200", "400", "401", "403", "409", "500"), operation.path("responses").properties().map { it.key }.toSet())
+        assertEquals(200, send("GET", "/v3/api-docs").statusCode())
         assertEquals(200, send("GET", "/swagger-ui/index.html").statusCode())
         send("GET", "/actuator/health")
         val preflight = HttpRequest.newBuilder(uri("/students"))
@@ -124,27 +206,107 @@ class ApiUsageLogHttpTest @Autowired constructor(
             .header("Access-Control-Request-Method", "GET")
             .method("OPTIONS", HttpRequest.BodyPublishers.noBody()).build()
         CLIENT.send(preflight, HttpResponse.BodyHandlers.ofString())
-        assertEquals(0, json(send("GET", LIST, admin)).path("totalCount").asInt())
+        assertEquals(200, send("GET", "/meals").statusCode())
+        val rows = awaitRows(1)
+        assertEquals(listOf("/meals"), rows.map { it["route"] })
+    }
+
+    @Test
+    fun `실제 생성 OpenAPI와 정적 명세의 관리자 조회 계약이 같다`() {
+        val generated = json(send("GET", "/v3/api-docs"))
+        val options = LoaderOptions().apply { maxAliasesForCollections = 512 }
+        val static = Files.newBufferedReader(Path.of("docs/openapi.yaml")).use {
+            mapper.valueToTree<JsonNode>(Yaml(SafeConstructor(options)).load<Any>(it))
+        }
+        assertEquals(openApiContract(static), openApiContract(generated))
     }
 
     @Test
     fun `기록 테이블 접근에 실패해도 업무 응답은 유지된다`() {
         val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
         assertEquals(200, send("GET", LIST, admin).statusCode())
-        val logger = LoggerFactory.getLogger(ApiUsageLogCapture::class.java) as Logger
-        val events = ListAppender<ILoggingEvent>().apply { start() }
         jdbc.execute("alter table api_usage_logs rename to api_usage_logs_test_unavailable")
-        logger.addAppender(events)
         try {
-            assertEquals(200, send("GET", "/meals?unused=synthetic-query").statusCode())
-            assertCode(send("GET", LIST, admin), 500, "INTERNAL_SERVER_ERROR")
-            assertEquals(listOf("API_USAGE_LOG_WRITE_FAILED"), events.list.map { it.formattedMessage })
-            assertTrue(events.list.all { it.throwableProxy == null })
+            observeSignals { events ->
+                assertEquals(200, send("GET", "/meals?unused=synthetic-query").statusCode())
+                assertCode(send("GET", LIST, admin), 500, "INTERNAL_SERVER_ERROR")
+                assertSignal(events, "API_USAGE_LOG_WRITE_FAILED")
+            }
         } finally {
-            logger.detachAppender(events)
-            events.stop()
             jdbc.execute("alter table api_usage_logs_test_unavailable rename to api_usage_logs")
         }
+        jdbc.update("delete from api_usage_logs")
+        assertEquals(200, send("GET", "/meals").statusCode())
+        assertEquals(listOf("/meals"), awaitRows(1).map { it["route"] })
+    }
+
+    private fun openApiContract(document: JsonNode): Map<String, Any> {
+        val operation = document.path("paths").path(LIST).path("get")
+        val parameters = operation.path("parameters").values().associate { parameter ->
+            parameter.path("name").asString() to mapOf(
+                "in" to parameter.path("in").asString(),
+                "required" to parameter.path("required").asBoolean(false),
+                "schema" to schemaContract(document, parameter.path("schema")),
+            )
+        }
+        val responses = operation.path("responses").properties().associate { (status, response) ->
+            status to response.path("content").properties().associate { (mediaType, content) ->
+                mediaType to schemaContract(document, content.path("schema"))
+            }
+        }
+        return mapOf(
+            "operationId" to operation.path("operationId"), "security" to operation.path("security"),
+            "role" to operation.path("x-required-role"), "parameters" to parameters, "responses" to responses,
+        )
+    }
+
+    private fun schemaContract(document: JsonNode, schema: JsonNode): Map<String, Any> {
+        if (schema.has("\$ref")) return schemaContract(document, document.at(schema.path("\$ref").asString().removePrefix("#")))
+        assertFalse(schema.isMissingNode, "스키마가 있어야 한다")
+        val fields = schema.properties().filter { it.key in SCHEMA_FIELDS }.associate { it.key to it.value }
+        val result = fields.toMutableMap<String, Any>()
+        if (schema.has("enum")) result["enum"] = schema.path("enum").values().toSet()
+        if (schema.has("required")) result["required"] = schema.path("required").values().toSet()
+        if (schema.has("items")) result["items"] = schemaContract(document, schema.path("items"))
+        if (schema.has("properties")) {
+            result["properties"] = schema.path("properties").properties().associate { (name, value) ->
+                name to schemaContract(document, value)
+            }
+        }
+        return result
+    }
+
+    private fun awaitRows(count: Int): List<Map<String, Any?>> {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        do {
+            val rows = jdbc.queryForList("select * from api_usage_logs order by id")
+            if (rows.size >= count) return rows
+            Thread.sleep(20)
+        } while (System.nanoTime() < deadline)
+        error("기록 $count 행을 대기했으나 읽지 못했습니다.")
+    }
+
+    private fun observeSignals(action: (LinkedBlockingQueue<ILoggingEvent>) -> Unit) {
+        val logger = LoggerFactory.getLogger("app.xquare.xquareopenapi.global.apiusage") as Logger
+        val events = LinkedBlockingQueue<ILoggingEvent>()
+        val appender = object : AppenderBase<ILoggingEvent>() {
+            override fun append(event: ILoggingEvent) {
+                events.add(event)
+            }
+        }.apply { start() }
+        logger.addAppender(appender)
+        try {
+            action(events)
+        } finally {
+            logger.detachAppender(appender)
+            appender.stop()
+        }
+    }
+
+    private fun assertSignal(events: LinkedBlockingQueue<ILoggingEvent>, message: String) {
+        val event = assertNotNull(events.poll(5, TimeUnit.SECONDS), message)
+        assertEquals(message, event.formattedMessage)
+        assertEquals(null, event.throwableProxy)
     }
 
     private fun assertCode(response: HttpResponse<String>, status: Int, code: String) {
@@ -155,14 +317,17 @@ class ApiUsageLogHttpTest @Autowired constructor(
     private fun json(response: HttpResponse<String>): JsonNode = mapper.readTree(response.body())
     private fun uri(path: String) = URI("http://127.0.0.1:$port$path")
 
-    private fun send(method: String, path: String, token: String? = null, body: String? = null, contentType: String = "application/json"): HttpResponse<String> {
+    private fun send(method: String, path: String, token: String? = null, body: String? = null, contentType: String = "application/json"): HttpResponse<String> =
+        CLIENT.send(request(method, path, token, body, contentType), HttpResponse.BodyHandlers.ofString())
+
+    private fun request(method: String, path: String, token: String? = null, body: String? = null, contentType: String = "application/json"): HttpRequest {
         val request = HttpRequest.newBuilder(uri(path)).timeout(Duration.ofSeconds(10))
         token?.let { request.header("Authorization", "Bearer $it") }
         val publisher = if (body == null) HttpRequest.BodyPublishers.noBody() else {
             request.header("Content-Type", contentType)
             HttpRequest.BodyPublishers.ofString(body)
         }
-        return CLIENT.send(request.method(method, publisher).build(), HttpResponse.BodyHandlers.ofString())
+        return request.method(method, publisher).build()
     }
 
     companion object {
@@ -170,5 +335,6 @@ class ApiUsageLogHttpTest @Autowired constructor(
         private val CLIENT = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
         private val METADATA_FIELDS = setOf("id", "occurredAt", "method", "route", "status", "durationMs")
         private val STORAGE_FIELDS = setOf("id", "occurred_at", "http_method", "route", "http_status", "duration_ms")
+        private val SCHEMA_FIELDS = setOf("type", "format", "minimum", "maximum", "default", "maxLength", "nullable")
     }
 }
