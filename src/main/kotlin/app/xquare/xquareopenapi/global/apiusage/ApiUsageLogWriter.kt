@@ -3,6 +3,7 @@ package app.xquare.xquareopenapi.global.apiusage
 import app.xquare.xquareopenapi.domain.apiusage.ApiUsageLog
 import app.xquare.xquareopenapi.domain.apiusage.usecase.RecordApiUsageUseCase
 import org.slf4j.LoggerFactory
+import org.springframework.scheduling.annotation.Scheduled
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -24,13 +25,13 @@ class ApiUsageLogWriter(private val recorder: RecordApiUsageUseCase, queueCapaci
                 recorder.execute(log)
             } catch (_: RuntimeException) {
                 logger.warn("API_USAGE_LOG_WRITE_FAILED")
-            } finally {
-                reportDrops()
             }
         }
     }
 
-    private fun reportDrops() {
+    // INSERT가 반환하지 않아도 스케줄러가 요청 스레드 밖에서 포화 건수를 보고한다.
+    @Scheduled(fixedDelay = 1_000)
+    fun reportDrops() {
         val count = dropped.getAndSet(0)
         if (count > 0) logger.warn("API_USAGE_LOG_QUEUE_FULL dropped={}", count)
     }
