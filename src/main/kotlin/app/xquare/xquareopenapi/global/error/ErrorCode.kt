@@ -38,4 +38,5 @@ enum class ErrorCode(
     SUPERVISION_ALREADY_EXISTS(HttpStatus.CONFLICT, "해당 날짜의 자습 감독 정보가 이미 존재합니다."),
     NOTICE_NOT_FOUND(HttpStatus.NOT_FOUND, "이미 삭제되었거나 존재하지 않는 공지입니다."),
     CONCURRENT_UPDATE(HttpStatus.CONFLICT, "동시에 수정되어 처리하지 못했습니다. 다시 시도해 주세요."),
+    TIMETABLE_UNAVAILABLE(HttpStatus.BAD_GATEWAY, "나이스에서 시간표를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요."),
 }

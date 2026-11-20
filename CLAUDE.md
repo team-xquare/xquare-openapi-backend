@@ -84,6 +84,7 @@ API 스펙이 있습니다.
 - 급식 '급식 없음' 표시: 급식 삭제 API가 없어서 세 끼가 모두 빈 행(`Meal.isNoMeal`, `editedByAdmin = true`)을 '급식 없음' 표시로 쓴다. 조회 API에서 빼고(단건 404), 등록·날짜 이동에서는 없는 급식으로 본다. 수정으로 날짜를 옮기면 원래 날짜에 표시를 남긴다. 급식 조회 쿼리를 새로 만들면 표시를 빼야 한다. 등록이 표시를 새 메뉴로 고치거나 날짜 이동이 표시를 지울 때는 `findIdByDate`로 id만 읽고 `findByIdForUpdate`로 잠근 뒤 다시 읽는다. 잠그지 않으면 같은 날짜의 등록·수정이 겹칠 때 먼저 쓴 급식이 에러 없이 사라진다(`CreateMealConcurrencyTest`, `UpdateMealConcurrencyTest`).
   - 테스트는 실제 나이스를 부르지 않는다. `MockRestServiceServer.bindTo(RestClient.builder())`로 만든 RestClient를 넣어 클라이언트·스케줄러를 직접 만든다(`NeisMealClientTest`, `NeisMealSyncTest`). 테스트 설정은 `neis.meal-sync-cron: "-"`로 스케줄을 끈다.
   - "이번 달" 같은 날짜 계산은 `Clock` 빈(`config/ClockConfig`, Asia/Seoul)을 주입받아 한다. 테스트는 `Clock.fixed`를 넣는다.
+- 시간표(`domain/timetable`): `GET /timetables`는 DB 없이 `NeisTimetableClient`로 나이스 `hisTimetable`을 가져와 `GetTimetableUseCase`가 (학년, 반, 주)별로 10분 메모리 캐시한다. 나이스 실패는 `502 TIMETABLE_UNAVAILABLE`이고 캐시하지 않는다. 캐시가 스프링 빈에 남으므로 MockMvc 테스트(`TimetableTest`)는 테스트마다 다른 학급·주를 쓴다.
 - Redis 저장소는 인터페이스(`EmailVerifiedTokenRepository`, `RefreshTokenRepository`) 뒤에 둔다. 인증 API 테스트(`SignupTest`, `LoginTest`, `ReissueTest`)는 `FakeAuthRepositories`를 `@Import`해 `@Primary` 가짜 구현으로 바꿔 끼워서 Redis 없이 돈다. 저장소 인터페이스에 메서드를 추가하면 가짜 구현에도 넣는다.
 - Redis 키 형식은 다른 기능과 맞춰야 하는 계약이다:
   - `email_otp:{email}` → 6자리 OTP. TTL 300초이며 재발송은 덮어쓴다. 검증은 Lua 스크립트로 비교·삭제를 원자적으로 수행한다. 발송 실패 시 저장값이 해당 발송의 OTP와 같을 때만 Lua로 OTP와 횟수 키를 삭제하고 삭제 실패는 로그만 남긴다.

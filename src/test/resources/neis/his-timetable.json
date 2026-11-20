@@ -1,0 +1,111 @@
+{
+  "hisTimetable": [
+    {
+      "head": [
+        {
+          "list_total_count": 5
+        },
+        {
+          "RESULT": {
+            "CODE": "INFO-000",
+            "MESSAGE": "정상 처리되었습니다."
+          }
+        }
+      ]
+    },
+    {
+      "row": [
+        {
+          "ATPT_OFCDC_SC_CODE": "G10",
+          "ATPT_OFCDC_SC_NM": "대전광역시교육청",
+          "SD_SCHUL_CODE": "7430310",
+          "SCHUL_NM": "대덕소프트웨어마이스터고등학교",
+          "AY": "2026",
+          "SEM": "2",
+          "ALL_TI_YMD": "20261116",
+          "DGHT_CRSE_SC_NM": "주간",
+          "ORD_SC_NM": "공업계",
+          "DDDEP_NM": "공통과정",
+          "GRADE": "1",
+          "CLRM_NM": "1",
+          "CLASS_NM": "1",
+          "PERIO": "1",
+          "ITRT_CNTNT": "자율·자치활동",
+          "LOAD_DTM": "20261118"
+        },
+        {
+          "ATPT_OFCDC_SC_CODE": "G10",
+          "ATPT_OFCDC_SC_NM": "대전광역시교육청",
+          "SD_SCHUL_CODE": "7430310",
+          "SCHUL_NM": "대덕소프트웨어마이스터고등학교",
+          "AY": "2026",
+          "SEM": "2",
+          "ALL_TI_YMD": "20261116",
+          "DGHT_CRSE_SC_NM": "주간",
+          "ORD_SC_NM": "공업계",
+          "DDDEP_NM": "공통과정",
+          "GRADE": "1",
+          "CLRM_NM": "1",
+          "CLASS_NM": "1",
+          "PERIO": "2",
+          "ITRT_CNTNT": "공통수학2",
+          "LOAD_DTM": "20261118"
+        },
+        {
+          "ATPT_OFCDC_SC_CODE": "G10",
+          "ATPT_OFCDC_SC_NM": "대전광역시교육청",
+          "SD_SCHUL_CODE": "7430310",
+          "SCHUL_NM": "대덕소프트웨어마이스터고등학교",
+          "AY": "2026",
+          "SEM": "2",
+          "ALL_TI_YMD": "20261116",
+          "DGHT_CRSE_SC_NM": "주간",
+          "ORD_SC_NM": "공업계",
+          "DDDEP_NM": "공통과정",
+          "GRADE": "1",
+          "CLRM_NM": "1",
+          "CLASS_NM": "1",
+          "PERIO": "3",
+          "ITRT_CNTNT": "웹 개발 입문",
+          "LOAD_DTM": "20261118"
+        },
+        {
+          "ATPT_OFCDC_SC_CODE": "G10",
+          "ATPT_OFCDC_SC_NM": "대전광역시교육청",
+          "SD_SCHUL_CODE": "7430310",
+          "SCHUL_NM": "대덕소프트웨어마이스터고등학교",
+          "AY": "2026",
+          "SEM": "2",
+          "ALL_TI_YMD": "20261116",
+          "DGHT_CRSE_SC_NM": "주간",
+          "ORD_SC_NM": "공업계",
+          "DDDEP_NM": "공통과정",
+          "GRADE": "1",
+          "CLRM_NM": "1",
+          "CLASS_NM": "1",
+          "PERIO": "4",
+          "ITRT_CNTNT": "웹 개발 입문",
+          "LOAD_DTM": "20261118"
+        },
+        {
+          "ATPT_OFCDC_SC_CODE": "G10",
+          "ATPT_OFCDC_SC_NM": "대전광역시교육청",
+          "SD_SCHUL_CODE": "7430310",
+          "SCHUL_NM": "대덕소프트웨어마이스터고등학교",
+          "AY": "2026",
+          "SEM": "2",
+          "ALL_TI_YMD": "20261116",
+          "DGHT_CRSE_SC_NM": "주간",
+          "ORD_SC_NM": "공업계",
+          "DDDEP_NM": "공통과정",
+          "GRADE": "1",
+          "CLRM_NM": "1",
+          "CLASS_NM": "1",
+          "PERIO": "5",
+          "ITRT_CNTNT": "통합과학2",
+          "LOAD_DTM": "20261118"
+        }
+      ]
+    }
+  ]
+}

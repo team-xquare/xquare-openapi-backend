@@ -13,6 +13,7 @@ tags:
 - name: 교직원
 - name: 자습 감독
 - name: 일정
+- name: 시간표
 - name: 급식
 - name: 동아리
 - name: 공지
@@ -1299,6 +1300,87 @@ paths:
                   value:
                     code: NEIS_SCHEDULE_NOT_EDITABLE
                     message: 나이스에서 동기화한 일정은 삭제할 수 없음
+  /timetables:
+    get:
+      tags:
+      - 시간표
+      summary: 학급 주간 시간표 조회
+      description: '학급 하나의 한 주(월~일) 시간표를 나이스 고등학교시간표(hisTimetable)에서 가져와 반환한다. date가 속한 주를 조회하며, date를 생략하면 오늘(서울 시간)이 속한 주다.
+        DB에 저장하지 않고 요청 때 나이스에서 가져오며, 같은 학급·주는 10분 동안 서버 메모리에 캐시한다. 수업이 없는 날(주말·방학·공휴일)은 days에 넣지 않는다.
+        노션 명세에는 없는 API다(일정 명세는 시간표를 따로 다룬다고만 적음, OPN-69). 권한: USER'
+      operationId: getTimetable
+      security:
+      - bearerAuth: []
+      x-required-role: USER
+      parameters:
+      - name: grade
+        in: query
+        required: true
+        description: 학년(1~3)
+        schema:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 3
+        example: 1
+      - name: classNum
+        in: query
+        required: true
+        description: 반(1~9)
+        schema:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 9
+        example: 2
+      - name: date
+        in: query
+        required: false
+        description: 조회할 주에 속한 날짜(yyyy-MM-dd). 생략하면 오늘(서울 시간)
+        schema:
+          type: string
+          format: date
+        example: '2026-11-18'
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimetableResponse'
+        '400':
+          description: '`INVALID_INPUT`: grade·classNum 누락, 범위 밖, 숫자가 아님, date 형식 오류'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 'grade: 형식이 올바르지 않습니다.'
+        '401':
+          description: 'INVALID_TOKEN: 토큰이 없거나 유효하지 않음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_TOKEN:
+                  value:
+                    code: INVALID_TOKEN
+                    message: 토큰이 없거나 유효하지 않음
+        '502':
+          description: 'TIMETABLE_UNAVAILABLE: 나이스 호출 실패(오류 결과 코드, 응답 형식 이상, 일부만 받은 응답, 네트워크 오류, 서버에 NEIS_API_KEY 없음)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                TIMETABLE_UNAVAILABLE:
+                  value:
+                    code: TIMETABLE_UNAVAILABLE
+                    message: 나이스에서 시간표를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.
   /study-supervisors:
     post:
       tags:
@@ -3198,6 +3280,68 @@ components:
           - SCHOOL
           description: 일정 출처. NEIS(나이스 동기화), SCHOOL(학교 직접 입력). 나이스에서 동기화한 일정은 직접 수정할 수 없다.
           example: SCHOOL
+    TimetableResponse:
+      type: object
+      required:
+      - grade
+      - classNum
+      - startDate
+      - finishDate
+      - days
+      properties:
+        grade:
+          type: integer
+          format: int32
+          example: 1
+        classNum:
+          type: integer
+          format: int32
+          example: 2
+        startDate:
+          type: string
+          format: date
+          description: 조회한 주의 월요일
+          example: '2026-11-16'
+        finishDate:
+          type: string
+          format: date
+          description: 조회한 주의 일요일
+          example: '2026-11-22'
+        days:
+          type: array
+          description: 수업이 있는 날만 날짜 순으로
+          items:
+            $ref: '#/components/schemas/TimetableDayResponse'
+    TimetableDayResponse:
+      type: object
+      required:
+      - date
+      - periods
+      properties:
+        date:
+          type: string
+          format: date
+          example: '2026-11-16'
+        periods:
+          type: array
+          description: 교시 순
+          items:
+            $ref: '#/components/schemas/TimetablePeriodResponse'
+    TimetablePeriodResponse:
+      type: object
+      required:
+      - period
+      - subject
+      properties:
+        period:
+          type: integer
+          format: int32
+          description: 교시
+          example: 2
+        subject:
+          type: string
+          description: 수업 내용(나이스 ITRT_CNTNT를 앞뒤 공백만 지워 그대로)
+          example: 공통수학2
     StudySupervisorAssignmentRequest:
       type: object
       required:
