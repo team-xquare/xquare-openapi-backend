@@ -43,6 +43,7 @@ class SecurityConfig {
                 authorize(HttpMethod.POST, "/auth/signup", permitAll)
                 authorize(HttpMethod.POST, "/auth/login", permitAll)
                 authorize(HttpMethod.POST, "/auth/reissue", permitAll)
+                authorize(HttpMethod.POST, "/auth/password/reset", permitAll)
                 // Swagger UI와 API 문서(springdoc)
                 authorize(HttpMethod.GET, "/swagger-ui.html", permitAll)
                 authorize(HttpMethod.GET, "/swagger-ui/**", permitAll)

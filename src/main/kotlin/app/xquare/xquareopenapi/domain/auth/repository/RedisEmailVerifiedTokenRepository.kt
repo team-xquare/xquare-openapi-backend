@@ -19,6 +19,10 @@ class RedisEmailVerifiedTokenRepository(
     override fun findEmailByToken(token: String): String? =
         redisTemplate.opsForValue().get(key(token))
 
+    // GETDEL(Redis 6.2+)로 읽기와 삭제를 원자적으로 한다.
+    override fun consume(token: String): String? =
+        redisTemplate.opsForValue().getAndDelete(key(token))
+
     override fun delete(token: String) {
         redisTemplate.delete(key(token))
     }

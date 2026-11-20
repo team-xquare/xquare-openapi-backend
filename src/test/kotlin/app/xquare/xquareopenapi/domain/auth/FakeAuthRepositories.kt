@@ -48,6 +48,17 @@ class FakeEmailVerifiedTokenRepository : EmailVerifiedTokenRepository {
 
     override fun findEmailByToken(token: String): String? = tokens[token]
 
+    var failOnConsume = false
+
+    // 소비 직전에 실행한다. 다른 요청이 먼저 소비한 경합을 흉내 낼 때 쓴다.
+    var beforeConsume: () -> Unit = {}
+
+    override fun consume(token: String): String? {
+        if (failOnConsume) throw RedisConnectionFailureException("Redis 장애")
+        beforeConsume()
+        return tokens.remove(token)
+    }
+
     var failOnDelete = false
 
     override fun delete(token: String) {
@@ -75,10 +86,19 @@ class FakeRefreshTokenRepository : RefreshTokenRepository {
         return true
     }
 
+    var failOnDelete = false
+
+    override fun delete(userId: Long) {
+        if (failOnDelete) throw RedisConnectionFailureException("Redis 장애")
+        tokens.remove(userId)
+        ttls.remove(userId)
+    }
+
     fun clear() {
         tokens.clear()
         ttls.clear()
         failOnSave = false
+        failOnDelete = false
     }
 }
 
