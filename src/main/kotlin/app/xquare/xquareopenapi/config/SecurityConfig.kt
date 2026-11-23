@@ -84,6 +84,7 @@ class SecurityConfig {
                 authorize(HttpMethod.POST, "/auth/signup", permitAll)
                 authorize(HttpMethod.POST, "/auth/login", permitAll)
                 authorize(HttpMethod.POST, "/auth/reissue", permitAll)
+                authorize(HttpMethod.POST, "/auth/password/reset", permitAll)
                 // Swagger UI와 API 문서(springdoc)
                 authorize(HttpMethod.GET, "/swagger-ui.html", permitAll)
                 authorize(HttpMethod.GET, "/swagger-ui/**", permitAll)
@@ -104,6 +105,9 @@ class SecurityConfig {
                 authorize("/api-key-applications/*", hasRole(ADMIN))
                 authorize(HttpMethod.POST, "/meals", hasRole(ADMIN))
                 authorize(HttpMethod.PATCH, "/meals/*", hasRole(ADMIN))
+                authorize(HttpMethod.POST, "/schedules", hasRole(ADMIN))
+                authorize(HttpMethod.PATCH, "/schedules/*", hasRole(ADMIN))
+                authorize(HttpMethod.DELETE, "/schedules/*", hasRole(ADMIN))
                 authorize(HttpMethod.POST, "/clubs", hasRole(ADMIN))
                 authorize(HttpMethod.PATCH, "/clubs/*", hasRole(ADMIN))
                 authorize(HttpMethod.DELETE, "/clubs/*", hasRole(ADMIN))
@@ -113,6 +117,8 @@ class SecurityConfig {
                 authorize(HttpMethod.POST, "/notices", hasRole(ADMIN))
                 authorize(HttpMethod.PATCH, "/notices/*", hasRole(ADMIN))
                 authorize(HttpMethod.DELETE, "/notices/*", hasRole(ADMIN))
+                // 메서드를 한정하지 않아 Spring MVC가 GET에 붙이는 HEAD도 관리자만 호출한다.
+                authorize("/admin/api-usage-logs", hasRole(ADMIN))
                 // 나머지는 로그인만 하면 된다(USER, ADMIN). 조회 API는 위의 API 키 체인이 먼저 가져간다.
                 authorize(anyRequest, authenticated)
             }

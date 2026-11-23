@@ -27,6 +27,7 @@ enum class ErrorCode(
     STUDENT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 학생입니다."),
     STUDENT_NUMBER_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 사용 중인 학번입니다."),
     TEACHER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 교직원입니다."),
+    USER_NOT_FOUND(HttpStatus.NOT_FOUND, "가입되지 않은 이메일입니다."),
     API_KEY_ALREADY_EXISTS(HttpStatus.CONFLICT, "동시에 처리된 활용신청으로 API 키가 이미 발급되었습니다. 다시 신청하면 분야가 추가됩니다."),
     API_KEY_NOT_FOUND(HttpStatus.NOT_FOUND, "발급받은 API 키가 없습니다. 활용신청을 먼저 해 주세요."),
     API_KEY_FIELD_ALREADY_APPLIED(HttpStatus.CONFLICT, "이미 신청한 분야입니다."),
@@ -35,6 +36,8 @@ enum class ErrorCode(
     INVALID_DATE_RANGE(HttpStatus.BAD_REQUEST, "조회 기간이 올바르지 않습니다."),
     MEAL_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 급식 정보입니다."),
     MEAL_ALREADY_EXISTS(HttpStatus.CONFLICT, "해당 날짜의 급식 정보가 이미 존재합니다."),
+    SCHEDULE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 일정입니다."),
+    NEIS_SCHEDULE_NOT_EDITABLE(HttpStatus.CONFLICT, "나이스에서 동기화한 일정은 수정하거나 삭제할 수 없습니다."),
     CLUB_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 동아리입니다."),
     ROOM_ALREADY_IN_USE(HttpStatus.BAD_REQUEST, "다른 동아리가 이미 사용 중인 교실입니다."),
     MANAGER_NOT_IN_MEMBER(HttpStatus.BAD_REQUEST, "팀장은 구성원에 포함돼야 합니다."),
@@ -44,4 +47,5 @@ enum class ErrorCode(
     SUPERVISION_ALREADY_EXISTS(HttpStatus.CONFLICT, "해당 날짜의 자습 감독 정보가 이미 존재합니다."),
     NOTICE_NOT_FOUND(HttpStatus.NOT_FOUND, "이미 삭제되었거나 존재하지 않는 공지입니다."),
     CONCURRENT_UPDATE(HttpStatus.CONFLICT, "동시에 수정되어 처리하지 못했습니다. 다시 시도해 주세요."),
+    TIMETABLE_UNAVAILABLE(HttpStatus.BAD_GATEWAY, "나이스에서 시간표를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요."),
 }

@@ -13,6 +13,8 @@ import app.xquare.xquareopenapi.domain.auth.presentation.dto.EmailVerifiedTokenR
 import app.xquare.xquareopenapi.domain.auth.presentation.dto.MessageResponse
 import app.xquare.xquareopenapi.domain.auth.usecase.SendEmailOtpUseCase
 import app.xquare.xquareopenapi.domain.auth.usecase.VerifyEmailOtpUseCase
+import app.xquare.xquareopenapi.domain.auth.presentation.dto.PasswordResetRequest
+import app.xquare.xquareopenapi.domain.auth.usecase.ResetPasswordUseCase
 import io.swagger.v3.oas.annotations.security.SecurityRequirements
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
@@ -31,6 +33,7 @@ class AuthController(
     private val signupUseCase: SignupUseCase,
     private val loginUseCase: LoginUseCase,
     private val reissueUseCase: ReissueUseCase,
+    private val resetPasswordUseCase: ResetPasswordUseCase,
 ) {
 
     @SecurityRequirements
@@ -62,4 +65,9 @@ class AuthController(
     @PostMapping("/reissue")
     fun reissue(@RequestBody @Valid request: ReissueRequest): TokenResponse =
         reissueUseCase.execute(request)
+
+    @SecurityRequirements
+    @PostMapping("/password/reset")
+    fun resetPassword(@RequestBody @Valid request: PasswordResetRequest): MessageResponse =
+        resetPasswordUseCase.execute(request)
 }

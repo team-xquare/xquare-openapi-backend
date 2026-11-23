@@ -19,6 +19,10 @@ class RedisRefreshTokenRepository(
     override fun replace(userId: Long, expected: String, refreshToken: String, ttl: Duration): Boolean =
         redisTemplate.execute(REPLACE_SCRIPT, listOf(key(userId)), expected, refreshToken, ttl.toMillis().toString()) == 1L
 
+    override fun delete(userId: Long) {
+        redisTemplate.delete(key(userId))
+    }
+
     private fun key(userId: Long) = "$KEY_PREFIX$userId"
 
     companion object {
