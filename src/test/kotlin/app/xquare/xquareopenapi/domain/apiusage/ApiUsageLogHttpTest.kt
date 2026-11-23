@@ -250,6 +250,17 @@ class ApiUsageLogHttpTest @Autowired constructor(
     }
 
     @Test
+    fun `일정 조회도 업무 호출로 기록한다`() {
+        val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
+        assertEquals(200, send("GET", LIST, admin).statusCode())
+        jdbc.update("delete from api_usage_logs")
+        assertEquals(404, send("GET", "/schedules/987654321", admin).statusCode())
+        val rows = awaitRows(1)
+        assertEquals(listOf("/schedules/{scheduleId}"), rows.map { it["route"] })
+        assertEquals(listOf("GET"), rows.map { it["http_method"] })
+    }
+
+    @Test
     fun `문서 헬스 프리플라이트 및 관리자 조회는 기록하지 않는다`() {
         val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
         assertEquals(200, send("GET", LIST, admin).statusCode())
