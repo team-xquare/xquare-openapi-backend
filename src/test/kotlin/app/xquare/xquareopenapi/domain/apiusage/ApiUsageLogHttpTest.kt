@@ -261,6 +261,17 @@ class ApiUsageLogHttpTest @Autowired constructor(
     }
 
     @Test
+    fun `API 키 관리 호출도 업무 호출로 기록한다`() {
+        val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
+        assertEquals(200, send("GET", LIST, admin).statusCode())
+        jdbc.update("delete from api_usage_logs")
+        assertEquals(404, send("GET", "/api-keys/me", admin).statusCode())
+        assertEquals(404, send("GET", "/api-key-applications/987654321", admin).statusCode())
+        val rows = awaitRows(2)
+        assertEquals(listOf("/api-keys/me", "/api-key-applications/{applicationId}"), rows.map { it["route"] })
+    }
+
+    @Test
     fun `문서 헬스 프리플라이트 및 관리자 조회는 기록하지 않는다`() {
         val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
         assertEquals(200, send("GET", LIST, admin).statusCode())
