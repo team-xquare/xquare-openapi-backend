@@ -55,7 +55,7 @@ API 스펙이 있습니다.
 `RESEND_API_KEY`(빈 값이면 기동은 가능하나 메일 발송 실패), `MAIL_FROM`(예: `XQUARE <noreply@example.com>`), `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `REDIS_HOST`, `REDIS_PORT`, `JWT_SECRET`(32바이트 이상이어야 하고, 짧으면 앱이 뜨지 않음).
 `CORS_ALLOWED_ORIGINS`는 쉼표로 구분한 허용 origin 목록이다(예: `http://localhost:3000,https://example.com`). 비워 두면 브라우저의 다른 origin 요청이 모두 막힌다.
 `JPA_DDL_AUTO`는 기본값이 `validate`다. 마이그레이션 도구가 없으므로 빈 DB에서는 테이블이 먼저 있어야 한다.
-나이스 급식 동기화: `NEIS_API_KEY`(없으면 동기화를 건너뛰고 경고 로그만 남김), `NEIS_OFFICE_CODE`(기본 `G10`), `NEIS_SCHOOL_CODE`(기본 `7430310`, 대덕소프트웨어마이스터고), `NEIS_MEAL_SYNC_CRON`(기본 `0 0 4 * * *`, 서울 시간, `-`이면 끔).
+나이스 급식 동기화: `NEIS_API_KEY`(없으면 동기화를 건너뛰고 경고 로그만 남김), `NEIS_OFFICE_CODE`(기본 `G10`), `NEIS_SCHOOL_CODE`(기본 `7430310`, 대덕소프트웨어마이스터고), `NEIS_MEAL_SYNC_CRON`(기본 `0 0 4 * * *`, 서울 시간, `-`이면 끔). 학사일정 동기화는 같은 키·학교 코드를 쓰고 `NEIS_SCHEDULE_SYNC_CRON`(기본 `0 10 4 * * *`)만 따로 둔다.
 
 `src/test/resources/application.yaml`은 main 설정을 덮는 게 아니라 통째로 대신한다(H2, 테스트용 JWT secret). 새 설정 키를 추가하면 두 파일 모두에 넣는다.
 
@@ -84,6 +84,7 @@ API 스펙이 있습니다.
 - 급식 '급식 없음' 표시: 급식 삭제 API가 없어서 세 끼가 모두 빈 행(`Meal.isNoMeal`, `editedByAdmin = true`)을 '급식 없음' 표시로 쓴다. 조회 API에서 빼고(단건 404), 등록·날짜 이동에서는 없는 급식으로 본다. 수정으로 날짜를 옮기면 원래 날짜에 표시를 남긴다. 급식 조회 쿼리를 새로 만들면 표시를 빼야 한다. 등록이 표시를 새 메뉴로 고치거나 날짜 이동이 표시를 지울 때는 `findIdByDate`로 id만 읽고 `findByIdForUpdate`로 잠근 뒤 다시 읽는다. 잠그지 않으면 같은 날짜의 등록·수정이 겹칠 때 먼저 쓴 급식이 에러 없이 사라진다(`CreateMealConcurrencyTest`, `UpdateMealConcurrencyTest`).
   - 테스트는 실제 나이스를 부르지 않는다. `MockRestServiceServer.bindTo(RestClient.builder())`로 만든 RestClient를 넣어 클라이언트·스케줄러를 직접 만든다(`NeisMealClientTest`, `NeisMealSyncTest`). 테스트 설정은 `neis.meal-sync-cron: "-"`로 스케줄을 끈다.
   - "이번 달" 같은 날짜 계산은 `Clock` 빈(`config/ClockConfig`, Asia/Seoul)을 주입받아 한다. 테스트는 `Clock.fixed`를 넣는다.
+- 일정(`domain/schedule`): 나이스 일정과 학교 일정을 `schedules` 한 테이블에 두고 `source`(`NEIS`/`SCHOOL`)로 구분한다. 나이스 일정의 수정·삭제는 `409 NEIS_SCHEDULE_NOT_EDITABLE`. `NeisScheduleSyncScheduler`가 이번 달·다음 달 학사일정을 가져와 `SyncNeisSchedulesUseCase`가 (날짜, 제목)으로 맞춘다. `NEIS` 행만 만들고 바꾸고 지우며(응답에 없는 행은 삭제), `SCHOOL` 행은 읽지 않는다. 나이스 공통 설정(`NeisProperties`, `NeisApiException`, `neisRestClient`)은 `domain/meal/neis`·`config/NeisConfig`의 것을 그대로 쓴다.
 - 시간표(`domain/timetable`): `GET /timetables`는 DB 없이 `NeisTimetableClient`로 나이스 `hisTimetable`을 가져와 `GetTimetableUseCase`가 (학년, 반, 주)별로 10분 메모리 캐시한다. 나이스 실패는 `502 TIMETABLE_UNAVAILABLE`이고 캐시하지 않는다. 캐시가 스프링 빈에 남으므로 MockMvc 테스트(`TimetableTest`)는 테스트마다 다른 학급·주를 쓴다.
 - Redis 저장소는 인터페이스(`EmailVerifiedTokenRepository`, `RefreshTokenRepository`) 뒤에 둔다. 인증 API 테스트(`SignupTest`, `LoginTest`, `ReissueTest`)는 `FakeAuthRepositories`를 `@Import`해 `@Primary` 가짜 구현으로 바꿔 끼워서 Redis 없이 돈다. 저장소 인터페이스에 메서드를 추가하면 가짜 구현에도 넣는다.
 - Redis 키 형식은 다른 기능과 맞춰야 하는 계약이다:
