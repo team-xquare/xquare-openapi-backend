@@ -88,7 +88,30 @@ class ReissueTest @Autowired constructor(
 
     @Test
     fun `저장된 적 없는 리프레시 토큰은 INVALID_REFRESH_TOKEN`() {
-        reissue(jwtProvider.generateRefreshToken(userId).value).andExpectInvalidRefreshToken()
+        val passwordHash = userRepository.findById(userId).get().password
+        reissue(jwtProvider.generateRefreshToken(userId, passwordHash).value).andExpectInvalidRefreshToken()
+    }
+
+    @Test
+    fun `발급 뒤 비밀번호가 바뀌었으면 저장된 리프레시 토큰이어도 재발급할 수 없다`() {
+        val refreshToken = loginAndGetRefreshToken()
+        val user = userRepository.findById(userId).get()
+        user.changePassword(passwordEncoder.encode("NewPassword1!")!!)
+        userRepository.save(user)
+
+        reissue(refreshToken).andExpectInvalidRefreshToken()
+        // 지문 검사에서 걸려 저장된 토큰은 바뀌지 않는다.
+        assertEquals(refreshToken, refreshTokens.tokens[userId])
+    }
+
+    @Test
+    fun `재발급한 리프레시 토큰도 지금 비밀번호의 지문을 담아 다시 재발급할 수 있다`() {
+        val first = loginAndGetRefreshToken()
+        val second = JsonPath.read<String>(reissue(first).andReturn().response.contentAsString, "$.refreshToken")
+
+        val passwordHash = userRepository.findById(userId).get().password
+        assertEquals(jwtProvider.passwordFingerprint(passwordHash), jwtProvider.parseRefreshToken(second)!!.passwordFingerprint)
+        reissue(second).andExpect { status { isOk() } }
     }
 
     @Test

@@ -15,7 +15,8 @@ class TokenIssuer(
 
     fun issue(user: User): TokenResponse {
         val userId = user.id!!
-        val refreshToken = jwtProvider.generateRefreshToken(userId)
+        // 호출한 쪽이 비밀번호를 검증할 때 읽은 user를 넘겨야 한다. 그 사이 비밀번호가 바뀌었으면 재발급에서 막힌다.
+        val refreshToken = jwtProvider.generateRefreshToken(userId, user.password)
         refreshTokenRepository.save(userId, refreshToken.value, refreshToken.ttl)
         return TokenResponse(
             accessToken = jwtProvider.generateAccessToken(userId, user.role),

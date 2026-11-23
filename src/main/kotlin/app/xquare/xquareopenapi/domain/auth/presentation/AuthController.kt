@@ -13,6 +13,9 @@ import app.xquare.xquareopenapi.domain.auth.presentation.dto.EmailVerifiedTokenR
 import app.xquare.xquareopenapi.domain.auth.presentation.dto.MessageResponse
 import app.xquare.xquareopenapi.domain.auth.usecase.SendEmailOtpUseCase
 import app.xquare.xquareopenapi.domain.auth.usecase.VerifyEmailOtpUseCase
+import app.xquare.xquareopenapi.domain.auth.presentation.dto.PasswordResetRequest
+import app.xquare.xquareopenapi.domain.auth.usecase.ResetPasswordUseCase
+import io.swagger.v3.oas.annotations.security.SecurityRequirements
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -30,8 +33,10 @@ class AuthController(
     private val signupUseCase: SignupUseCase,
     private val loginUseCase: LoginUseCase,
     private val reissueUseCase: ReissueUseCase,
+    private val resetPasswordUseCase: ResetPasswordUseCase,
 ) {
 
+    @SecurityRequirements
     @PostMapping("/email/otp")
     // IP는 X-Forwarded-For를 직접 읽지 않고 remoteAddr를 쓴다. server.forward-headers-strategy=native(기본값)이면
     // Tomcat이 internal-proxies/trusted-proxies(SERVER_TOMCAT_REMOTEIP_*)에 든 프록시가 준 값만 remoteAddr에 반영한다.
@@ -40,20 +45,29 @@ class AuthController(
     fun sendEmailOtp(@RequestBody @Valid request: EmailOtpSendRequest, httpRequest: HttpServletRequest): MessageResponse =
         sendEmailOtpUseCase.execute(request, httpRequest.remoteAddr)
 
+    @SecurityRequirements
     @PostMapping("/email/otp/verify")
     fun verifyEmailOtp(@RequestBody @Valid request: EmailOtpVerifyRequest): EmailVerifiedTokenResponse =
         verifyEmailOtpUseCase.execute(request)
 
+    @SecurityRequirements
     @PostMapping("/signup")
     @ResponseStatus(HttpStatus.CREATED)
     fun signup(@RequestBody @Valid request: SignupRequest): TokenResponse =
         signupUseCase.execute(request)
 
+    @SecurityRequirements
     @PostMapping("/login")
     fun login(@RequestBody @Valid request: LoginRequest): TokenResponse =
         loginUseCase.execute(request)
 
+    @SecurityRequirements
     @PostMapping("/reissue")
     fun reissue(@RequestBody @Valid request: ReissueRequest): TokenResponse =
         reissueUseCase.execute(request)
+
+    @SecurityRequirements
+    @PostMapping("/password/reset")
+    fun resetPassword(@RequestBody @Valid request: PasswordResetRequest): MessageResponse =
+        resetPasswordUseCase.execute(request)
 }
