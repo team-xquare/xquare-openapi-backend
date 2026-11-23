@@ -70,6 +70,57 @@
 - 응답 필드는 `User`에 있는 값 중 비밀번호 해시를 뺀 `id`, `username`, `name`, `studentNumber`, `email`, `role`.
 - 토큰은 유효하지만 사용자가 DB에 없으면(탈퇴 API가 없어 DB에서 직접 지운 경우뿐) 토큰의 주인이 없다고 보고 `401 INVALID_TOKEN`으로 응답함. 404용 에러 코드를 새로 만들지 않음.
 
+# API 키
+
+### 명세 없음
+- 노션 API 명세서·기능 명세서 어디에도 API 키·활용신청 API가 없음. 백엔드 태스크 목록("API 키 발급·재발급", "API 키 인증", "활용신청 등록(자동승인 → 바로 키 발급)")만 보고 새로 정함
+
+### 정한 것 (사용자가 정함)
+- `POST /api-keys`로 활용신청한다. 자동 승인(#32)
+- 사용자당 키 1개
+- 신청 항목은 서비스 이름과 사용 목적
+- 키는 SHA-256 해시만 저장하고 원문은 발급 응답에서 한 번만 보여 준다
+- `POST /api-keys/reissue`로 재발급하면 기존 키는 즉시 폐기한다(#33)
+- 조회(GET) API는 API 키로만 인증한다. 우리 프론트도 키가 필요하다. 등록·수정·삭제는 지금처럼 ADMIN JWT(#34)
+
+### 정한 것 (11/17 회의)
+- 활용신청은 분야별로 한다: `STUDENT`(학생), `TEACHER`(교직원), `CLUB`(동아리), `SCHEDULE`(일정), `STUDY_SUPERVISOR`(자습 감독). 급식은 키 없이 호출하므로 분야가 없다(OPN-57)
+- 키는 사용자당 1개. 첫 신청(`FIRST`)에서만 키를 발급하고, 이후 신청(`ADD_FIELD`)은 같은 키에 분야만 더하며 키를 다시 주지 않는다(OPN-57)
+- 신청 기록은 키와 따로 둔다. 키 하나에 신청 기록 여러 개(분야, 구분, 신청 시각, 서비스 이름, 사용 목적)(OPN-57)
+- 활용신청(첫 신청·분야 추가)과 재발급은 이메일 인증을 거쳐야 한다(OPN-57·58)
+- 조회 API는 키와 분야를 함께 확인한다. 키는 맞지만 그 분야를 신청하지 않았으면 403(OPN-59)
+- 재발급은 키 값만 바꾸고 분야는 유지한다. 이전 키는 바로 401(OPN-58)
+
+### 구현하면서 정한 것
+- 신청·발급은 로그인한 사용자(USER, ADMIN) 본인 것만. 대상 사용자는 액세스 토큰의 userId
+- 서비스 이름 1~30자, 사용 목적 1~200자. 어기면 `400 INVALID_INPUT`. 분야가 없거나 목록에 없는 값(예: `MEAL`)도 `400 INVALID_INPUT`
+- 키 형식: `xq_` + 무작위 32바이트를 URL에 안전한 base64(패딩 없음)로 붙인 46자. 원문이 무작위 256비트라 솔트 없는 SHA-256으로도 원문을 거꾸로 찾을 수 없다
+- 신청 응답은 첫 신청·분야 추가 모두 `201`이고 body는 `{ "type", "apiKey" }`. 분야 추가면 `apiKey`가 `null`이다. 엔드포인트를 나누지 않은 것은 클라이언트가 키 보유 여부를 몰라도 같은 화면에서 신청할 수 있게 하려는 것이다
+- 이미 신청한 분야를 다시 신청하면 `409 API_KEY_FIELD_ALREADY_APPLIED`. 신청 기록의 unique 제약 이름은 `uk_api_key_applications_api_key_id_field`
+- 같은 사용자의 첫 신청이 동시에 들어와 다른 요청이 먼저 키를 만들면 unique 제약(`uk_api_keys_user_id`) 이름으로 구분해 `409 API_KEY_ALREADY_EXISTS`("다시 신청하면 분야가 추가됩니다"). 정상 흐름에서는 나오지 않는다. 이메일 인증 토큰은 롤백 때 지우지 않으므로 같은 토큰으로 다시 신청하면 된다
+- 분야 추가는 키 행을 `SELECT ... FOR UPDATE`로 잠근 뒤 중복을 검사한다. 같은 분야를 동시에 더해도 하나만 들어가고, 키 삭제와 겹쳐도 지워진 키에 신청 기록이 남지 않는다. 키가 없는 사용자는 잠그지 않는다(MySQL REPEATABLE READ에서 없는 행을 잠그면 gap lock이 잡혀 동시 첫 신청끼리 교착될 수 있음)
+- 다만 MySQL REPEATABLE READ에서는 키 잠금을 기다린 뒤의 중복 검사(일반 조회)가 트랜잭션 첫 조회 때의 스냅샷을 봐서, 앞 요청이 방금 추가한 분야가 보이지 않는다. 그래서 같은 분야 동시 추가는 unique 제약(`uk_api_key_applications_api_key_id_field`)에서 걸리고, 이 위반도 같은 `409 API_KEY_FIELD_ALREADY_APPLIED`로 바꾼다(#45 리뷰). 중복 검사를 잠금 조회로 바꾸지 않은 이유는 없는 행을 잠그면 gap lock이 잡혀 다른 키의 분야 추가와 교착될 수 있어서다. `ApplyApiKeyMySqlConcurrencyTest`가 MySQL 8.4에서 확인한다
+- 신청 시각(`appliedAt`)은 서버 시간대와 상관없이 한국 시간(Asia/Seoul)으로 저장한다(칼럼은 오프셋 없는 `datetime(6)`). 응답(`issuedAt`, `appliedAt`)에는 `+09:00` 오프셋을 붙인 RFC 3339 형식(`2026-11-18T09:30:00+09:00`)으로 내려준다. 문서의 `format: date-time`을 엄격히 파싱하는 클라이언트를 위해서다(#47 리뷰)
+- 이메일 인증: 요청 body의 `emailVerifiedToken`을 Redis `email_verified_token:{token}`에서 찾아, 그 이메일이 로그인한 사용자의 `users.email`과 같아야 한다. 비교는 회원가입과 같은 정규화(앞뒤 공백 제거·소문자화)를 양쪽에 적용해 한다. #31 이전에 대문자가 섞인 이메일로 가입한 계정도 소문자로 저장된 새 토큰으로 인증되게 하려는 것(#45 리뷰). 토큰이 없거나 만료됐거나 다른 이메일 것이면 회원가입과 같은 `403 EMAIL_NOT_VERIFIED`. 빈 값·누락은 `400 INVALID_INPUT`. 신청·재발급에 성공해 커밋된 뒤에 토큰을 지운다(실패하면 남겨 두어 다시 시도할 수 있음). 같은 토큰으로 동시에 여러 요청을 보내면 커밋 전이라 모두 통과할 수 있는데, 본인 이메일로 받은 토큰이라 문제로 보지 않았다
+- 재발급도 이메일 인증을 먼저 확인한 뒤 키를 찾는다. 키가 없으면 `404 API_KEY_NOT_FOUND`이고 토큰은 지우지 않는다
+- 발급 응답에 `Location`은 없다
+- 동시에 재발급하면 각 요청이 모두 키를 받지만 마지막으로 저장된 키 하나만 남는다(받은 키 중 하나는 반드시 쓸 수 있음)
+- 키는 `X-API-Key` 헤더로 받는다. JWT의 `Authorization`과 헤더를 나눠서 둘을 같이 보내도 헷갈리지 않게 했다
+- 키 인증 대상은 지금 있는 조회 API(`GET /students`, `/students/{id}`, `/teachers`, `/teachers/{id}`)와 같은 경로의 HEAD. Spring MVC가 GET 매핑에 HEAD도 자동으로 응답해서, 빼면 토큰만으로 200/404를 보고 존재 여부를 알 수 있다. 노션 API 명세서에는 타겟이 USER(JWT)로 적혀 있지만 태스크("조회 API는 API 키")를 따랐다
+- 경로와 분야: `/students`, `/students/*` → `STUDENT`, `/teachers`, `/teachers/*` → `TEACHER`. `SecurityConfig.API_KEY_READ_PATHS`에 경로→분야로 적는다. 동아리·일정·자습 감독 조회 API(`/clubs`, `/clubs/*`, `/schedules`, `/schedules/*`, `/study-supervisors`, `/study-supervisors/*`, `/study-supervisors/day`)는 키 체인에 아직 넣지 않았다. 동아리(`/clubs`, `/clubs/{clubId}`)·자습 감독(`/study-supervisors`, `/study-supervisors/day`) 조회는 develop에 먼저 들어와 JWT(USER)로 열려 있고, 이 PR에서는 develop 동작을 그대로 두고 `ApiKeyReadEndpointCoverageTest` 예외 목록에 적었다. 계약(GitHub #34)대로 키 체인으로 옮기는 것은 기존 동아리·자습 감독 테스트와 문서의 인증 방식을 함께 바꿔야 해서 따로 정한다. 옮길 때는 한 줄씩(`"/clubs" to ApiKeyField.CLUB`) 추가한다. 일정 조회는 아직 develop에도 없다
+- 키 없이 여는 GET: 급식(`/meals`, `/meals/{mealId}`)은 계약대로 공개(ALL)라 키 체인에 넣지 않는다. 내 정보(`/users/me`)·공지(`/notices`, `/notices/{noticeId}`)는 분야가 없는 로그인용 조회라 JWT로 연다
+- 키 삭제(OPN-96)는 `DELETE /api-keys/me`. 로그인한 본인 키와 모든 신청 기록을 지워 처음 상태로 되돌린다(다시 신청하면 `FIRST`로 새 키). 명세가 이메일 인증을 신청·재발급에만 요구해서 삭제에는 요구하지 않는다. 키가 없으면 `404 API_KEY_NOT_FOUND`, 성공하면 `200 {"message":"삭제되었습니다."}`. 실제로 지운다(하드 삭제). 키 행을 먼저 지우므로 같은 키를 동시에 지우면 하나만 200이고 나머지는 404, 분야 추가와 겹치면 분야 추가가 키 행 잠금에서 기다렸다가 첫 신청으로 처리된다
+- 재발급도 키 행을 잠그고 다시 읽는다(#46 리뷰). 잠그지 않으면 삭제와 겹칠 때 해시 update가 0행이 되어 500이 났다. 삭제가 먼저 끝나면 재발급은 `404 API_KEY_NOT_FOUND`, 재발급이 먼저 잠그면 새 키를 받은 뒤 삭제가 지운다(`DeleteApiKeyConcurrencyTest`)
+- 내 API 키 조회(OPN-67)는 `GET /api-keys/me`(액세스 토큰). 응답은 `issuedAt`(지금 키 값을 발급한 시각, 재발급하면 바뀜), `expiresAt`, `fields`(분야와 분야별 신청 시각, 신청 순서). 키 원문은 해시만 저장하므로 주지 않는다. 키가 없으면 `404 API_KEY_NOT_FOUND`
+- 만료: 만료 정책이 정해지지 않아 만료 기능을 만들지 않았다. `expiresAt`은 항상 `null`(만료 없음)이고, 정책이 정해지면 채운다
+- `issuedAt`을 위해 `api_keys.issued_at`(한국 시간)을 추가했다. 첫 신청과 재발급 때 기록한다
+- 관리자 활용신청 목록·상세(OPN-71)는 `GET /api-key-applications`, `GET /api-key-applications/{applicationId}`. ADMIN 액세스 토큰(JWT 체인)으로 열고, USER면 `403 FORBIDDEN`. 키 체인 대상이 아니라 `ApiKeyReadEndpointCoverageTest`의 예외 목록에 넣었다
+- 목록은 학생 목록과 같은 `page`(0~21474836)·`size`(1~100, 기본 20)와 `PageResponse` 형식. 거르기는 `field`, `type`(정확 일치, AND). 정렬은 신청 시각 역순, 같으면 id 역순. 항목은 id, 신청자 userId, 분야, 구분, 서비스 이름, 사용 목적, 신청 시각
+- 상세는 신청 내용 + 신청자 userId + `applicant`(username, name, email, studentNumber) + 그 키가 신청한 분야 전체(분야, 신청 시각). `api_keys.user_id`에 외래 키가 없어 사용자 행이 지워졌으면 `applicant`는 null. 없는 id면 `404 API_KEY_APPLICATION_NOT_FOUND`, 숫자가 아니면 `400 INVALID_INPUT`
+- 키를 삭제하면 신청 기록도 지워지므로 관리자 목록에서도 사라진다(삭제 이력은 남기지 않음)
+- 격리 수준: 운영 DB는 MySQL 기본 `REPEATABLE READ`를 쓴다고 가정한다(#48 리뷰). 목록·상세는 신청과 키를 여러 SELECT로 나눠 읽는데, 이 격리 수준에서는 한 트랜잭션이 같은 스냅샷을 보므로 그 사이 키가 지워져도 500이 나지 않는다. `READ COMMITTED`로 바꾸면 동시 삭제 때 키가 사라져 500이 날 수 있으니 그때는 조회를 다시 봐야 한다
+- 키가 없거나 틀리면 액세스 토큰이 있어도 `401 INVALID_API_KEY`. 키는 맞지만 경로의 분야를 신청하지 않았으면 `403 API_KEY_FIELD_FORBIDDEN`(팀 공유용 에러 코드). 키로는 등록·수정·삭제나 키 재발급을 할 수 없다(`401 INVALID_TOKEN`)
+
 # 학생·교직원
 
 ### 명세 충돌

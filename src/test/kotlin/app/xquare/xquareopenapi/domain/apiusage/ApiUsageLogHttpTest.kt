@@ -90,7 +90,7 @@ class ApiUsageLogHttpTest @Autowired constructor(
             withBlockedInsert { entered, release ->
                 // 업무 풀은 2개입니다. 1개를 잡고 DB를 쓰지 않는 요청으로 기록 INSERT만 먼저 시작합니다.
                 dataSource.connection.use {
-                    assertCode(send("GET", "/students"), 401, "INVALID_TOKEN")
+                    assertCode(send("GET", "/users/me"), 401, "INVALID_TOKEN")
                     assertTrue(entered.await(5, TimeUnit.SECONDS), "기록 워커가 DB의 INSERT에 도달해야 합니다")
                     val response = send("GET", "/meals?startDate=2026-11-20&finishDate=2026-11-20")
                     assertEquals(200, response.statusCode(), "기록을 해제하기 전에 업무 DB 조회가 성공해야 합니다")
@@ -110,11 +110,11 @@ class ApiUsageLogHttpTest @Autowired constructor(
         jdbc.update("delete from api_usage_logs")
         withBlockedInsert { entered, release ->
             observeSignals { events ->
-                val response = CLIENT.sendAsync(request("GET", "/students"), HttpResponse.BodyHandlers.ofString())
+                val response = CLIENT.sendAsync(request("GET", "/users/me"), HttpResponse.BodyHandlers.ofString())
                 assertTrue(entered.await(5, TimeUnit.SECONDS), "별도 기록 시도가 시작되어야 한다")
                 assertCode(response.get(3, TimeUnit.SECONDS), 401, "INVALID_TOKEN")
                 repeat(9) {
-                    assertCode(CLIENT.sendAsync(request("GET", "/students"), HttpResponse.BodyHandlers.ofString())
+                    assertCode(CLIENT.sendAsync(request("GET", "/users/me"), HttpResponse.BodyHandlers.ofString())
                         .get(3, TimeUnit.SECONDS), 401, "INVALID_TOKEN")
                 }
                 assertEquals(0, jdbc.queryForObject("select count(*) from api_usage_logs", Int::class.java))
@@ -182,8 +182,8 @@ class ApiUsageLogHttpTest @Autowired constructor(
         assertEquals(401, send("GET", "/students/123456789?unused=synthetic-query").statusCode())
         assertEquals(403, send("POST", "/students", user, "{}").statusCode())
         assertEquals(415, send("POST", "/auth/signup", body = "synthetic-body", contentType = "text/plain").statusCode())
-        assertEquals(404, send("GET", "/students/unmapped/private-path-marker", admin).statusCode())
-        assertEquals(404, send("GET", "/students/876543210", admin).statusCode())
+        assertEquals(404, send("GET", "/notices/unmapped/private-path-marker", admin).statusCode())
+        assertEquals(404, send("GET", "/notices/876543210", admin).statusCode())
 
         awaitRows(6)
         val result = json(send("GET", LIST, admin))
@@ -191,7 +191,7 @@ class ApiUsageLogHttpTest @Autowired constructor(
         val rows = result.path("content").toList()
         assertEquals(listOf(404, 404, 415, 403, 401, 200), rows.map { it.path("status").asInt() })
         assertEquals("/meals", rows.last().path("route").asString())
-        assertEquals("/students/{studentId}", rows.first().path("route").asString())
+        assertEquals("/notices/{noticeId}", rows.first().path("route").asString())
         assertEquals("UNMAPPED", rows[1].path("route").asString())
         assertEquals("UNMAPPED", rows[4].path("route").asString())
         assertTrue(rows.all { it.path("durationMs").asLong() >= 0 && it.path("occurredAt").asString().endsWith("Z") })
@@ -258,6 +258,17 @@ class ApiUsageLogHttpTest @Autowired constructor(
         val rows = awaitRows(1)
         assertEquals(listOf("/schedules/{scheduleId}"), rows.map { it["route"] })
         assertEquals(listOf("GET"), rows.map { it["http_method"] })
+    }
+
+    @Test
+    fun `API 키 관리 호출도 업무 호출로 기록한다`() {
+        val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
+        assertEquals(200, send("GET", LIST, admin).statusCode())
+        jdbc.update("delete from api_usage_logs")
+        assertEquals(404, send("GET", "/api-keys/me", admin).statusCode())
+        assertEquals(404, send("GET", "/api-key-applications/987654321", admin).statusCode())
+        val rows = awaitRows(2)
+        assertEquals(listOf("/api-keys/me", "/api-key-applications/{applicationId}"), rows.map { it["route"] })
     }
 
     @Test

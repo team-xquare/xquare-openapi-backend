@@ -5,9 +5,10 @@ info:
   description: |-
     노션 "xquare open API"의 API 명세서와 기능 명세서를 합쳐 만든 명세입니다. 두 명세서가 다르면 API 명세서를 따랐습니다.
 
-    권한: `security: []`인 API는 인증 없이 호출할 수 있고, 나머지는 `Authorization: Bearer <accessToken>`이 필요합니다. 필요한 권한은 `x-required-role`(USER, ADMIN)에 적었습니다.
+    권한: `security: []`인 API는 인증 없이 호출할 수 있습니다. `apiKeyAuth`인 조회 API는 `X-API-Key: <apiKey>`가 필요하고 액세스 토큰으로는 호출할 수 없습니다(`x-required-role: API_KEY`). 키는 활용신청한 분야(`ApiKeyField`)의 조회 API만 열 수 있고, 신청하지 않은 분야면 `403 API_KEY_FIELD_FORBIDDEN`입니다. 나머지는 `Authorization: Bearer <accessToken>`이 필요하며, 필요한 권한은 `x-required-role`(USER, ADMIN)에 적었습니다.
 tags:
 - name: 인증/인가
+- name: API 키
 - name: 사용자
 - name: 학생
 - name: 교직원
@@ -389,6 +390,398 @@ paths:
                   value:
                     code: EMAIL_ALREADY_EXISTS
                     message: 이미 사용 중인 이메일입니다.
+  /api-keys:
+    post:
+      tags:
+      - API 키
+      summary: 활용신청 등록 (분야별)
+      description: '분야 하나를 활용신청한다. 자동 승인이다. 키가 없으면 첫 신청(`FIRST`)으로 API 키를 발급하고 원문을 응답에 담는다. 이미 키가 있으면 분야 추가(`ADD_FIELD`)로
+        같은 키에 분야만 더하고 키는 다시 주지 않는다(`apiKey: null`). 사용자당 키는 1개. 신청 전에 `POST /auth/email/otp`·`POST /auth/email/otp/verify`로
+        로그인한 계정의 이메일을 인증하고 받은 `emailVerifiedToken`을 보내야 하며, 신청에 성공하면 토큰은 폐기된다. 권한: USER, ADMIN(로그인한 본인).'
+      operationId: applyApiKey
+      security:
+      - bearerAuth: []
+      x-required-role: USER
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApiKeyApplicationRequest'
+            example:
+              field: STUDENT
+              serviceName: 급식 알리미
+              purpose: 반 단톡방에 매일 급식을 올리려고 합니다.
+              emailVerifiedToken: 3f1c2a9e-8b7d-4e6f-9a01-2b3c4d5e6f70
+      responses:
+        '201':
+          description: 신청됨. 첫 신청이면 키 원문을 주고, 분야 추가면 `apiKey`가 null이다
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyApplicationResponse'
+              examples:
+                FIRST:
+                  value:
+                    type: FIRST
+                    apiKey: xq_UNhY4JhezH9gQYqvDMWrWH9CwlcKiECVqejMrND2VFw
+                ADD_FIELD:
+                  value:
+                    type: ADD_FIELD
+                    apiKey: null
+        '400':
+          description: '`INVALID_INPUT`: 필수 값 누락, 없는 분야, 서비스 이름 공백·30자 초과, 사용 목적 공백·200자 초과, 이메일 인증 토큰 공백'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
+        '401':
+          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_TOKEN:
+                  value:
+                    code: INVALID_TOKEN
+                    message: 토큰이 없거나 유효하지 않습니다.
+        '403':
+          description: '`EMAIL_NOT_VERIFIED`: 이메일 인증 토큰이 없거나 만료됨, 또는 로그인한 사용자의 이메일로 받은 토큰이 아님'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                EMAIL_NOT_VERIFIED:
+                  value:
+                    code: EMAIL_NOT_VERIFIED
+                    message: 이메일 인증이 완료되지 않았습니다.
+        '409':
+          description: '`API_KEY_FIELD_ALREADY_APPLIED`: 이미 신청한 분야. `API_KEY_ALREADY_EXISTS`: 같은 사용자의 첫 신청이 동시에 처리되어 키가 먼저 발급됨. 다시
+            신청하면 분야 추가로 처리된다'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                API_KEY_FIELD_ALREADY_APPLIED:
+                  value:
+                    code: API_KEY_FIELD_ALREADY_APPLIED
+                    message: 이미 신청한 분야입니다.
+                API_KEY_ALREADY_EXISTS:
+                  value:
+                    code: API_KEY_ALREADY_EXISTS
+                    message: 동시에 처리된 활용신청으로 API 키가 이미 발급되었습니다. 다시 신청하면 분야가 추가됩니다.
+  /api-keys/reissue:
+    post:
+      tags:
+      - API 키
+      summary: API 키 재발급
+      description: '키 값만 새로 발급하고 기존 키는 즉시 폐기한다(이전 키로 조회하면 바로 `401 INVALID_API_KEY`). 신청한 분야와 신청 기록은 그대로 둔다. 키 원문은 이 응답에서만
+        볼 수 있다. 활용신청과 같이 로그인한 계정의 이메일로 받은 `emailVerifiedToken`이 필요하고, 성공하면 토큰은 폐기된다. 권한: USER, ADMIN(로그인한 본인).'
+      operationId: reissueApiKey
+      security:
+      - bearerAuth: []
+      x-required-role: USER
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApiKeyReissueRequest'
+            example:
+              emailVerifiedToken: 3f1c2a9e-8b7d-4e6f-9a01-2b3c4d5e6f70
+      responses:
+        '200':
+          description: 재발급됨
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyResponse'
+        '400':
+          description: '`INVALID_INPUT`: 이메일 인증 토큰 누락·공백'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
+        '401':
+          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_TOKEN:
+                  value:
+                    code: INVALID_TOKEN
+                    message: 토큰이 없거나 유효하지 않습니다.
+        '403':
+          description: '`EMAIL_NOT_VERIFIED`: 이메일 인증 토큰이 없거나 만료됨, 또는 로그인한 사용자의 이메일로 받은 토큰이 아님'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                EMAIL_NOT_VERIFIED:
+                  value:
+                    code: EMAIL_NOT_VERIFIED
+                    message: 이메일 인증이 완료되지 않았습니다.
+        '404':
+          description: '`API_KEY_NOT_FOUND`: 발급받은 키가 없음. 활용신청을 먼저 해야 함'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                API_KEY_NOT_FOUND:
+                  value:
+                    code: API_KEY_NOT_FOUND
+                    message: 발급받은 API 키가 없습니다. 활용신청을 먼저 해 주세요.
+  /api-keys/me:
+    get:
+      tags:
+      - API 키
+      summary: 내 API 키 조회
+      description: '로그인한 사용자의 API 키 정보(발급 시각, 만료 시각, 신청한 분야와 분야별 신청 시각)를 보여 준다. 키 원문은 서버에 없으므로 내려주지 않는다. 만료 정책이 없어 `expiresAt`은
+        항상 null(만료 없음)이다. 권한: USER, ADMIN(로그인한 본인).'
+      operationId: getMyApiKey
+      security:
+      - bearerAuth: []
+      x-required-role: USER
+      responses:
+        '200':
+          description: 내 API 키
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyApiKeyResponse'
+        '401':
+          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_TOKEN:
+                  value:
+                    code: INVALID_TOKEN
+                    message: 토큰이 없거나 유효하지 않습니다.
+        '404':
+          description: '`API_KEY_NOT_FOUND`: 발급받은 키가 없음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                API_KEY_NOT_FOUND:
+                  value:
+                    code: API_KEY_NOT_FOUND
+                    message: 발급받은 API 키가 없습니다. 활용신청을 먼저 해 주세요.
+    delete:
+      tags:
+      - API 키
+      summary: API 키 삭제
+      description: '로그인한 사용자의 API 키와 모든 활용신청 기록을 지워 처음 상태로 되돌린다. 지운 키로 조회하면 바로 `401 INVALID_API_KEY`이고, 다시 신청하면 첫 신청(`FIRST`)으로
+        새 키를 받는다. 이메일 인증은 요구하지 않는다. 권한: USER, ADMIN(로그인한 본인).'
+      operationId: deleteApiKey
+      security:
+      - bearerAuth: []
+      x-required-role: USER
+      responses:
+        '200':
+          description: 삭제됨
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: 삭제되었습니다.
+        '401':
+          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_TOKEN:
+                  value:
+                    code: INVALID_TOKEN
+                    message: 토큰이 없거나 유효하지 않습니다.
+        '404':
+          description: '`API_KEY_NOT_FOUND`: 발급받은 키가 없음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                API_KEY_NOT_FOUND:
+                  value:
+                    code: API_KEY_NOT_FOUND
+                    message: 발급받은 API 키가 없습니다. 활용신청을 먼저 해 주세요.
+  /api-key-applications:
+    get:
+      tags:
+      - API 키
+      summary: 활용신청 목록 조회 (관리자)
+      description: '활용신청 기록을 최근 신청부터(신청 시각 역순, 같으면 id 역순) 페이지 단위로 조회한다. 분야와 구분(첫 신청/분야 추가)으로 거를 수 있고 둘 다 주면 AND로 묶는다. 권한: ADMIN.'
+      operationId: getApiKeyApplications
+      security:
+      - bearerAuth: []
+      x-required-role: ADMIN
+      parameters:
+      - name: field
+        in: query
+        required: false
+        description: 분야
+        schema:
+          $ref: '#/components/schemas/ApiKeyField'
+      - name: type
+        in: query
+        required: false
+        description: 구분
+        schema:
+          $ref: '#/components/schemas/ApiKeyApplicationType'
+      - name: page
+        in: query
+        required: false
+        description: 페이지 번호. 0부터 시작하며 생략하면 0. 최대 21474836(page × size가 int 범위를 넘지 않도록).
+        schema:
+          type: integer
+          format: int32
+          default: 0
+          minimum: 0
+          maximum: 21474836
+      - name: size
+        in: query
+        required: false
+        description: 한 페이지에 담을 개수. 생략하면 20, 최대 100.
+        schema:
+          type: integer
+          format: int32
+          default: 20
+          minimum: 1
+          maximum: 100
+      responses:
+        '200':
+          description: 활용신청 목록
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyApplicationPageResponse'
+        '400':
+          description: '`INVALID_INPUT`: 없는 분야·구분 값, page가 0~21474836을 벗어나거나 size가 1~100을 벗어남'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
+        '401':
+          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_TOKEN:
+                  value:
+                    code: INVALID_TOKEN
+                    message: 토큰이 없거나 유효하지 않습니다.
+        '403':
+          description: '`FORBIDDEN`: ADMIN이 아님'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                FORBIDDEN:
+                  value:
+                    code: FORBIDDEN
+                    message: 권한이 없습니다.
+  /api-key-applications/{applicationId}:
+    get:
+      tags:
+      - API 키
+      summary: 활용신청 상세 조회 (관리자)
+      description: '활용신청 하나의 내용과 신청자 정보, 그 신청이 속한 키가 신청한 분야 전체를 보여 준다. 권한: ADMIN.'
+      operationId: getApiKeyApplication
+      security:
+      - bearerAuth: []
+      x-required-role: ADMIN
+      parameters:
+      - name: applicationId
+        in: path
+        required: true
+        description: 활용신청 id
+        schema:
+          type: integer
+          format: int64
+          example: 1
+      responses:
+        '200':
+          description: 활용신청 상세
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyApplicationDetailResponse'
+        '400':
+          description: '`INVALID_INPUT`: applicationId가 숫자가 아님'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
+        '401':
+          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_TOKEN:
+                  value:
+                    code: INVALID_TOKEN
+                    message: 토큰이 없거나 유효하지 않습니다.
+        '403':
+          description: '`FORBIDDEN`: ADMIN이 아님'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                FORBIDDEN:
+                  value:
+                    code: FORBIDDEN
+                    message: 권한이 없습니다.
+        '404':
+          description: '`API_KEY_APPLICATION_NOT_FOUND`: 존재하지 않는 활용신청 id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                API_KEY_APPLICATION_NOT_FOUND:
+                  value:
+                    code: API_KEY_APPLICATION_NOT_FOUND
+                    message: 존재하지 않는 활용신청입니다.
   /users/me:
     get:
       tags:
@@ -423,11 +816,11 @@ paths:
       tags:
       - 학생
       summary: 학생 전체 조회
-      description: '이름(부분 일치), 학년, 반 조건으로 학생 목록을 페이지 단위로 조회한다. 응답은 `content` 리스트와 페이지 정보를 반환한다. 권한: USER.'
+      description: '이름(부분 일치), 학년, 반 조건으로 학생 목록을 페이지 단위로 조회한다. 응답은 `content` 리스트와 페이지 정보를 반환한다. 인증: API 키(`X-API-Key`).'
       operationId: getStudents
       security:
-      - bearerAuth: []
-      x-required-role: USER
+      - apiKeyAuth: []
+      x-required-role: API_KEY
       parameters:
       - name: name
         in: query
@@ -498,16 +891,27 @@ paths:
                     code: INVALID_INPUT
                     message: 요청 값이 올바르지 않습니다.
         '401':
-          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
+          description: '`INVALID_API_KEY`: API 키가 없거나 유효하지 않음. 액세스 토큰만으로는 조회할 수 없다'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
-                INVALID_TOKEN:
+                INVALID_API_KEY:
                   value:
-                    code: INVALID_TOKEN
-                    message: 토큰이 없거나 유효하지 않음
+                    code: INVALID_API_KEY
+                    message: API 키가 없거나 유효하지 않습니다.
+        '403':
+          description: '`API_KEY_FIELD_FORBIDDEN`: 유효한 키지만 STUDENT 분야를 활용신청하지 않음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                API_KEY_FIELD_FORBIDDEN:
+                  value:
+                    code: API_KEY_FIELD_FORBIDDEN
+                    message: API 키로 신청하지 않은 분야입니다. 해당 분야를 활용신청해 주세요.
     post:
       tags:
       - 학생
@@ -598,11 +1002,11 @@ paths:
       tags:
       - 학생
       summary: 학생 조회
-      description: '학생 id로 학생 한 명의 정보를 조회한다. 권한: USER.'
+      description: '학생 id로 학생 한 명의 정보를 조회한다. 인증: API 키(`X-API-Key`).'
       operationId: getStudent
       security:
-      - bearerAuth: []
-      x-required-role: USER
+      - apiKeyAuth: []
+      x-required-role: API_KEY
       parameters:
       - name: studentId
         in: path
@@ -620,16 +1024,27 @@ paths:
               schema:
                 $ref: '#/components/schemas/StudentResponse'
         '401':
-          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
+          description: '`INVALID_API_KEY`: API 키가 없거나 유효하지 않음. 액세스 토큰만으로는 조회할 수 없다'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
-                INVALID_TOKEN:
+                INVALID_API_KEY:
                   value:
-                    code: INVALID_TOKEN
-                    message: 토큰이 없거나 유효하지 않음
+                    code: INVALID_API_KEY
+                    message: API 키가 없거나 유효하지 않습니다.
+        '403':
+          description: '`API_KEY_FIELD_FORBIDDEN`: 유효한 키지만 STUDENT 분야를 활용신청하지 않음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                API_KEY_FIELD_FORBIDDEN:
+                  value:
+                    code: API_KEY_FIELD_FORBIDDEN
+                    message: API 키로 신청하지 않은 분야입니다. 해당 분야를 활용신청해 주세요.
         '404':
           description: '`STUDENT_NOT_FOUND`: 존재하지 않는 학생 id'
           content:
@@ -800,11 +1215,11 @@ paths:
       tags:
       - 교직원
       summary: 교직원 전체 조회
-      description: '이름, 담당 학급(학년·반), 담당 과목, 교무실(부분 일치) 조건으로 교직원 목록을 페이지 단위로 조회한다. 응답은 `content` 리스트와 페이지 정보를 반환한다. 권한: USER.'
+      description: '이름, 담당 학급(학년·반), 담당 과목, 교무실(부분 일치) 조건으로 교직원 목록을 페이지 단위로 조회한다. 응답은 `content` 리스트와 페이지 정보를 반환한다. 인증: API 키(`X-API-Key`).'
       operationId: getTeachers
       security:
-      - bearerAuth: []
-      x-required-role: USER
+      - apiKeyAuth: []
+      x-required-role: API_KEY
       parameters:
       - name: name
         in: query
@@ -863,16 +1278,27 @@ paths:
                     code: INVALID_INPUT
                     message: 요청 값이 올바르지 않습니다.
         '401':
-          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
+          description: '`INVALID_API_KEY`: API 키가 없거나 유효하지 않음. 액세스 토큰만으로는 조회할 수 없다'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
-                INVALID_TOKEN:
+                INVALID_API_KEY:
                   value:
-                    code: INVALID_TOKEN
-                    message: 토큰이 없거나 유효하지 않음
+                    code: INVALID_API_KEY
+                    message: API 키가 없거나 유효하지 않습니다.
+        '403':
+          description: '`API_KEY_FIELD_FORBIDDEN`: 유효한 키지만 TEACHER 분야를 활용신청하지 않음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                API_KEY_FIELD_FORBIDDEN:
+                  value:
+                    code: API_KEY_FIELD_FORBIDDEN
+                    message: API 키로 신청하지 않은 분야입니다. 해당 분야를 활용신청해 주세요.
     post:
       tags:
       - 교직원
@@ -951,11 +1377,11 @@ paths:
       tags:
       - 교직원
       summary: 교직원 조회
-      description: '교직원 id로 교직원 한 명의 정보를 조회한다. 권한: USER.'
+      description: '교직원 id로 교직원 한 명의 정보를 조회한다. 인증: API 키(`X-API-Key`).'
       operationId: getTeacher
       security:
-      - bearerAuth: []
-      x-required-role: USER
+      - apiKeyAuth: []
+      x-required-role: API_KEY
       parameters:
       - name: teacherId
         in: path
@@ -973,16 +1399,27 @@ paths:
               schema:
                 $ref: '#/components/schemas/TeacherResponse'
         '401':
-          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
+          description: '`INVALID_API_KEY`: API 키가 없거나 유효하지 않음. 액세스 토큰만으로는 조회할 수 없다'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
-                INVALID_TOKEN:
+                INVALID_API_KEY:
                   value:
-                    code: INVALID_TOKEN
-                    message: 토큰이 없거나 유효하지 않음
+                    code: INVALID_API_KEY
+                    message: API 키가 없거나 유효하지 않습니다.
+        '403':
+          description: '`API_KEY_FIELD_FORBIDDEN`: 유효한 키지만 TEACHER 분야를 활용신청하지 않음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                API_KEY_FIELD_FORBIDDEN:
+                  value:
+                    code: API_KEY_FIELD_FORBIDDEN
+                    message: API 키로 신청하지 않은 분야입니다. 해당 분야를 활용신청해 주세요.
         '404':
           description: '`TEACHER_NOT_FOUND`: 존재하지 않는 교직원 id'
           content:
@@ -2920,7 +3357,232 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: '`POST /api-keys`로 발급받은 API 키. 활용신청한 분야의 조회 API만 열 수 있다'
   schemas:
+    ApiKeyField:
+      type: string
+      description: '활용신청 분야. STUDENT(학생), TEACHER(교직원), CLUB(동아리), SCHEDULE(일정), STUDY_SUPERVISOR(자습 감독). 급식은 키 없이 호출하므로 분야가 없다'
+      enum:
+      - STUDENT
+      - TEACHER
+      - CLUB
+      - SCHEDULE
+      - STUDY_SUPERVISOR
+      example: STUDENT
+    ApiKeyApplicationType:
+      type: string
+      description: '신청 구분. FIRST(첫 신청, 키 발급), ADD_FIELD(분야 추가, 기존 키 유지)'
+      enum:
+      - FIRST
+      - ADD_FIELD
+      example: FIRST
+    ApiKeyApplicationRequest:
+      type: object
+      required:
+      - field
+      - serviceName
+      - purpose
+      - emailVerifiedToken
+      properties:
+        field:
+          $ref: '#/components/schemas/ApiKeyField'
+        serviceName:
+          type: string
+          minLength: 1
+          maxLength: 30
+          description: API를 사용할 서비스 이름
+          example: 급식 알리미
+        purpose:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: 사용 목적
+          example: 반 단톡방에 매일 급식을 올리려고 합니다.
+        emailVerifiedToken:
+          type: string
+          minLength: 1
+          description: '`POST /auth/email/otp/verify`가 준 토큰. 로그인한 계정의 이메일로 받은 것이어야 한다'
+          example: 3f1c2a9e-8b7d-4e6f-9a01-2b3c4d5e6f70
+    ApiKeyApplicationResponse:
+      type: object
+      required:
+      - type
+      - apiKey
+      properties:
+        type:
+          $ref: '#/components/schemas/ApiKeyApplicationType'
+        apiKey:
+          type:
+          - string
+          - 'null'
+          description: 첫 신청(FIRST)이면 발급한 키 원문(`xq_` 뒤에 43자, 이 응답에서만 볼 수 있음). 분야 추가(ADD_FIELD)면 null
+          example: xq_UNhY4JhezH9gQYqvDMWrWH9CwlcKiECVqejMrND2VFw
+    AppliedField:
+      type: object
+      required:
+      - field
+      - appliedAt
+      properties:
+        field:
+          $ref: '#/components/schemas/ApiKeyField'
+        appliedAt:
+          type: string
+          format: date-time
+          description: 그 분야를 신청한 시각. 한국 시간(Asia/Seoul) +09:00 오프셋을 붙인 RFC 3339 형식
+          example: '2026-11-18T09:30:00+09:00'
+    MyApiKeyResponse:
+      type: object
+      required:
+      - issuedAt
+      - expiresAt
+      - fields
+      properties:
+        issuedAt:
+          type: string
+          format: date-time
+          description: 지금 키 값을 발급한 시각(첫 신청 또는 마지막 재발급). 한국 시간(Asia/Seoul) +09:00 오프셋을 붙인 RFC 3339 형식
+          example: '2026-11-18T09:30:00+09:00'
+        expiresAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: 만료 시각. 만료 정책이 없어 항상 null(만료 없음)
+          example: null
+        fields:
+          type: array
+          description: 신청한 분야. 신청 순서대로
+          items:
+            $ref: '#/components/schemas/AppliedField'
+    ApiKeyApplicationSummary:
+      type: object
+      required: [id, userId, field, type, serviceName, purpose, appliedAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        userId:
+          type: integer
+          format: int64
+          description: 신청자(키 주인) id
+          example: 2
+        field:
+          $ref: '#/components/schemas/ApiKeyField'
+        type:
+          $ref: '#/components/schemas/ApiKeyApplicationType'
+        serviceName:
+          type: string
+          example: 급식 알리미
+        purpose:
+          type: string
+          example: 반 단톡방에 매일 급식을 올리려고 합니다.
+        appliedAt:
+          type: string
+          format: date-time
+          description: 신청 시각. 한국 시간(Asia/Seoul) +09:00 오프셋을 붙인 RFC 3339 형식
+          example: '2026-11-18T09:30:00+09:00'
+    ApiKeyApplicationPageResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiKeyApplicationSummary'
+        page:
+          type: integer
+          format: int32
+          example: 0
+        size:
+          type: integer
+          format: int32
+          example: 20
+        totalCount:
+          type: integer
+          format: int64
+          example: 3
+        totalPage:
+          type: integer
+          format: int32
+          example: 1
+    ApiKeyApplicant:
+      type: object
+      required: [username, name, email, studentNumber]
+      properties:
+        username:
+          type: string
+          example: junseo
+        name:
+          type: string
+          example: 김준서
+        email:
+          type: string
+          example: junseo@dsm.hs.kr
+        studentNumber:
+          type: integer
+          format: int32
+          example: 2315
+    ApiKeyApplicationDetailResponse:
+      type: object
+      required: [id, field, type, serviceName, purpose, appliedAt, userId, applicant, fields]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        field:
+          $ref: '#/components/schemas/ApiKeyField'
+        type:
+          $ref: '#/components/schemas/ApiKeyApplicationType'
+        serviceName:
+          type: string
+          example: 급식 알리미
+        purpose:
+          type: string
+          example: 반 단톡방에 매일 급식을 올리려고 합니다.
+        appliedAt:
+          type: string
+          format: date-time
+          description: 신청 시각. 한국 시간(Asia/Seoul) +09:00 오프셋을 붙인 RFC 3339 형식
+          example: '2026-11-18T09:30:00+09:00'
+        userId:
+          type: integer
+          format: int64
+          description: 신청자(키 주인) id
+          example: 2
+        applicant:
+          description: 신청자 정보. 사용자 행이 지워졌으면 null
+          oneOf:
+          - $ref: '#/components/schemas/ApiKeyApplicant'
+          - type: 'null'
+        fields:
+          type: array
+          description: 이 신청이 속한 키가 신청한 분야 전체. 신청 순서대로
+          items:
+            $ref: '#/components/schemas/AppliedField'
+    ApiKeyReissueRequest:
+      type: object
+      required:
+      - emailVerifiedToken
+      properties:
+        emailVerifiedToken:
+          type: string
+          minLength: 1
+          description: '`POST /auth/email/otp/verify`가 준 토큰. 로그인한 계정의 이메일로 받은 것이어야 한다'
+          example: 3f1c2a9e-8b7d-4e6f-9a01-2b3c4d5e6f70
+    ApiKeyResponse:
+      type: object
+      required:
+      - apiKey
+      properties:
+        apiKey:
+          type: string
+          description: 발급한 API 키 원문. `xq_` 뒤에 43자. 이 응답에서만 볼 수 있다.
+          example: xq_UNhY4JhezH9gQYqvDMWrWH9CwlcKiECVqejMrND2VFw
     ApiUsageLogPageResponse:
       type: object
       required: [content, page, size, totalCount, totalPage]

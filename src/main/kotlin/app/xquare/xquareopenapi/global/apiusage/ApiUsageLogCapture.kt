@@ -68,6 +68,6 @@ class ApiUsageLogCapture(private val clock: Clock, private val writer: ApiUsageL
     companion object {
         private const val CAPTURE_ATTRIBUTE = "xquare.apiUsage.capture"
         private const val MAX_ROUTE_LENGTH = 160
-        private val BUSINESS_ROOTS = setOf("auth", "users", "students", "teachers", "clubs", "meals", "notices", "study-supervisors", "timetables", "schedules")
+        private val BUSINESS_ROOTS = setOf("auth", "users", "students", "teachers", "clubs", "meals", "notices", "study-supervisors", "timetables", "schedules", "api-keys", "api-key-applications")
     }
 }
