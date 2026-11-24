@@ -695,7 +695,7 @@ paths:
                     code: INVALID_INPUT
                     message: 요청 값이 올바르지 않습니다.
         '401':
-          description: '`INVALID_API_KEY`: API 키가 없거나 유효하지 않음. 액세스 토큰만으로는 조회할 수 없다'
+          description: '`INVALID_API_KEY`: API 키가 없거나 유효하지 않음. 액세스 토큰만으로는 조회할 수 없다. `API_KEY_EXPIRED`: 만료된 키(갱신하면 다시 쓸 수 있음)'
           content:
             application/json:
               schema:
@@ -705,6 +705,10 @@ paths:
                   value:
                     code: INVALID_API_KEY
                     message: API 키가 없거나 유효하지 않습니다.
+                API_KEY_EXPIRED:
+                  value:
+                    code: API_KEY_EXPIRED
+                    message: 만료된 API 키입니다. 키를 갱신해 주세요.
         '403':
           description: '`API_KEY_FIELD_FORBIDDEN`: 유효한 키지만 STUDENT 분야가 승인되지 않음(미신청·승인 대기·반려)'
           content:
@@ -828,7 +832,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/StudentResponse'
         '401':
-          description: '`INVALID_API_KEY`: API 키가 없거나 유효하지 않음. 액세스 토큰만으로는 조회할 수 없다'
+          description: '`INVALID_API_KEY`: API 키가 없거나 유효하지 않음. 액세스 토큰만으로는 조회할 수 없다. `API_KEY_EXPIRED`: 만료된 키(갱신하면 다시 쓸 수 있음)'
           content:
             application/json:
               schema:
@@ -838,6 +842,10 @@ paths:
                   value:
                     code: INVALID_API_KEY
                     message: API 키가 없거나 유효하지 않습니다.
+                API_KEY_EXPIRED:
+                  value:
+                    code: API_KEY_EXPIRED
+                    message: 만료된 API 키입니다. 키를 갱신해 주세요.
         '403':
           description: '`API_KEY_FIELD_FORBIDDEN`: 유효한 키지만 STUDENT 분야가 승인되지 않음(미신청·승인 대기·반려)'
           content:
@@ -1082,7 +1090,7 @@ paths:
                     code: INVALID_INPUT
                     message: 요청 값이 올바르지 않습니다.
         '401':
-          description: '`INVALID_API_KEY`: API 키가 없거나 유효하지 않음. 액세스 토큰만으로는 조회할 수 없다'
+          description: '`INVALID_API_KEY`: API 키가 없거나 유효하지 않음. 액세스 토큰만으로는 조회할 수 없다. `API_KEY_EXPIRED`: 만료된 키(갱신하면 다시 쓸 수 있음)'
           content:
             application/json:
               schema:
@@ -1092,6 +1100,10 @@ paths:
                   value:
                     code: INVALID_API_KEY
                     message: API 키가 없거나 유효하지 않습니다.
+                API_KEY_EXPIRED:
+                  value:
+                    code: API_KEY_EXPIRED
+                    message: 만료된 API 키입니다. 키를 갱신해 주세요.
         '403':
           description: '`API_KEY_FIELD_FORBIDDEN`: 유효한 키지만 TEACHER 분야가 승인되지 않음(미신청·승인 대기·반려)'
           content:
@@ -1203,7 +1215,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/TeacherResponse'
         '401':
-          description: '`INVALID_API_KEY`: API 키가 없거나 유효하지 않음. 액세스 토큰만으로는 조회할 수 없다'
+          description: '`INVALID_API_KEY`: API 키가 없거나 유효하지 않음. 액세스 토큰만으로는 조회할 수 없다. `API_KEY_EXPIRED`: 만료된 키(갱신하면 다시 쓸 수 있음)'
           content:
             application/json:
               schema:
@@ -1213,6 +1225,10 @@ paths:
                   value:
                     code: INVALID_API_KEY
                     message: API 키가 없거나 유효하지 않습니다.
+                API_KEY_EXPIRED:
+                  value:
+                    code: API_KEY_EXPIRED
+                    message: 만료된 API 키입니다. 키를 갱신해 주세요.
         '403':
           description: '`API_KEY_FIELD_FORBIDDEN`: 유효한 키지만 TEACHER 분야가 승인되지 않음(미신청·승인 대기·반려)'
           content:
@@ -1445,11 +1461,11 @@ paths:
       tags:
       - 일정
       summary: 일정 조회
-      description: '일정 하나를 조회한다. content가 없으면 null이다. 권한: USER'
+      description: '일정 하나를 조회한다. content가 없으면 null이다. 권한: API 키(SCHEDULE 분야 승인)'
       operationId: getSchedule
       security:
-      - bearerAuth: []
-      x-required-role: USER
+      - apiKeyAuth: []
+      x-required-role: API_KEY
       parameters:
       - &id005
         name: scheduleId
@@ -1479,16 +1495,31 @@ paths:
                     code: INVALID_INPUT
                     message: 요청 값이 올바르지 않습니다.
         '401':
-          description: 'INVALID_TOKEN: 토큰이 없거나 유효하지 않음'
+          description: '`INVALID_API_KEY`: API 키가 없거나 유효하지 않음. 액세스 토큰만으로는 조회할 수 없다. `API_KEY_EXPIRED`: 만료된 키(갱신하면 다시 쓸 수 있음)'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
-                INVALID_TOKEN:
+                INVALID_API_KEY:
                   value:
-                    code: INVALID_TOKEN
-                    message: 토큰이 없거나 유효하지 않음
+                    code: INVALID_API_KEY
+                    message: API 키가 없거나 유효하지 않습니다.
+                API_KEY_EXPIRED:
+                  value:
+                    code: API_KEY_EXPIRED
+                    message: 만료된 API 키입니다. 키를 갱신해 주세요.
+        '403':
+          description: '`API_KEY_FIELD_FORBIDDEN`: 유효한 키지만 SCHEDULE 분야가 승인되지 않음(미신청·승인 대기·반려)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                API_KEY_FIELD_FORBIDDEN:
+                  value:
+                    code: API_KEY_FIELD_FORBIDDEN
+                    message: API 키에 승인되지 않은 분야입니다. 해당 분야를 신청해 승인을 받아 주세요.
         '404':
           description: 'SCHEDULE_NOT_FOUND: 존재하지 않는 일정 id'
           content:
@@ -1664,11 +1695,9 @@ paths:
       summary: 학급 주간 시간표 조회
       description: '학급 하나의 한 주(월~일) 시간표를 나이스 고등학교시간표(hisTimetable)에서 가져와 반환한다. date가 속한 주를 조회하며, date를 생략하면 오늘(서울 시간)이 속한 주다.
         DB에 저장하지 않고 요청 때 나이스에서 가져오며, 같은 학급·주는 10분 동안 서버 메모리에 캐시한다. 수업이 없는 날(주말·방학·공휴일)은 days에 넣지 않는다.
-        노션 명세에는 없는 API다(일정 명세는 시간표를 따로 다룬다고만 적음, OPN-69). 권한: USER'
+        노션 명세에는 없는 API다(일정 명세는 시간표를 따로 다룬다고만 적음, OPN-69). 권한: 공개(ALL). API 키·토큰 없이 조회된다.'
       operationId: getTimetable
-      security:
-      - bearerAuth: []
-      x-required-role: USER
+      security: []
       parameters:
       - name: grade
         in: query
@@ -1716,17 +1745,6 @@ paths:
                   value:
                     code: INVALID_INPUT
                     message: 'grade: 형식이 올바르지 않습니다.'
-        '401':
-          description: 'INVALID_TOKEN: 토큰이 없거나 유효하지 않음'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                INVALID_TOKEN:
-                  value:
-                    code: INVALID_TOKEN
-                    message: 토큰이 없거나 유효하지 않음
         '502':
           description: 'TIMETABLE_UNAVAILABLE: 나이스 호출 실패(오류 결과 코드, 응답 형식 이상, 일부만 받은 응답, 네트워크 오류, 서버에 NEIS_API_KEY 없음)'
           content:
@@ -1832,11 +1850,11 @@ paths:
       - 자습 감독
       summary: 자습 감독 정보 전체 조회
       description: '기간(startDate~finishDate)에 해당하는 자습 감독 배정을 날짜별로 반환한다. 배정이 없는 날짜는 supervisors가 빈 배열, 배정되지 않은 층은 teacher가
-        null이다. 기간 안의 모든 날짜를 날짜 순으로 주고, 정보가 있는 날짜는 2~4층을 모두 준다. startDate·finishDate는 필수이고 기간은 시작일·종료일을 포함해 최대 92일이다. 권한: USER'
+        null이다. 기간 안의 모든 날짜를 날짜 순으로 주고, 정보가 있는 날짜는 2~4층을 모두 준다. startDate·finishDate는 필수이고 기간은 시작일·종료일을 포함해 최대 92일이다. 권한: API 키(STUDY_SUPERVISOR 분야 승인)'
       operationId: getStudySupervisors
       security:
-      - bearerAuth: []
-      x-required-role: USER
+      - apiKeyAuth: []
+      x-required-role: API_KEY
       parameters:
       - name: startDate
         in: query
@@ -1877,27 +1895,42 @@ paths:
                     code: INVALID_INPUT
                     message: 'startDate: 형식이 올바르지 않습니다.'
         '401':
-          description: 'INVALID_TOKEN: 토큰이 없거나 유효하지 않음'
+          description: '`INVALID_API_KEY`: API 키가 없거나 유효하지 않음. 액세스 토큰만으로는 조회할 수 없다. `API_KEY_EXPIRED`: 만료된 키(갱신하면 다시 쓸 수 있음)'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
-                INVALID_TOKEN:
+                INVALID_API_KEY:
                   value:
-                    code: INVALID_TOKEN
-                    message: 토큰이 없거나 유효하지 않음
+                    code: INVALID_API_KEY
+                    message: API 키가 없거나 유효하지 않습니다.
+                API_KEY_EXPIRED:
+                  value:
+                    code: API_KEY_EXPIRED
+                    message: 만료된 API 키입니다. 키를 갱신해 주세요.
+        '403':
+          description: '`API_KEY_FIELD_FORBIDDEN`: 유효한 키지만 STUDY_SUPERVISOR 분야가 승인되지 않음(미신청·승인 대기·반려)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                API_KEY_FIELD_FORBIDDEN:
+                  value:
+                    code: API_KEY_FIELD_FORBIDDEN
+                    message: API 키에 승인되지 않은 분야입니다. 해당 분야를 신청해 승인을 받아 주세요.
   /study-supervisors/day:
     get:
       tags:
       - 자습 감독
       summary: 자습 감독 정보 일별로 조회
       description: '해당 날짜의 층별 자습 감독 배정을 반환한다. 배정이 없으면 supervisors는 빈 배열, 배정되지 않은 층은 teacher가 null이다.
-        정보가 있으면 2~4층을 모두 주고 id(수정·삭제용)를 함께 준다. 권한: USER'
+        정보가 있으면 2~4층을 모두 주고 id(수정·삭제용)를 함께 준다. 권한: API 키(STUDY_SUPERVISOR 분야 승인)'
       operationId: getStudySupervisorByDay
       security:
-      - bearerAuth: []
-      x-required-role: USER
+      - apiKeyAuth: []
+      x-required-role: API_KEY
       parameters:
       - name: date
         in: query
@@ -1926,16 +1959,31 @@ paths:
                     code: INVALID_INPUT
                     message: 'date: 형식이 올바르지 않습니다.'
         '401':
-          description: 'INVALID_TOKEN: 토큰이 없거나 유효하지 않음'
+          description: '`INVALID_API_KEY`: API 키가 없거나 유효하지 않음. 액세스 토큰만으로는 조회할 수 없다. `API_KEY_EXPIRED`: 만료된 키(갱신하면 다시 쓸 수 있음)'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
-                INVALID_TOKEN:
+                INVALID_API_KEY:
                   value:
-                    code: INVALID_TOKEN
-                    message: 토큰이 없거나 유효하지 않음
+                    code: INVALID_API_KEY
+                    message: API 키가 없거나 유효하지 않습니다.
+                API_KEY_EXPIRED:
+                  value:
+                    code: API_KEY_EXPIRED
+                    message: 만료된 API 키입니다. 키를 갱신해 주세요.
+        '403':
+          description: '`API_KEY_FIELD_FORBIDDEN`: 유효한 키지만 STUDY_SUPERVISOR 분야가 승인되지 않음(미신청·승인 대기·반려)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                API_KEY_FIELD_FORBIDDEN:
+                  value:
+                    code: API_KEY_FIELD_FORBIDDEN
+                    message: API 키에 승인되지 않은 분야입니다. 해당 분야를 신청해 승인을 받아 주세요.
   /study-supervisors/{studySupervisorId}:
     patch:
       tags:
@@ -2365,11 +2413,11 @@ paths:
       - 동아리
       summary: 동아리 검색
       description: '동아리명(부분 일치)·구성원 이름(복수 가능)·교실·담당 선생님 이름으로 동아리를 검색하고 페이지 단위로 반환한다. 조건은 모두 AND로 묶고, 등록 순(id)으로 정렬한다.
-        동아리명·구성원 이름의 `%`, `_`는 글자 그대로 찾는다. 권한: USER 이상.'
+        동아리명·구성원 이름의 `%`, `_`는 글자 그대로 찾는다. 권한: API 키(CLUB 분야 승인).'
       operationId: searchClubs
       security:
-      - bearerAuth: []
-      x-required-role: USER
+      - apiKeyAuth: []
+      x-required-role: API_KEY
       parameters:
       - name: name
         in: query
@@ -2444,15 +2492,31 @@ paths:
                     code: INVALID_INPUT
                     message: '요청 값이 올바르지 않습니다.'
         '401':
-          description: 'INVALID_TOKEN: 토큰이 없거나 유효하지 않음'
+          description: '`INVALID_API_KEY`: API 키가 없거나 유효하지 않음. 액세스 토큰만으로는 조회할 수 없다. `API_KEY_EXPIRED`: 만료된 키(갱신하면 다시 쓸 수 있음)'
           content:
             application/json:
-              schema: *id007
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
               examples:
-                INVALID_TOKEN:
+                INVALID_API_KEY:
                   value:
-                    code: INVALID_TOKEN
-                    message: 토큰이 없거나 유효하지 않음
+                    code: INVALID_API_KEY
+                    message: API 키가 없거나 유효하지 않습니다.
+                API_KEY_EXPIRED:
+                  value:
+                    code: API_KEY_EXPIRED
+                    message: 만료된 API 키입니다. 키를 갱신해 주세요.
+        '403':
+          description: '`API_KEY_FIELD_FORBIDDEN`: 유효한 키지만 CLUB 분야가 승인되지 않음(미신청·승인 대기·반려)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                API_KEY_FIELD_FORBIDDEN:
+                  value:
+                    code: API_KEY_FIELD_FORBIDDEN
+                    message: API 키에 승인되지 않은 분야입니다. 해당 분야를 신청해 승인을 받아 주세요.
     post:
       tags:
       - 동아리
@@ -2570,11 +2634,11 @@ paths:
       - 동아리
       summary: 동아리 조회
       description: '동아리 1건을 id로 조회한다. 팀장·구성원은 학생 객체(id, studentNumber, name), 담당 교직원은 교직원 객체(id, name)로 반환하며 팀장도 member에 포함된다.
-        담당 교직원이 없으면 teacher는 null. 팀장 학생이 삭제됐으면 새 팀장을 정할 때까지 manager는 null. member는 학번 순. 권한: USER 이상.'
+        담당 교직원이 없으면 teacher는 null. 팀장 학생이 삭제됐으면 새 팀장을 정할 때까지 manager는 null. member는 학번 순. 권한: API 키(CLUB 분야 승인).'
       operationId: getClub
       security:
-      - bearerAuth: []
-      x-required-role: USER
+      - apiKeyAuth: []
+      x-required-role: API_KEY
       parameters:
       - name: clubId
         in: path
@@ -2592,15 +2656,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/ClubDetailResponse'
         '401':
-          description: 'INVALID_TOKEN: 토큰이 없거나 유효하지 않음'
+          description: '`INVALID_API_KEY`: API 키가 없거나 유효하지 않음. 액세스 토큰만으로는 조회할 수 없다. `API_KEY_EXPIRED`: 만료된 키(갱신하면 다시 쓸 수 있음)'
           content:
             application/json:
-              schema: *id007
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
               examples:
-                INVALID_TOKEN:
+                INVALID_API_KEY:
                   value:
-                    code: INVALID_TOKEN
-                    message: 토큰이 없거나 유효하지 않음
+                    code: INVALID_API_KEY
+                    message: API 키가 없거나 유효하지 않습니다.
+                API_KEY_EXPIRED:
+                  value:
+                    code: API_KEY_EXPIRED
+                    message: 만료된 API 키입니다. 키를 갱신해 주세요.
+        '403':
+          description: '`API_KEY_FIELD_FORBIDDEN`: 유효한 키지만 CLUB 분야가 승인되지 않음(미신청·승인 대기·반려)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                API_KEY_FIELD_FORBIDDEN:
+                  value:
+                    code: API_KEY_FIELD_FORBIDDEN
+                    message: API 키에 승인되지 않은 분야입니다. 해당 분야를 신청해 승인을 받아 주세요.
         '404':
           description: 'CLUB_NOT_FOUND: 존재하지 않는 동아리 id'
           content:

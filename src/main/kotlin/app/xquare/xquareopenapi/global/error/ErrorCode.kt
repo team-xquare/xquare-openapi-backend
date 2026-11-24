@@ -23,6 +23,7 @@ enum class ErrorCode(
     INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "토큰이 없거나 유효하지 않습니다."),
     FORBIDDEN(HttpStatus.FORBIDDEN, "권한이 없습니다."),
     INVALID_API_KEY(HttpStatus.UNAUTHORIZED, "API 키가 없거나 유효하지 않습니다."),
+    API_KEY_EXPIRED(HttpStatus.UNAUTHORIZED, "만료된 API 키입니다. 키를 갱신해 주세요."),
     INVALID_STUDENT_NUMBER(HttpStatus.BAD_REQUEST, "학번은 1000~3999 범위여야 합니다."),
     STUDENT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 학생입니다."),
     STUDENT_NUMBER_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 사용 중인 학번입니다."),

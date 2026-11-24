@@ -1,5 +1,6 @@
 package app.xquare.xquareopenapi.domain.apiusage
 
+import app.xquare.xquareopenapi.domain.apikey.ApiKeySecret
 import app.xquare.xquareopenapi.domain.user.Role
 import app.xquare.xquareopenapi.global.jwt.JwtProvider
 import ch.qos.logback.classic.Logger
@@ -253,8 +254,21 @@ class ApiUsageLogHttpTest @Autowired constructor(
     fun `일정 조회도 업무 호출로 기록한다`() {
         val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
         assertEquals(200, send("GET", LIST, admin).statusCode())
+        // 일정 조회는 SCHEDULE 분야가 승인된 API 키로 연다.
+        jdbc.update("delete from api_project_fields")
+        jdbc.update("delete from api_projects")
+        val now = LocalDateTime.of(2026, 11, 24, 10, 0)
+        jdbc.update(
+            "insert into api_projects (user_id, name, purpose, key_hash, issued_at, created_at) values (?, ?, ?, ?, ?, ?)",
+            1L, "기록 확인", "목적", ApiKeySecret.hash(API_KEY), now, now,
+        )
+        val projectId = jdbc.queryForObject("select id from api_projects", Long::class.java)
+        jdbc.update(
+            "insert into api_project_fields (project_id, field, status, applied_at) values (?, 'SCHEDULE', 'APPROVED', ?)",
+            projectId, now,
+        )
         jdbc.update("delete from api_usage_logs")
-        assertEquals(404, send("GET", "/schedules/987654321", admin).statusCode())
+        assertEquals(404, send("GET", "/schedules/987654321", apiKey = API_KEY).statusCode())
         val rows = awaitRows(1)
         assertEquals(listOf("/schedules/{scheduleId}"), rows.map { it["route"] })
         assertEquals(listOf("GET"), rows.map { it["http_method"] })
@@ -420,12 +434,27 @@ class ApiUsageLogHttpTest @Autowired constructor(
     private fun json(response: HttpResponse<String>): JsonNode = mapper.readTree(response.body())
     private fun uri(path: String) = URI("http://127.0.0.1:$port$path")
 
-    private fun send(method: String, path: String, token: String? = null, body: String? = null, contentType: String = "application/json"): HttpResponse<String> =
-        CLIENT.send(request(method, path, token, body, contentType), HttpResponse.BodyHandlers.ofString())
+    private fun send(
+        method: String,
+        path: String,
+        token: String? = null,
+        body: String? = null,
+        contentType: String = "application/json",
+        apiKey: String? = null,
+    ): HttpResponse<String> =
+        CLIENT.send(request(method, path, token, body, contentType, apiKey), HttpResponse.BodyHandlers.ofString())
 
-    private fun request(method: String, path: String, token: String? = null, body: String? = null, contentType: String = "application/json"): HttpRequest {
+    private fun request(
+        method: String,
+        path: String,
+        token: String? = null,
+        body: String? = null,
+        contentType: String = "application/json",
+        apiKey: String? = null,
+    ): HttpRequest {
         val request = HttpRequest.newBuilder(uri(path)).timeout(Duration.ofSeconds(10))
         token?.let { request.header("Authorization", "Bearer $it") }
+        apiKey?.let { request.header("X-API-Key", it) }
         val publisher = if (body == null) HttpRequest.BodyPublishers.noBody() else {
             request.header("Content-Type", contentType)
             HttpRequest.BodyPublishers.ofString(body)
@@ -444,6 +473,7 @@ class ApiUsageLogHttpTest @Autowired constructor(
         }
 
         private const val LIST = "/admin/api-usage-logs"
+        private const val API_KEY = "xq_usage-log-key"
         private val CLIENT = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
         private val METADATA_FIELDS = setOf("id", "occurredAt", "method", "route", "status", "durationMs")
         private val STORAGE_FIELDS = setOf("id", "occurred_at", "http_method", "route", "http_status", "duration_ms")

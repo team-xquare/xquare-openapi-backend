@@ -108,11 +108,13 @@ class TimetableTest @Autowired constructor(
     }
 
     @Test
-    fun `토큰이 필요하다`() {
-        mockMvc.get("/timetables?grade=1&classNum=1").andExpect {
-            status { isUnauthorized() }
-            jsonPath("$.code") { value("INVALID_TOKEN") }
+    fun `공개 API라 키나 토큰이 없어도, 토큰이 유효하지 않아도 조회된다`() {
+        mockMvc.get("/timetables?grade=2&classNum=5&date=2026-12-07").andExpect {
+            status { isOk() }
+            jsonPath("$.days") { isEmpty() }
         }
-        verifyNoInteractions(neisTimetableClient)
+        mockMvc.get("/timetables?grade=2&classNum=6&date=2026-12-07") {
+            header("Authorization", "Bearer invalid-token")
+        }.andExpect { status { isOk() } }
     }
 }

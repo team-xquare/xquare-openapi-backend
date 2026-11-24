@@ -98,6 +98,13 @@
 - 키 형식: `xq_` + 무작위 32바이트 URL-safe base64(46자). DB에는 SHA-256 해시만
 - 조회 API 키 인증: `X-API-Key` 헤더의 키로 프로젝트를 찾고, 그 프로젝트에서 **승인(`APPROVED`)된 분야만** 권한을 준다. 대기·반려 분야 경로는 `403 API_KEY_FIELD_FORBIDDEN`, 키가 없거나 틀리면 `401 INVALID_API_KEY`. 키로는 등록·수정·삭제나 프로젝트 API를 쓸 수 없다(`401 INVALID_TOKEN`)
 - 키 인증 대상 GET(같은 경로의 HEAD 포함)은 `SecurityConfig.API_KEY_READ_PATHS`에 경로→분야로 적는다
+  - `/students`, `/students/*` → `STUDENT` / `/teachers`, `/teachers/*` → `TEACHER`
+  - `/clubs`, `/clubs/*` → `CLUB` / `/study-supervisors`, `/study-supervisors/day` → `STUDY_SUPERVISOR` (#51)
+  - `/schedules/**` → `SCHEDULE`. 일정 목록 등 조회 API가 더 생겨도 같은 분야로 열리게 하위 경로를 모두 잡는다. 등록·수정·삭제(POST·PATCH·DELETE)는 키 체인 대상이 아니라 그대로 ADMIN JWT
+  - 동아리·자습 감독·일정 조회는 예전에 JWT(USER)로 열려 있었는데 키 체인으로 옮겼다. 이제 액세스 토큰만으로는 `401 INVALID_API_KEY`
+  - `GET /study-supervisors/{id}`는 매핑이 없어 키 체인에 넣지 않았다(JWT 체인에서 405)
+- 공개 단계: 급식과 시간표(`GET /timetables`)는 키·토큰 없이 연다(`permitAll`). 시간표는 예전에 JWT(USER)였다
+- 만료: `api_projects.expires_at`이 지금 시각(Clock 빈, 서울) 이하이면 만료로 보고 `401 API_KEY_EXPIRED`. 필터가 요청 속성에 만료 표시만 남기고 인증하지 않으면, 키 체인의 entry point가 그 표시를 보고 `INVALID_API_KEY` 대신 `API_KEY_EXPIRED`로 응답한다. `expires_at`이 null이면 만료되지 않는다
 
 # 학생·교직원
 

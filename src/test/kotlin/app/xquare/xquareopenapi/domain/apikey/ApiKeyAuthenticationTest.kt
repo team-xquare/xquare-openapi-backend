@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.http.MediaType
+import org.springframework.test.util.ReflectionTestUtils
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
@@ -17,6 +18,8 @@ import org.springframework.test.web.servlet.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.ZoneId
 import kotlin.test.assertEquals
 
 @SpringBootTest
@@ -74,6 +77,53 @@ class ApiKeyAuthenticationTest @Autowired constructor(
         mockMvc.get("/teachers") { header("X-API-Key", OTHER_KEY) }.andExpect { status { isOk() } }
         mockMvc.get("/teachers") { header("X-API-Key", KEY) }.andExpect { status { isForbidden() } }
         mockMvc.get("/students") { header("X-API-Key", OTHER_KEY) }.andExpect { status { isForbidden() } }
+    }
+
+    @Test
+    fun `교내 분야 키로 동아리, 자습 감독, 일정을 조회하고 다른 교내 분야는 승인돼야 열린다`() {
+        saveApiKey(projectRepository, fieldRepository, 2L, KEY, ApiKeyField.CLUB, ApiKeyField.STUDY_SUPERVISOR)
+
+        mockMvc.get("/clubs") { header("X-API-Key", KEY) }.andExpect { status { isOk() } }
+        mockMvc.get("/clubs/999") { header("X-API-Key", KEY) }.andExpect { jsonPath("$.code") { value("CLUB_NOT_FOUND") } }
+        mockMvc.get("/study-supervisors?startDate=2026-09-14&finishDate=2026-09-14") { header("X-API-Key", KEY) }
+            .andExpect { status { isOk() } }
+        mockMvc.get("/study-supervisors/day?date=2026-09-14") { header("X-API-Key", KEY) }.andExpect { status { isOk() } }
+        listOf("/schedules/999", "/schedules/999/anything").forEach { path ->
+            mockMvc.get(path) { header("X-API-Key", KEY) }.andExpect {
+                status { isForbidden() }
+                jsonPath("$.code") { value("API_KEY_FIELD_FORBIDDEN") }
+            }
+        }
+    }
+
+    @Test
+    fun `일정 분야 키로 일정을 조회한다`() {
+        saveApiKey(projectRepository, fieldRepository, 2L, KEY, ApiKeyField.SCHEDULE)
+
+        mockMvc.get("/schedules/999") { header("X-API-Key", KEY) }.andExpect { jsonPath("$.code") { value("SCHEDULE_NOT_FOUND") } }
+        listOf("/clubs", "/study-supervisors/day?date=2026-09-14").forEach { path ->
+            mockMvc.get(path) { header("X-API-Key", KEY) }.andExpect { status { isForbidden() } }
+        }
+    }
+
+    @Test
+    fun `만료된 키는 API_KEY_EXPIRED이고 만료 전이면 조회된다`() {
+        val project = saveApiKey(projectRepository, fieldRepository, 2L, KEY, ApiKeyField.STUDENT)
+        val now = LocalDateTime.now(ZoneId.of("Asia/Seoul"))
+
+        ReflectionTestUtils.setField(project, "expiresAt", now.plusHours(1))
+        projectRepository.save(project)
+        mockMvc.get("/students") { header("X-API-Key", KEY) }.andExpect { status { isOk() } }
+
+        ReflectionTestUtils.setField(project, "expiresAt", now.minusSeconds(1))
+        projectRepository.save(project)
+        listOf("/students", "/teachers").forEach { path ->
+            mockMvc.get(path) { header("X-API-Key", KEY) }.andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value("API_KEY_EXPIRED") }
+                jsonPath("$.message") { value("만료된 API 키입니다. 키를 갱신해 주세요.") }
+            }
+        }
     }
 
     @Test

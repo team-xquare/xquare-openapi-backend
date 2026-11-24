@@ -1,5 +1,6 @@
 package app.xquare.xquareopenapi.domain.apikey
 
+import app.xquare.xquareopenapi.global.error.SecurityErrorResponder
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.doReturn
@@ -10,7 +11,9 @@ import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.test.util.ReflectionTestUtils
+import java.time.Clock
 import java.time.LocalDateTime
+import java.time.ZoneId
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -21,7 +24,8 @@ class ApiKeyAuthenticationFilterTest {
 
     private val projectRepository = mock(ApiProjectRepository::class.java)
     private val fieldRepository = mock(ApiProjectFieldRepository::class.java)
-    private val filter = ApiKeyAuthenticationFilter(projectRepository, fieldRepository)
+    private val clock = Clock.fixed(NOW.atZone(SEOUL).toInstant(), SEOUL)
+    private val filter = ApiKeyAuthenticationFilter(projectRepository, fieldRepository, clock)
 
     @AfterEach
     fun tearDown() {
@@ -59,13 +63,43 @@ class ApiKeyAuthenticationFilterTest {
     }
 
     @Test
+    fun `만료 시각이 지나지 않은 키는 인증한다`() {
+        stubKey(projectId = 3L, userId = 7L, approved = listOf(ApiKeyField.CLUB), expiresAt = NOW.plusNanos(1_000))
+        val request = request("xq_valid")
+
+        filter.doFilter(request, MockHttpServletResponse(), MockFilterChain())
+
+        assertNotNull(SecurityContextHolder.getContext().authentication)
+        assertNull(request.getAttribute(SecurityErrorResponder.API_KEY_EXPIRED_ATTRIBUTE))
+    }
+
+    @Test
+    fun `만료 시각이 됐거나 지난 키는 인증하지 않고 만료 표시를 남긴 뒤 다음 필터로 넘긴다`() {
+        listOf(NOW, NOW.minusDays(1)).forEach { expiresAt ->
+            SecurityContextHolder.clearContext()
+            stubKey(projectId = 3L, userId = 7L, approved = listOf(ApiKeyField.CLUB), expiresAt = expiresAt)
+            val request = request("xq_valid")
+            val chain = MockFilterChain()
+
+            filter.doFilter(request, MockHttpServletResponse(), chain)
+
+            assertNull(SecurityContextHolder.getContext().authentication)
+            assertEquals(true, request.getAttribute(SecurityErrorResponder.API_KEY_EXPIRED_ATTRIBUTE))
+            assertNotNull(chain.request)
+        }
+        verifyNoInteractions(fieldRepository)
+    }
+
+    @Test
     fun `어느 프로젝트의 키도 아니면 인증하지 않고 다음 필터로 넘긴다`() {
         val chain = MockFilterChain()
+        val request = request("xq_unknown")
 
-        filter.doFilter(request("xq_unknown"), MockHttpServletResponse(), chain)
+        filter.doFilter(request, MockHttpServletResponse(), chain)
 
         assertNull(SecurityContextHolder.getContext().authentication)
         verifyNoInteractions(fieldRepository)
+        assertNull(request.getAttribute(SecurityErrorResponder.API_KEY_EXPIRED_ATTRIBUTE))
         assertNotNull(chain.request)
     }
 
@@ -81,12 +115,18 @@ class ApiKeyAuthenticationFilterTest {
     }
 
     // 승인된 분야만 돌려주도록 APPROVED로 물을 때만 응답한다. 다른 상태로 물으면 mock 기본값인 빈 목록이다.
-    private fun stubKey(projectId: Long, userId: Long, approved: List<ApiKeyField>) {
-        val project = ApiProject(userId, "급식 알리미", "급식 공유", LocalDateTime.of(2026, 11, 24, 10, 0))
+    private fun stubKey(projectId: Long, userId: Long, approved: List<ApiKeyField>, expiresAt: LocalDateTime? = null) {
+        val project = ApiProject(userId, "급식 알리미", "급식 공유", NOW)
         ReflectionTestUtils.setField(project, "id", projectId)
+        ReflectionTestUtils.setField(project, "expiresAt", expiresAt)
         doReturn(project).`when`(projectRepository).findByKeyHash(ApiKeySecret.hash("xq_valid"))
         doReturn(approved).`when`(fieldRepository).findFieldsByProjectIdAndStatus(projectId, ApplicationStatus.APPROVED)
     }
 
     private fun request(rawKey: String) = MockHttpServletRequest().apply { addHeader("X-API-Key", rawKey) }
+
+    companion object {
+        private val SEOUL = ZoneId.of("Asia/Seoul")
+        private val NOW = LocalDateTime.of(2026, 11, 24, 10, 0)
+    }
 }

@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.net.URI
 
-// 권한(조회는 USER, 등록·수정·삭제는 ADMIN)은 SecurityConfig에서 검사한다.
+// 권한(조회는 SCHEDULE 분야가 승인된 API 키, 등록·수정·삭제는 ADMIN)은 SecurityConfig에서 검사한다.
 @RestController
 @RequestMapping("/schedules")
 class ScheduleController(

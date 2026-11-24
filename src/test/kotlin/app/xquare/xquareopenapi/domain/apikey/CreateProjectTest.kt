@@ -24,6 +24,7 @@ import org.springframework.http.MediaType
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActionsDsl
+import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import tools.jackson.databind.json.JsonMapper
 import java.time.LocalDateTime
@@ -100,6 +101,17 @@ class CreateProjectTest @Autowired constructor(
             assertEquals(it.appliedAt, it.decidedAt)
             assertNull(it.decidedBy)
             assertNull(it.rejectReason)
+        }
+    }
+
+    @Test
+    fun `받은 키로 승인된 교내 분야는 바로 조회하고 승인 대기 중인 제한 분야는 조회할 수 없다`() {
+        val apiKey = create(body(fields = """["CLUB","STUDENT"]""")).json()["apiKey"].asString()
+
+        mockMvc.get("/clubs") { header("X-API-Key", apiKey) }.andExpect { status { isOk() } }
+        mockMvc.get("/students") { header("X-API-Key", apiKey) }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("API_KEY_FIELD_FORBIDDEN") }
         }
     }
 
