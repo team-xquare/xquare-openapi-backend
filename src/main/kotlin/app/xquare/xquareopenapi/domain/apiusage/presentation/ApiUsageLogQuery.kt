@@ -1,5 +1,6 @@
 package app.xquare.xquareopenapi.domain.apiusage.presentation
 
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyField
 import app.xquare.xquareopenapi.domain.apiusage.ApiUsageLog
 import app.xquare.xquareopenapi.domain.apiusage.UsageHttpMethod
 import io.swagger.v3.oas.annotations.media.Schema
@@ -29,6 +30,11 @@ data class ApiUsageLogQuery(
         example = "/notices",
     )
     val api: String? = null,
+    @field:Schema(
+        description = "저장된 MVC 템플릿으로 정하는 기존 분야. 다른 필터와 AND로 적용합니다. 공개 급식과 UNMAPPED 등 미분류는 분야를 지정하면 제외합니다. 빈 값 또는 목록에 없는 값은 400입니다.",
+        implementation = ApiKeyField::class,
+    )
+    val field: String? = null,
 )
 
 internal const val API_USAGE_ROUTE_MAX_LENGTH = 160

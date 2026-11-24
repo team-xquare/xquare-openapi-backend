@@ -1,5 +1,6 @@
 package app.xquare.xquareopenapi.domain.apiusage.usecase
 
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyField
 import app.xquare.xquareopenapi.domain.apiusage.ApiUsageLog
 import app.xquare.xquareopenapi.domain.apiusage.ApiUsageLogRepository
 import app.xquare.xquareopenapi.domain.apiusage.presentation.API_USAGE_ROUTE_MAX_LENGTH
@@ -54,6 +55,8 @@ class GetApiUsageLogsUseCase(
             if (it.length > API_USAGE_ROUTE_MAX_LENGTH || it.isBlank()) invalidInput()
             "%${it.escapeLike()}%"
         }
+        val fieldValue = request.field
+        val fieldRoutes = if (fieldValue == null) null else routesFor(parseField(fieldValue))
         val start = toStorageBoundary(from)
         val end = toStorageBoundary(to)
         val filters = Specification<ApiUsageLog> { root, _, cb ->
@@ -65,6 +68,11 @@ class GetApiUsageLogsUseCase(
                 val route = root.get<String>("route")
                 conditions += cb.notEqual(route, "UNMAPPED")
                 conditions += cb.like(route, routePattern, '!')
+            }
+            if (fieldRoutes != null) {
+                // DB 정렬 규칙이 대소문자나 악센트를 무시해도 분야는 MVC 템플릿과 정확히 일치해야 한다.
+                val route = root.get<String>("route").cast(ByteArray::class.java)
+                conditions += route.`in`(fieldRoutes)
             }
             cb.and(*conditions.toTypedArray())
         }
@@ -79,6 +87,21 @@ class GetApiUsageLogsUseCase(
             storageUnavailable()
         }
     }
+
+    private fun parseField(value: String): ApiKeyField = try {
+        ApiKeyField.valueOf(value)
+    } catch (_: IllegalArgumentException) {
+        invalidInput()
+    }
+
+    // 인가 매처가 아니라 현행 MVC 템플릿을 열거한다. 미등록 경로는 첫 세그먼트가 같아도 제외한다.
+    private fun routesFor(field: ApiKeyField): List<ByteArray> = when (field) {
+        ApiKeyField.STUDENT -> listOf("/students", "/students/{studentId}")
+        ApiKeyField.TEACHER -> listOf("/teachers", "/teachers/{teacherId}")
+        ApiKeyField.CLUB -> listOf("/clubs", "/clubs/{clubId}")
+        ApiKeyField.SCHEDULE -> listOf("/schedules", "/schedules/{scheduleId}")
+        ApiKeyField.STUDY_SUPERVISOR -> listOf("/study-supervisors", "/study-supervisors/day", "/study-supervisors/{studySupervisorId}")
+    }.map(String::toByteArray)
 
     // DATETIME(6)에 저장 가능한 시각만 대상으로 하므로 양 끝을 올려도 [from, to)의 포함 관계가 같다.
     private fun toStorageBoundary(instant: Instant): LocalDateTime {

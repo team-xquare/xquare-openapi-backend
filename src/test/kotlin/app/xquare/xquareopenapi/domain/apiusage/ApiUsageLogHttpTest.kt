@@ -283,6 +283,60 @@ class ApiUsageLogHttpTest @Autowired constructor(
     }
 
     @Test
+    fun `분야는 저장된 템플릿을 다른 필터와 함께 평가한 뒤 페이지에 적용한다`() {
+        val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
+        jdbc.update("delete from api_usage_logs")
+        seedRoute("/students", status = 404)
+        seedRoute("/students/{studentId}", status = 404)
+        seedRoute("/students/{studentId}", method = "PATCH", status = 404)
+        seedRoute("/students/{studentId}")
+        seedRoute("/students/{studentId}", at = "2026-11-16 00:00:00", status = 404)
+        seedRoute("/students/{studentId}/unknown", status = 404)
+        seedRoute("/students/12345", status = 404)
+        seedRoute("/students-extra", status = 404)
+        seedRoute("/STUDENTS", status = 404)
+        seedRoute("/teachers", status = 404)
+        seedRoute("UNMAPPED", status = 404)
+
+        val query = "$SEED_PERIOD&field=STUDENT&method=GET&status=404&api=students&size=1"
+        val pages = (0..2).map { page -> json(send("GET", "$LIST?$query&page=$page", admin)) }
+        pages.forEach {
+            assertEquals(2, it.path("totalCount").asInt())
+            assertEquals(2, it.path("totalPage").asInt())
+        }
+        assertEquals(listOf("/students/{studentId}", "/students"), pages.take(2).map { it.path("content").get(0).path("route").asString() })
+        assertTrue(pages.last().path("content").isEmpty)
+        assertEquals(0, json(send("GET", "$LIST?$SEED_PERIOD&field=STUDENT&api=teachers", admin)).path("totalCount").asInt())
+    }
+
+    @Test
+    fun `기존 분야만 선택할 수 있고 미분류와 공개 급식은 필터 생략 시 남는다`() {
+        val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
+        val user = jwtProvider.generateAccessToken(2L, Role.USER)
+        jdbc.update("delete from api_usage_logs")
+        val classified = mapOf(
+            "STUDENT" to listOf("/students", "/students/{studentId}"),
+            "TEACHER" to listOf("/teachers", "/teachers/{teacherId}"),
+            "CLUB" to listOf("/clubs", "/clubs/{clubId}"),
+            "SCHEDULE" to listOf("/schedules", "/schedules/{scheduleId}"),
+            "STUDY_SUPERVISOR" to listOf("/study-supervisors", "/study-supervisors/day", "/study-supervisors/{studySupervisorId}"),
+        )
+        val unclassified = listOf("/meals", "/meals/{mealId}", "/notices", "/timetables", "UNMAPPED")
+        val allRoutes = classified.values.flatten() + unclassified
+        allRoutes.forEach { seedRoute(it) }
+        fun routes(filter: String) = json(send("GET", "$LIST?$SEED_PERIOD$filter", admin))
+            .path("content").values().map { it.path("route").asString() }
+        assertEquals(allRoutes.reversed(), routes(""))
+        for ((field, expected) in classified) assertEquals(expected.reversed(), routes("&field=$field"), field)
+        assertEquals(listOf("/meals/{mealId}", "/meals"), routes("&api=meals"))
+        assertCode(send("GET", "$LIST?field=STUDENT"), 401, "INVALID_TOKEN")
+        assertCode(send("GET", "$LIST?field=STUDENT", user), 403, "FORBIDDEN")
+        for (invalid in listOf("MEAL", "UNMAPPED", "", "student", "%20", "%20STUDENT")) {
+            assertCode(send("GET", "$LIST?field=$invalid", admin), 400, "INVALID_INPUT")
+        }
+    }
+
+    @Test
     fun `API 검색의 퍼센트 밑줄 느낌표는 글자 그대로 비교한다`() {
         val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
         jdbc.update("delete from api_usage_logs")
@@ -318,9 +372,16 @@ class ApiUsageLogHttpTest @Autowired constructor(
         assertEquals(200, send("GET", LIST, admin).statusCode())
         jdbc.update("delete from api_usage_logs")
         assertEquals(404, send("GET", "/schedules/987654321", admin).statusCode())
-        val rows = awaitRows(1)
-        assertEquals(listOf("/schedules/{scheduleId}"), rows.map { it["route"] })
-        assertEquals(listOf("GET"), rows.map { it["http_method"] })
+        assertEquals(200, send("GET", "/meals").statusCode())
+        assertEquals(401, send("GET", "/students/987654321").statusCode())
+        val rows = awaitRows(3)
+        assertEquals(listOf("/schedules/{scheduleId}", "/meals", "UNMAPPED"), rows.map { it["route"] })
+        assertTrue(rows.all { it["http_method"] == "GET" })
+        val schedules = json(send("GET", "$LIST?field=SCHEDULE&status=404", admin)).path("content").values()
+        assertEquals(listOf("/schedules/{scheduleId}"), schedules.map { it.path("route").asString() })
+        assertEquals(0, json(send("GET", "$LIST?field=STUDENT&status=401", admin)).path("totalCount").asInt())
+        assertEquals(1, json(send("GET", "$LIST?status=401", admin)).path("totalCount").asInt())
+        assertEquals(1, json(send("GET", "$LIST?api=meals", admin)).path("totalCount").asInt())
     }
 
     @Test
@@ -366,6 +427,10 @@ class ApiUsageLogHttpTest @Autowired constructor(
         assertFalse(api.path("required").asBoolean(false))
         assertEquals(1, api.path("schema").path("minLength").asInt())
         assertEquals(160, api.path("schema").path("maxLength").asInt())
+        val field = generated.path("paths").path(LIST).path("get").path("parameters").single { it.path("name").asString() == "field" }
+        assertEquals("query", field.path("in").asString())
+        assertFalse(field.path("required").asBoolean(false))
+        assertEquals(setOf("STUDENT", "TEACHER", "CLUB", "SCHEDULE", "STUDY_SUPERVISOR"), field.path("schema").path("enum").values().map { it.asString() }.toSet())
         for (name in listOf("Student", "Teacher", "Club")) {
             val schema = generated.path("components").path("schemas").path("PageResponse${name}Response")
             assertFalse(schema.isMissingNode, "$name 목록의 기존 페이지 스키마가 있어야 합니다")
