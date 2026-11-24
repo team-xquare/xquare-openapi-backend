@@ -58,7 +58,7 @@ class ScheduleController(
         summary = "학사 일정 목록 조회",
         description = "시작일과 종료일을 포함해 최대 ${MAX_DAYS}일의 학사 일정을 날짜 오름차순, 같은 날짜는 id 오름차순으로 반환한다. " +
             "결과가 없으면 빈 배열이다. NEIS와 SCHOOL 일정을 모두 반환하며 ${MAX_RESULTS}건을 넘으면 " +
-            "잘라서 반환하지 않고 더 짧은 기간을 요청하도록 400을 반환한다. 권한: 로그인 JWT(USER/ADMIN).",
+            "일부 목록 대신 400을 반환한다. 기간을 나눠 조회할 수 있지만 하루에 ${MAX_RESULTS}건을 넘는 날짜는 목록으로 조회할 수 없다. 권한: 로그인 JWT(USER/ADMIN).",
         security = [SecurityRequirement(name = "bearerAuth")],
         extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "USER")])],
     )

@@ -3,7 +3,7 @@
 2026년 11월 21일 공동 검토 초안. **정책 확정이나 운영 배포를 뜻하지 않습니다.**
 
 - 기준: `develop` `1f265558cfd6c6741013ce3134716ec010e206e9`의 `docs/openapi.yaml` 요청/성공 응답과 컨트롤러 매핑, `SecurityConfig`의 인증 분기.
-- 문서 41개 작업 중 37개 컨트롤러가 확인됐고, 학사 일정 4개는 정적 명세에만 있습니다(#43). Swagger UI·건강 점검·프리플라이트와 키 기능 미머지 브랜치는 이 현행 표에 포함하지 않습니다.
+- 위 기준 시점에는 문서 41개 작업 중 37개가 구현돼 있었습니다. 아래 학사 일정 표만 #43과 OPN-68의 목록 추가를 반영했습니다. Swagger UI·건강 점검·프리플라이트는 표에서 제외합니다.
 - 표는 필드 이름만 나열합니다. 요청 값, 실제 사용자 레코드, 비밀번호·OTP·토큰·API 키 값은 포함하지 않습니다. 필드의 타입·선택 여부·오류는 OpenAPI 명세를 참조합니다.
 
 ## 접근 범례
@@ -17,7 +17,7 @@
 
 1. 학생 학번·이름·생년월일·이메일, 동아리 명단, 자습 감독 교직원 식별자: 서비스별 꼭 필요한 필드만 외부 API 키에 허용할지 항목별로 정합니다. 권한 변경과 응답 축소를 따로 검토합니다.
 2. 운영 기록(#52): 요청/응답 본문·쿼리·원본 IP·자격증명은 저장하지 않고, 접근 역할·보존기간·저장 실패 처리를 합의합니다.
-3. 학사 일정 4개 및 분야 키는 머지 후 현행 열을 갱신합니다. 시간표는 현재 NEIS이며 컴시간 연동은 별도입니다(#53).
+3. 학사 일정 조회의 분야 키 전환은 별도 정책 결정입니다. 시간표는 현재 NEIS이며 컴시간 연동은 별도입니다(#53).
 
 ## 인증
 
@@ -60,10 +60,11 @@
 
 | API | 요청 필드 | 성공 응답 필드 | 현재 접근 | 변경 예정 |
 |---|---|---|---|---|
-| `POST /schedules` | `body:date`, `body:title`, `body:content` | `message`, `header:Location` | 미구현 (명세: ADMIN JWT) | — |
-| `GET /schedules/{scheduleId}` | `path:scheduleId` | `id`, `date`, `title`, `content`, `source` | 미구현 (명세: 로그인 JWT (USER/ADMIN)) | 분야 API 키 (SCHEDULE) — 미반영 |
-| `PATCH /schedules/{scheduleId}` | `path:scheduleId`, `body:date`, `body:title`, `body:content` | `message` | 미구현 (명세: ADMIN JWT) | — |
-| `DELETE /schedules/{scheduleId}` | `path:scheduleId` | `message` | 미구현 (명세: ADMIN JWT) | — |
+| `POST /schedules` | `body:date`, `body:title`, `body:content` | `message`, `header:Location` | ADMIN JWT | — |
+| `GET /schedules` | `query:startDate`, `query:finishDate` | `[].id`, `[].date`, `[].title`, `[].content`, `[].source` | 로그인 JWT (USER/ADMIN) | 분야 API 키 (SCHEDULE) — 미반영 |
+| `GET /schedules/{scheduleId}` | `path:scheduleId` | `id`, `date`, `title`, `content`, `source` | 로그인 JWT (USER/ADMIN) | 분야 API 키 (SCHEDULE) — 미반영 |
+| `PATCH /schedules/{scheduleId}` | `path:scheduleId`, `body:date`, `body:title`, `body:content` | `message` | ADMIN JWT | — |
+| `DELETE /schedules/{scheduleId}` | `path:scheduleId` | `message` | ADMIN JWT | — |
 
 ## 시간표
 
