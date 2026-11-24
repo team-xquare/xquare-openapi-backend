@@ -3308,6 +3308,11 @@ paths:
       - name: status
         in: query
         schema: {type: integer, format: int32, minimum: 100, maximum: 599}
+      - name: api
+        in: query
+        required: false
+        description: '저장된 API 경로 템플릿의 부분 일치 검색. UNMAPPED는 제외하며, 빈 문자열 또는 공백만 입력할 수 없습니다. %, _, !는 글자 그대로 비교합니다.'
+        schema: {type: string, minLength: 1, maxLength: 160, example: /notices}
       - name: page
         in: query
         schema: {type: integer, format: int32, minimum: 0, maximum: 1000, default: 0}

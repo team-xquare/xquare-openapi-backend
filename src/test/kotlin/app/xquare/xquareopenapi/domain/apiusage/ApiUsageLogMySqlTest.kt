@@ -46,6 +46,10 @@ class ApiUsageLogMySqlTest @Autowired constructor(
         RecordApiUsageUseCase(pool).use { recorder ->
             recorder.execute(ApiUsageLog(time.plusNanos(900), "POST", "/auth/signup", 415, 7))
             recorder.execute(ApiUsageLog(time.plusNanos(1000), "GET", "/meals", 200, 1))
+            val fixtureTime = time.plusSeconds(1)
+            listOf("/fixture/a%b", "/fixture/a_b", "/fixture/a!b", "/fixture/axb", "/fixture/ab", "UNMAPPED").forEach { route ->
+                recorder.execute(ApiUsageLog(fixtureTime, "GET", route, 200, 1))
+            }
         }
         entityManager.clear()
         val row = repository.findAll().single { it.status == 415 }
@@ -59,6 +63,14 @@ class ApiUsageLogMySqlTest @Autowired constructor(
         assertEquals(listOf(415), query.execute(ApiUsageLogQuery(at, at.plusNanos(100))).content.map { it.status })
         assertEquals(emptyList(), query.execute(ApiUsageLogQuery(at.plusNanos(100), at.plusNanos(1000))).content)
         assertEquals(listOf(200), query.execute(ApiUsageLogQuery(at.plusNanos(100), at.plusNanos(1100))).content.map { it.status })
+
+        val searchStart = at.plusSeconds(1)
+        val searchEnd = at.plusSeconds(2)
+        for (term in listOf("a%b", "a_b", "a!b")) {
+            val result = query.execute(ApiUsageLogQuery(searchStart, searchEnd, api = term))
+            assertEquals(listOf("/fixture/$term"), result.content.map { it.route })
+        }
+        assertEquals(0L, query.execute(ApiUsageLogQuery(searchStart, searchEnd, api = "UNMAPPED")).totalCount)
     }
 
     companion object {

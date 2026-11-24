@@ -2,11 +2,13 @@ package app.xquare.xquareopenapi.domain.apiusage.usecase
 
 import app.xquare.xquareopenapi.domain.apiusage.ApiUsageLog
 import app.xquare.xquareopenapi.domain.apiusage.ApiUsageLogRepository
+import app.xquare.xquareopenapi.domain.apiusage.presentation.API_USAGE_ROUTE_MAX_LENGTH
 import app.xquare.xquareopenapi.domain.apiusage.presentation.ApiUsageLogQuery
 import app.xquare.xquareopenapi.domain.apiusage.presentation.ApiUsageLogResponse
 import app.xquare.xquareopenapi.global.dto.PageResponse
 import app.xquare.xquareopenapi.global.error.ErrorCode
 import app.xquare.xquareopenapi.global.error.XquareException
+import app.xquare.xquareopenapi.global.jpa.escapeLike
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
@@ -48,6 +50,10 @@ class GetApiUsageLogsUseCase(
             invalidInput()
         }
 
+        val routePattern = request.api?.let {
+            if (it.length > API_USAGE_ROUTE_MAX_LENGTH || it.isBlank()) invalidInput()
+            "%${it.escapeLike()}%"
+        }
         val start = toStorageBoundary(from)
         val end = toStorageBoundary(to)
         val filters = Specification<ApiUsageLog> { root, _, cb ->
@@ -55,6 +61,11 @@ class GetApiUsageLogsUseCase(
             val conditions = mutableListOf(cb.greaterThanOrEqualTo(time, start), cb.lessThan(time, end))
             request.method?.let { conditions += cb.equal(root.get<String>("method"), it.name) }
             request.status?.let { conditions += cb.equal(root.get<Int>("status"), it) }
+            if (routePattern != null) {
+                val route = root.get<String>("route")
+                conditions += cb.notEqual(route, "UNMAPPED")
+                conditions += cb.like(route, routePattern, '!')
+            }
             cb.and(*conditions.toTypedArray())
         }
         val page = PageRequest.of(request.page, request.size, Sort.by(Sort.Direction.DESC, "occurredAt", "id"))

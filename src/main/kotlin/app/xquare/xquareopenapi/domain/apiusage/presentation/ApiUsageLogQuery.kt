@@ -22,7 +22,16 @@ data class ApiUsageLogQuery(
     @field:Min(1) @field:Max(100)
     @field:Schema(defaultValue = "20")
     val size: Int = 20,
+    @field:Schema(
+        description = "저장된 API 경로 템플릿의 부분 일치 검색. UNMAPPED는 제외하며, 빈 문자열 또는 공백만 입력할 수 없습니다. %, _, !는 글자 그대로 비교합니다.",
+        minLength = 1,
+        maxLength = API_USAGE_ROUTE_MAX_LENGTH,
+        example = "/notices",
+    )
+    val api: String? = null,
 )
+
+internal const val API_USAGE_ROUTE_MAX_LENGTH = 160
 
 @Schema(requiredProperties = ["id", "occurredAt", "method", "route", "status", "durationMs"])
 data class ApiUsageLogResponse(
