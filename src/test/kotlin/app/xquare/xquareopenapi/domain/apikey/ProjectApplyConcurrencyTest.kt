@@ -7,4 +7,4 @@ import org.springframework.context.annotation.Import
 // 테스트 기본 DB(H2)에서 동시 신청 시나리오를 돌린다.
 @SpringBootTest
 @Import(FakeAuthRepositories::class)
-class ApplyApiKeyConcurrencyTest : ApplyApiKeyConcurrencyScenarios()
+class ProjectApplyConcurrencyTest : ProjectApplyConcurrencyScenarios()

@@ -9,11 +9,11 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.mysql.MySQLContainer
 
 // 운영 DB와 같은 MySQL 8.4(기본 격리 수준 REPEATABLE READ)에서 동시 신청 시나리오를 돌린다.
-// H2는 커밋된 행을 바로 보여 줘서, 옛 스냅샷 때문에 중복이 unique 제약까지 가는 경우를 재현하지 못한다.
+// 잠금을 트랜잭션의 첫 조회로 둬서, 잠금을 기다린 뒤의 일반 조회가 앞 요청이 커밋한 행을 보는지 확인한다.
 @SpringBootTest
 @Import(FakeAuthRepositories::class)
 @Testcontainers(disabledWithoutDocker = true)
-class ApplyApiKeyMySqlConcurrencyTest : ApplyApiKeyConcurrencyScenarios() {
+class ProjectApplyMySqlConcurrencyTest : ProjectApplyConcurrencyScenarios() {
 
     companion object {
         @Container

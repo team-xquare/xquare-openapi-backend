@@ -89,11 +89,10 @@ class SwaggerTest @Autowired constructor(
             jsonPath("$.paths['/students'].post.security") { doesNotExist() }
             jsonPath("$.paths['/students/{studentId}'].patch.security") { doesNotExist() }
             jsonPath("$.paths['/teachers/{teacherId}'].delete.security") { doesNotExist() }
-            jsonPath("$.paths['/api-keys'].post.security") { doesNotExist() }
-            // 액세스 토큰으로 여는 GET(내 키, 관리자 활용신청)은 Bearer 토큰 그대로다.
-            jsonPath("$.paths['/api-keys/me'].get.security") { doesNotExist() }
-            jsonPath("$.paths['/api-key-applications'].get.security") { doesNotExist() }
-            jsonPath("$.paths['/api-key-applications/{applicationId}'].get.security") { doesNotExist() }
+            // 프로젝트(키 관리) API는 액세스 토큰으로 연다.
+            jsonPath("$.paths['/projects'].post") { exists() }
+            jsonPath("$.paths['/projects'].post.security") { doesNotExist() }
+            jsonPath("$.paths['/projects/{projectId}/fields'].post.security") { doesNotExist() }
         }
     }
 

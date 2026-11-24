@@ -1,8 +1,8 @@
 package app.xquare.xquareopenapi.domain.club
 
-import app.xquare.xquareopenapi.domain.apikey.ApiKeyApplicationRepository
+import app.xquare.xquareopenapi.domain.apikey.ApiProjectFieldRepository
 import app.xquare.xquareopenapi.domain.apikey.ApiKeyField
-import app.xquare.xquareopenapi.domain.apikey.ApiKeyRepository
+import app.xquare.xquareopenapi.domain.apikey.ApiProjectRepository
 import app.xquare.xquareopenapi.domain.apikey.saveApiKey
 import app.xquare.xquareopenapi.domain.student.Student
 import app.xquare.xquareopenapi.domain.student.StudentRepository
@@ -59,8 +59,8 @@ class ClubTest @Autowired constructor(
     private val studentRepository: StudentRepository,
     private val teacherRepository: TeacherRepository,
     private val transactionManager: PlatformTransactionManager,
-    private val apiKeyRepository: ApiKeyRepository,
-    private val apiKeyApplicationRepository: ApiKeyApplicationRepository,
+    private val apiProjectRepository: ApiProjectRepository,
+    private val apiProjectFieldRepository: ApiProjectFieldRepository,
     jwtProvider: JwtProvider,
 ) {
     // 동시 등록·수정을 흉내 내려고 중복 검사만 통과시킬 때 쓴다.
@@ -77,13 +77,13 @@ class ClubTest @Autowired constructor(
     // 학생·교직원 조회 API는 해당 분야를 신청한 API 키로만 인증한다.
     @BeforeEach
     fun setUp() {
-        saveApiKey(apiKeyRepository, apiKeyApplicationRepository, 2L, RAW_API_KEY, ApiKeyField.STUDENT, ApiKeyField.TEACHER)
+        saveApiKey(apiProjectRepository, apiProjectFieldRepository, 2L, RAW_API_KEY, ApiKeyField.STUDENT, ApiKeyField.TEACHER)
     }
 
     @AfterEach
     fun tearDown() {
-        apiKeyApplicationRepository.deleteAll()
-        apiKeyRepository.deleteAll()
+        apiProjectFieldRepository.deleteAll()
+        apiProjectRepository.deleteAll()
         clubRepository.deleteAll()
         studentRepository.deleteAll()
         teacherRepository.deleteAll()

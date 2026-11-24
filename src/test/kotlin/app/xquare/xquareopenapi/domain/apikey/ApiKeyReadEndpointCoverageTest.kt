@@ -61,11 +61,6 @@ class ApiKeyReadEndpointCoverageTest @Autowired constructor(
             "/schedules/{scheduleId}",
             // 관리자 API 사용 기록 조회(#55). ADMIN 액세스 토큰으로 연다.
             "/admin/api-usage-logs",
-            // 로그인한 사용자 본인의 키 정보. 액세스 토큰으로 연다.
-            "/api-keys/me",
-            // 관리자 활용신청 목록·상세. ADMIN 액세스 토큰으로 연다.
-            "/api-key-applications",
-            "/api-key-applications/{applicationId}",
         )
     }
 }

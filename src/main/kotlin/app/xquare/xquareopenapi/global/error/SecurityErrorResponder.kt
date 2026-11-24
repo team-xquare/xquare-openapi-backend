@@ -23,7 +23,7 @@ class SecurityErrorResponder(
     // 조회 API에 API 키가 없거나 틀리면 호출된다. 조회 API용 필터 체인의 entry point로 쓴다.
     val invalidApiKey = AuthenticationEntryPoint { _, response, _ -> write(response, ErrorCode.INVALID_API_KEY) }
 
-    // 조회 API에 유효한 키를 보냈지만 그 경로의 분야를 신청하지 않았으면 호출된다. 조회 API용 필터 체인의 access denied handler로 쓴다.
+    // 조회 API에 유효한 키를 보냈지만 그 경로의 분야가 승인되지 않았으면 호출된다. 조회 API용 필터 체인의 access denied handler로 쓴다.
     val apiKeyFieldForbidden = AccessDeniedHandler { _, response, _ -> write(response, ErrorCode.API_KEY_FIELD_FORBIDDEN) }
 
     // 인증은 됐지만 권한이 부족하면 호출된다.
