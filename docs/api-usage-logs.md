@@ -4,7 +4,7 @@
 
 ## 수집 범위
 
-- 기존 업무 경로(`auth`, `users`, `students`, `teachers`, `clubs`, `meals`, `notices`, `study-supervisors`, `timetables`)에서 서블릿에 도달한 최초 요청을 관찰합니다. 성공, 애플리케이션 오류, 인증·인가 거절을 포함합니다. 기존 업무 경로 아래에서 컨트롤러가 결정되지 않은 거절·미매핑 요청은 `UNMAPPED`로 기록합니다. 새 업무 경로를 추가할 때 수집 대상도 함께 검토합니다.
+- 기존 업무 경로(`auth`, `users`, `students`, `teachers`, `clubs`, `meals`, `notices`, `study-supervisors`, `timetables`, `schedules`, `api-keys`, `api-key-applications`)에서 서블릿에 도달한 최초 요청을 관찰합니다. 성공, 애플리케이션 오류, 인증·인가 거절을 포함합니다. 기존 업무 경로 아래에서 컨트롤러가 결정되지 않은 거절·미매핑 요청은 `UNMAPPED`로 기록합니다. 새 업무 경로를 추가할 때 수집 대상도 함께 검토합니다.
 - CORS 프리플라이트, Swagger/OpenAPI, 헬스 등 업무 밖 경로, 이 기록을 읽는 운영용 관리자 API는 기록하지 않습니다. Tomcat 오류 재디스패치를 별도 행으로 세지 않습니다. 컨테이너가 애플리케이션에 전달하기 전에 거절한 요청은 관찰할 수 없습니다. 현재 동기식 MVC 업무 요청을 대상으로 합니다.
 - 저장·조회 필드는 `id`(서버 생성 정수), `occurredAt`(UTC의 응답 완료 시각), `method`(정해진 HTTP 메서드 또는 `OTHER`), `route`(MVC가 정한 템플릿 또는 `UNMAPPED`), `status`(최종 상태), `durationMs`(기록 자체의 DB 시간을 뺀 처리 시간, 밀리초)입니다. 모두 필수이며 null을 반환하지 않습니다.
 - 요청·응답 본문, raw URI/쿼리/헤더 값, 경로 변수 값, IP, 사용자 식별자, 이메일, 비밀번호, OTP, 토큰과 API 키 원문·해시를 저장하지 않습니다.
