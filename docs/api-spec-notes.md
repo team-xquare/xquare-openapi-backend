@@ -89,6 +89,10 @@
 - 테이블: `api_projects`(프로젝트 = 키 1개, `key_hash`는 첫 승인 전 null), `api_project_fields`(프로젝트의 분야별 신청·승인 상태). 스키마는 `docs/schema/api_projects.sql`
 - `POST /projects`: 이름 1~30자(같은 사용자 안에서 unique), 사용 목적 1~200자, 분야 1개 이상, `emailVerifiedToken`. 같은 분야를 여러 번 넣으면 한 번만 신청한다. 응답 `201 { projectId, apiKey, fields[{field, level, status}] }`
 - `POST /projects/{projectId}/fields`: 분야 추가 신청. 대기·승인된 분야를 다시 넣으면 `409 FIELD_ALREADY_APPLIED`이고 함께 보낸 다른 분야도 신청되지 않는다(트랜잭션 롤백). 응답은 프로젝트의 모든 분야(처음 신청한 순서). 없거나 남의 프로젝트면 `404 PROJECT_NOT_FOUND`(남의 프로젝트 존재 여부를 드러내지 않음)
+- `GET /projects`: 내 프로젝트를 만든 순서대로 `{ projectId, name, keyIssued, issuedAt, expiresAt, fields[{field, level, status, rejectReason}] }`. 키 원문·해시는 내려주지 않는다. `GET /projects/{projectId}`는 여기에 `purpose`, `createdAt`을 더한다
+- `POST /projects/{projectId}/api-key/reissue`: 이메일 인증 후 새 키 원문을 준다(`{ apiKey, issuedAt, expiresAt }`). 이전 키는 바로 `401 INVALID_API_KEY`. 아직 발급 전(승인된 분야 없음)이면 `409 API_KEY_NOT_ISSUED`. 관리자 승인으로 첫 발급된 키는 원문을 받은 사람이 없으므로 이 API로 받는다
+- `DELETE /projects/{projectId}`: 프로젝트·분야·키를 모두 지운다(하드 삭제). 이메일 인증은 요구하지 않는다(예전 키 삭제와 같음). 성공하면 `200 {"message":"삭제되었습니다."}`. 같은 프로젝트를 동시에 지우면 하나만 200이고 나머지는 404
+- 남의 프로젝트(목록 제외 모든 프로젝트 API)는 `404 PROJECT_NOT_FOUND`
 - 동시성
   - 프로젝트 만들기는 사용자 행을 `SELECT ... FOR UPDATE`로 잠가 개수 상한·이름 중복 검사를 한 줄로 세운다. 이름이 unique 제약(`uk_api_projects_user_id_name`)에 걸려도 `409 PROJECT_NAME_DUPLICATED`
   - 분야 신청·승인·재발급·삭제는 프로젝트 행을 잠근다(`findByIdForUpdate`). 같은 분야가 unique 제약(`uk_api_project_fields_project_id_field`)에 걸려도 `409 FIELD_ALREADY_APPLIED`

@@ -86,6 +86,24 @@ class ApiProjectRepositoryMySqlTest @Autowired constructor(
         )
     }
 
+    @Test
+    fun `사용자의 프로젝트를 만든 순서로 읽고 여러 프로젝트의 분야를 한 번에 읽으며 프로젝트 분야만 지운다`() {
+        val first = projectRepository.saveAndFlush(project(2L, "하나"))
+        projectRepository.saveAndFlush(project(3L, "남의 것"))
+        val second = projectRepository.saveAndFlush(project(2L, "둘"))
+        val a = fieldRepository.saveAndFlush(ApiProjectField(first.id!!, ApiKeyField.CLUB, NOW))
+        val b = fieldRepository.saveAndFlush(ApiProjectField(second.id!!, ApiKeyField.STUDENT, NOW))
+        val c = fieldRepository.saveAndFlush(ApiProjectField(first.id!!, ApiKeyField.TEACHER, NOW))
+
+        assertEquals(listOf(first.id, second.id), projectRepository.findAllByUserIdOrderByIdAsc(2L).map { it.id })
+        assertEquals(
+            listOf(a.id, b.id, c.id),
+            fieldRepository.findAllByProjectIdInOrderByIdAsc(listOf(first.id!!, second.id!!)).map { it.id },
+        )
+        assertEquals(2, fieldRepository.deleteAllByProjectId(first.id!!))
+        assertEquals(listOf(b.id), fieldRepository.findAll().map { it.id })
+    }
+
     private fun project(userId: Long, name: String) = ApiProject(userId, name, "급식 공유", NOW)
 
     companion object {
