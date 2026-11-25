@@ -1717,6 +1717,70 @@ paths:
                     code: TEACHER_NOT_FOUND
                     message: 존재하지 않는 교직원 id
   /schedules:
+    get:
+      tags:
+      - 일정
+      summary: 학사 일정 목록 조회
+      description: '시작일과 종료일을 포함해 최대 92일의 학사 일정을 날짜 오름차순, 같은 날짜는 id 오름차순으로 반환한다. 결과가 없으면 빈 배열이다. NEIS와 SCHOOL 일정을 모두 반환하며 500건을 넘으면 일부 목록 대신 400을 반환한다. 기간을 나눠 조회할 수 있지만 하루에 500건을 넘는 날짜는 목록으로 조회할 수 없다. 권한: API 키(SCHEDULE 분야 승인).'
+      operationId: listSchedules
+      security:
+      - apiKeyAuth: []
+      x-required-role: API_KEY
+      parameters:
+      - name: startDate
+        in: query
+        required: true
+        description: 조회 시작일 (yyyy-MM-dd, 1000-01-01~9999-12-31)
+        schema:
+          type: string
+          format: date
+      - name: finishDate
+        in: query
+        required: true
+        description: 조회 종료일 (yyyy-MM-dd, 1000-01-01~9999-12-31)
+        schema:
+          type: string
+          format: date
+      responses:
+        '200':
+          description: 기간 내 학사 일정
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 500
+                items:
+                  $ref: '#/components/schemas/ScheduleResponse'
+        '400':
+          description: 'INVALID_INPUT: 날짜 누락 또는 형식·범위 오류 / INVALID_DATE_RANGE: 종료일이 시작일보다 이르거나 92일 초과 / SCHEDULE_LIST_LIMIT_EXCEEDED: 500건 초과'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 'INVALID_API_KEY: API 키가 없거나 유효하지 않음 / API_KEY_EXPIRED: 만료된 키'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 'API_KEY_FIELD_FORBIDDEN: SCHEDULE 분야가 승인되지 않음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: 'CONCURRENT_UPDATE: 저장소 잠금 충돌'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 'INTERNAL_SERVER_ERROR: 저장소 접근 실패'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
     post:
       tags:
       - 일정
@@ -3816,6 +3880,18 @@ paths:
       - name: status
         in: query
         schema: {type: integer, format: int32, minimum: 100, maximum: 599}
+      - name: api
+        in: query
+        required: false
+        description: '저장된 API 경로 템플릿의 부분 일치 검색. UNMAPPED는 제외하며, 빈 문자열 또는 공백만 입력할 수 없습니다. %, _, !는 글자 그대로 비교합니다.'
+        schema: {type: string, minLength: 1, maxLength: 160, example: /notices}
+      - name: field
+        in: query
+        required: false
+        description: '저장된 MVC 템플릿으로 정하는 기존 분야. 다른 필터와 AND로 적용합니다. 공개 급식과 UNMAPPED 등 미분류는 분야를 지정하면 제외합니다. 빈 값 또는 목록에 없는 값은 400입니다.'
+        schema:
+          type: string
+          enum: [STUDENT, TEACHER, CLUB, SCHEDULE, STUDY_SUPERVISOR]
       - name: page
         in: query
         schema: {type: integer, format: int32, minimum: 0, maximum: 1000, default: 0}

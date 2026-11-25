@@ -1,11 +1,18 @@
 package app.xquare.xquareopenapi.domain.schedule
 
+import org.springframework.data.domain.Limit
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import java.time.LocalDate
 
 interface ScheduleRepository : JpaRepository<Schedule, Long> {
+
+    fun findAllByDateBetweenOrderByDateAscIdAsc(
+        startDate: LocalDate,
+        finishDate: LocalDate,
+        limit: Limit,
+    ): List<Schedule>
 
     // 나이스 동기화가 그 달의 나이스 일정을 읽는다. 학교 일정은 읽지 않으므로 동기화가 건드릴 일이 없다.
     fun findAllBySourceAndDateBetween(source: ScheduleSource, startDate: LocalDate, finishDate: LocalDate): List<Schedule>

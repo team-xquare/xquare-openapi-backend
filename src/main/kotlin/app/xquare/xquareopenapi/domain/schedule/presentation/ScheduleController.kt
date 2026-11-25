@@ -2,15 +2,30 @@ package app.xquare.xquareopenapi.domain.schedule.presentation
 
 import app.xquare.xquareopenapi.domain.schedule.presentation.dto.ScheduleRequest
 import app.xquare.xquareopenapi.domain.schedule.presentation.dto.ScheduleResponse
+import app.xquare.xquareopenapi.domain.schedule.presentation.dto.ScheduleSearchRequest
 import app.xquare.xquareopenapi.domain.schedule.usecase.CreateScheduleUseCase
 import app.xquare.xquareopenapi.domain.schedule.usecase.DeleteScheduleUseCase
 import app.xquare.xquareopenapi.domain.schedule.usecase.GetScheduleUseCase
+import app.xquare.xquareopenapi.domain.schedule.usecase.GetSchedulesUseCase
+import app.xquare.xquareopenapi.domain.schedule.usecase.GetSchedulesUseCase.Companion.MAX_DAYS
+import app.xquare.xquareopenapi.domain.schedule.usecase.GetSchedulesUseCase.Companion.MAX_RESULTS
 import app.xquare.xquareopenapi.domain.schedule.usecase.UpdateScheduleUseCase
 import app.xquare.xquareopenapi.global.dto.MessageResponse
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.extensions.Extension
+import io.swagger.v3.oas.annotations.extensions.ExtensionProperty
+import io.swagger.v3.oas.annotations.media.ArraySchema
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import jakarta.validation.Valid
+import org.springdoc.core.annotations.ParameterObject
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.ModelAttribute
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -25,6 +40,7 @@ import java.net.URI
 class ScheduleController(
     private val createScheduleUseCase: CreateScheduleUseCase,
     private val getScheduleUseCase: GetScheduleUseCase,
+    private val getSchedulesUseCase: GetSchedulesUseCase,
     private val updateScheduleUseCase: UpdateScheduleUseCase,
     private val deleteScheduleUseCase: DeleteScheduleUseCase,
 ) {
@@ -34,6 +50,34 @@ class ScheduleController(
         val scheduleId = createScheduleUseCase.execute(request)
         return ResponseEntity.created(URI.create("/schedules/$scheduleId")).body(MessageResponse("생성되었습니다."))
     }
+
+    @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(
+        operationId = "listSchedules",
+        tags = ["일정"],
+        summary = "학사 일정 목록 조회",
+        description = "시작일과 종료일을 포함해 최대 ${MAX_DAYS}일의 학사 일정을 날짜 오름차순, 같은 날짜는 id 오름차순으로 반환한다. " +
+            "결과가 없으면 빈 배열이다. NEIS와 SCHOOL 일정을 모두 반환하며 ${MAX_RESULTS}건을 넘으면 " +
+            "일부 목록 대신 400을 반환한다. 기간을 나눠 조회할 수 있지만 하루에 ${MAX_RESULTS}건을 넘는 날짜는 목록으로 조회할 수 없다. 권한: API 키(SCHEDULE 분야 승인).",
+        security = [SecurityRequirement(name = "apiKeyAuth")],
+        extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "API_KEY")])],
+    )
+    @ApiResponse(
+        responseCode = "200", description = "기간 내 학사 일정",
+        content = [Content(array = ArraySchema(maxItems = MAX_RESULTS, schema = Schema(implementation = ScheduleResponse::class)))],
+    )
+    @ApiResponse(
+        responseCode = "400",
+        description = "INVALID_INPUT: 날짜 누락 또는 형식·범위 오류 / INVALID_DATE_RANGE: 종료일이 시작일보다 이르거나 " +
+            "${MAX_DAYS}일 초과 / SCHEDULE_LIST_LIMIT_EXCEEDED: ${MAX_RESULTS}건 초과",
+        content = [Content(schema = Schema(implementation = ScheduleListErrorSchema::class))],
+    )
+    @ApiResponse(responseCode = "401", description = "INVALID_API_KEY: API 키가 없거나 유효하지 않음 / API_KEY_EXPIRED: 만료된 키", content = [Content(schema = Schema(implementation = ScheduleListErrorSchema::class))])
+    @ApiResponse(responseCode = "403", description = "API_KEY_FIELD_FORBIDDEN: SCHEDULE 분야가 승인되지 않음", content = [Content(schema = Schema(implementation = ScheduleListErrorSchema::class))])
+    @ApiResponse(responseCode = "409", description = "CONCURRENT_UPDATE: 저장소 잠금 충돌", content = [Content(schema = Schema(implementation = ScheduleListErrorSchema::class))])
+    @ApiResponse(responseCode = "500", description = "INTERNAL_SERVER_ERROR: 저장소 접근 실패", content = [Content(schema = Schema(implementation = ScheduleListErrorSchema::class))])
+    fun listSchedules(@ParameterObject @ModelAttribute @Valid query: ScheduleSearchRequest): List<ScheduleResponse> =
+        getSchedulesUseCase.execute(query.startDate!!, query.finishDate!!)
 
     @GetMapping("/{scheduleId}")
     fun getSchedule(@PathVariable scheduleId: Long): ScheduleResponse =
@@ -51,3 +95,6 @@ class ScheduleController(
         return MessageResponse("삭제되었습니다.")
     }
 }
+
+@Schema(requiredProperties = ["code", "message"])
+private data class ScheduleListErrorSchema(val code: String, val message: String)

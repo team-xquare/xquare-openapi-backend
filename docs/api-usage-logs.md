@@ -4,7 +4,7 @@
 
 ## 수집 범위
 
-- 기존 업무 경로(`auth`, `users`, `students`, `teachers`, `clubs`, `meals`, `notices`, `study-supervisors`, `timetables`)에서 서블릿에 도달한 최초 요청을 관찰합니다. 성공, 애플리케이션 오류, 인증·인가 거절을 포함합니다. 기존 업무 경로 아래에서 컨트롤러가 결정되지 않은 거절·미매핑 요청은 `UNMAPPED`로 기록합니다. 새 업무 경로를 추가할 때 수집 대상도 함께 검토합니다.
+- 기존 업무 경로(`auth`, `users`, `students`, `teachers`, `clubs`, `meals`, `notices`, `study-supervisors`, `timetables`, `schedules`, `api-keys`, `api-key-applications`)에서 서블릿에 도달한 최초 요청을 관찰합니다. 성공, 애플리케이션 오류, 인증·인가 거절을 포함합니다. 기존 업무 경로 아래에서 컨트롤러가 결정되지 않은 거절·미매핑 요청은 `UNMAPPED`로 기록합니다. 새 업무 경로를 추가할 때 수집 대상도 함께 검토합니다.
 - CORS 프리플라이트, Swagger/OpenAPI, 헬스 등 업무 밖 경로, 이 기록을 읽는 운영용 관리자 API는 기록하지 않습니다. Tomcat 오류 재디스패치를 별도 행으로 세지 않습니다. 컨테이너가 애플리케이션에 전달하기 전에 거절한 요청은 관찰할 수 없습니다. 현재 동기식 MVC 업무 요청을 대상으로 합니다.
 - 저장·조회 필드는 `id`(서버 생성 정수), `occurredAt`(UTC의 응답 완료 시각), `method`(정해진 HTTP 메서드 또는 `OTHER`), `route`(MVC가 정한 템플릿 또는 `UNMAPPED`), `status`(최종 상태), `durationMs`(기록 자체의 DB 시간을 뺀 처리 시간, 밀리초)입니다. 모두 필수이며 null을 반환하지 않습니다.
 - 요청·응답 본문, raw URI/쿼리/헤더 값, 경로 변수 값, IP, 사용자 식별자, 이메일, 비밀번호, OTP, 토큰과 API 키 원문·해시를 저장하지 않습니다.
@@ -19,8 +19,20 @@
 - `from`, `to`: ISO 8601의 시각. 둘 다 생략하면 조회 시점 기준 최근 24시간입니다. 함께 지정하면 `from` 포함, `to` 제외이며 최대 31일입니다. 허용 경계는 `1970-01-01T00:00:00Z` 이상, `9999-01-01T00:00:00Z` 이하입니다. 완료 시각은 마이크로초 미만을 버려 저장합니다. 기간과 범위는 입력 시각 그대로 검증하며, 마이크로초 사이의 경계에는 다음 저장 가능 시각을 사용해 저장된 값에 대한 `[from, to)`를 유지합니다.
 - `method`: `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `TRACE`, `CONNECT`, `OTHER` 중 하나이며 생략하면 전체입니다.
 - `status`: 100–599의 정수이며 생략하면 전체입니다.
+- `api`: 저장된 `route` 템플릿의 일부를 검색합니다. 예: `GET /admin/api-usage-logs?api=%2Fnotices&method=GET`. 디코딩한 값이 비어 있거나 공백으로만 이루어졌거나 160자(UTF-16 코드 단위)를 넘으면 `400 INVALID_INPUT`입니다. 그 외에는 값을 자르거나 공백을 제거하지 않으며 `%`, `_`, `!`도 글자 그대로 비교합니다. 대소문자 비교는 DB 정렬 규칙을 따릅니다. 다른 필터와 AND로 결합하며, `api`를 지정한 경우 `UNMAPPED`는 제외합니다. 생략하면 미매핑 기록도 기존과 같이 조회합니다. 원본 URL·실제 경로 변수·쿼리는 검색 대상이 아니며 이 기능은 검색어를 저장하거나 사용 기록에 남기지 않습니다.
+- `field`: 기존 활용신청 분야 이름 하나를 지정합니다. 빈 값, 공백, 잘못된 대소문자 및 목록에 없는 값은 `400 INVALID_INPUT`입니다. 아래의 저장된 MVC 템플릿과 정확히 일치하는 행만 반환합니다. 예: `GET /admin/api-usage-logs?field=SCHEDULE&status=404&api=schedules`. 기간·메서드·상태·API 검색을 모두 만족하는 행을 대상으로 페이지와 전체 건수를 계산합니다.
 - `page`: 0–1000(기본 0). `size`: 1–100(기본 20). `occurredAt` 내림차순, 동일 시각이면 `id` 내림차순입니다. 응답은 기존 `content`, `page`, `size`, `totalCount`, `totalPage` 형식입니다. 연속 페이지 조회 시 `from`/`to`를 고정해도 동시 기록이 들어오면 오프셋이 달라질 수 있습니다.
 - 범위·타입 오류는 조회 트랜잭션 전에 `400 INVALID_INPUT`을 반환합니다. 연결 획득과 트랜잭션 종료를 포함한 조회 저장소 오류는 `500 INTERNAL_SERVER_ERROR`, 잠금 충돌은 기존대로 `409 CONCURRENT_UPDATE`입니다.
+
+분야는 조회 시에만 다음 템플릿으로 결정합니다. 키나 권한과는 무관하며 스키마, 저장 항목, 응답 필드는 바뀌지 않습니다. 기존 행과 템플릿이 남은 실패 행에도 같은 규칙을 적용합니다.
+
+- `STUDENT`: `/students`, `/students/{studentId}`
+- `TEACHER`: `/teachers`, `/teachers/{teacherId}`
+- `CLUB`: `/clubs`, `/clubs/{clubId}`
+- `SCHEDULE`: `/schedules`, `/schedules/{scheduleId}`
+- `STUDY_SUPERVISOR`: `/study-supervisors`, `/study-supervisors/day`, `/study-supervisors/{studySupervisorId}`
+
+분야가 없는 공개 급식과 그 밖의 미분류 행(`UNMAPPED` 포함)은 어떤 분야와도 일치하지 않습니다. `field`를 생략하면 다른 조회 조건에 따라 기존과 동일하게 볼 수 있습니다. 예를 들어 `api=meals`로 공개 급식을, `status=401`만 지정해 템플릿이 없는 인증 실패를 볼 수 있습니다. 프로젝트·신청자·단계의 저장과 검색은 이 기능의 범위에 포함하지 않습니다.
 
 ## 적용 및 롤백
 
