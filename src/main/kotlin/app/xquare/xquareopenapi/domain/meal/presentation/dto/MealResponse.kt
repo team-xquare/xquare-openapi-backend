@@ -1,8 +1,10 @@
 package app.xquare.xquareopenapi.domain.meal.presentation.dto
 
 import app.xquare.xquareopenapi.domain.meal.Meal
+import io.swagger.v3.oas.annotations.media.Schema
 import java.time.LocalDate
 
+@Schema(requiredProperties = ["id", "date", "breakfast", "lunch", "dinner"])
 data class MealResponse(
     val id: Long,
     val date: LocalDate,

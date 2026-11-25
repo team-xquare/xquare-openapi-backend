@@ -1,9 +1,11 @@
 package app.xquare.xquareopenapi.domain.timetable.presentation.dto
 
 import app.xquare.xquareopenapi.domain.timetable.neis.NeisTimetable
+import io.swagger.v3.oas.annotations.media.Schema
 import java.time.LocalDate
 
 // 수업이 없는 날(주말·방학·공휴일)은 days에 넣지 않는다.
+@Schema(requiredProperties = ["grade", "classNum", "startDate", "finishDate", "days"])
 data class TimetableResponse(
     val grade: Int,
     val classNum: Int,
@@ -26,11 +28,13 @@ data class TimetableResponse(
     }
 }
 
+@Schema(requiredProperties = ["date", "periods"])
 data class TimetableDayResponse(
     val date: LocalDate,
     val periods: List<TimetablePeriodResponse>,
 )
 
+@Schema(requiredProperties = ["period", "subject"])
 data class TimetablePeriodResponse(
     val period: Int,
     val subject: String,

@@ -1,10 +1,12 @@
 package app.xquare.xquareopenapi.domain.notice.presentation.dto
 
 import app.xquare.xquareopenapi.domain.notice.Notice
+import io.swagger.v3.oas.annotations.media.Schema
 import org.springframework.data.domain.Page
 import java.time.LocalDateTime
 
 // 명세의 목록 필드 이름이 content가 아니라 notices라서 PageResponse와 같은 모양으로 따로 둔다.
+@Schema(requiredProperties = ["notices", "page", "size", "totalCount", "totalPage"])
 data class NoticeListResponse(
     val notices: List<NoticeSummaryResponse>,
     val page: Int,
@@ -19,6 +21,7 @@ data class NoticeListResponse(
 }
 
 // 목록에는 본문을 넣지 않는다.
+@Schema(requiredProperties = ["id", "title", "createdAt"])
 data class NoticeSummaryResponse(
     val id: Long,
     val title: String,
@@ -39,6 +42,7 @@ data class NoticeSummaryResponse(
     }
 }
 
+@Schema(requiredProperties = ["id", "title", "content", "createdAt"])
 data class NoticeDetailResponse(
     val id: Long,
     val title: String,

@@ -5,7 +5,10 @@ import app.xquare.xquareopenapi.domain.club.presentation.dto.ClubSummaryResponse
 import app.xquare.xquareopenapi.domain.teacher.Teacher
 import app.xquare.xquareopenapi.domain.teacher.TeacherPosition
 import app.xquare.xquareopenapi.domain.teacher.TeacherSubject
+import com.fasterxml.jackson.annotation.JsonProperty
+import io.swagger.v3.oas.annotations.media.Schema
 
+@Schema(requiredProperties = ["id", "name", "subject", "office", "isManager", "position"])
 data class TeacherResponse(
     val id: Long,
     val name: String,
@@ -13,6 +16,8 @@ data class TeacherResponse(
     val classNum: Int?,
     val subject: TeacherSubject,
     val office: String,
+    @get:JsonProperty("isManager")
+    @field:Schema(description = "부장 여부", example = "true")
     val isManager: Boolean,
     val position: TeacherPosition,
     // 담당 동아리가 없으면 null이다.
