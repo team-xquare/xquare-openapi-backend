@@ -1,6 +1,7 @@
 package app.xquare.xquareopenapi.domain.apikey.presentation
 
 import app.xquare.xquareopenapi.domain.apikey.presentation.dto.ApiKeyEmailVerificationRequest
+import app.xquare.xquareopenapi.domain.apikey.presentation.dto.ApiKeyRenewResponse
 import app.xquare.xquareopenapi.domain.apikey.presentation.dto.ApiKeyResponse
 import app.xquare.xquareopenapi.domain.apikey.presentation.dto.ApplyProjectFieldsRequest
 import app.xquare.xquareopenapi.domain.apikey.presentation.dto.CreateProjectRequest
@@ -12,6 +13,7 @@ import app.xquare.xquareopenapi.domain.apikey.usecase.CreateProjectUseCase
 import app.xquare.xquareopenapi.domain.apikey.usecase.DeleteProjectUseCase
 import app.xquare.xquareopenapi.domain.apikey.usecase.GetMyProjectsUseCase
 import app.xquare.xquareopenapi.domain.apikey.usecase.ReissueProjectApiKeyUseCase
+import app.xquare.xquareopenapi.domain.apikey.usecase.RenewProjectApiKeyUseCase
 import app.xquare.xquareopenapi.global.dto.MessageResponse
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -34,6 +36,7 @@ class ProjectController(
     private val getMyProjectsUseCase: GetMyProjectsUseCase,
     private val reissueProjectApiKeyUseCase: ReissueProjectApiKeyUseCase,
     private val deleteProjectUseCase: DeleteProjectUseCase,
+    private val renewProjectApiKeyUseCase: RenewProjectApiKeyUseCase,
 ) {
 
     @PostMapping
@@ -70,6 +73,14 @@ class ProjectController(
         @RequestBody @Valid request: ApiKeyEmailVerificationRequest,
     ): ApiKeyResponse =
         reissueProjectApiKeyUseCase.execute(userId, projectId, request)
+
+    @PostMapping("/{projectId}/api-key/renew")
+    fun renew(
+        @AuthenticationPrincipal userId: Long,
+        @PathVariable projectId: Long,
+        @RequestBody @Valid request: ApiKeyEmailVerificationRequest,
+    ): ApiKeyRenewResponse =
+        renewProjectApiKeyUseCase.execute(userId, projectId, request)
 
     @DeleteMapping("/{projectId}")
     fun delete(@AuthenticationPrincipal userId: Long, @PathVariable projectId: Long): MessageResponse {

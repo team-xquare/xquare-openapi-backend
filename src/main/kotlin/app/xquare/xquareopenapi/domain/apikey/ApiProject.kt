@@ -46,7 +46,7 @@ class ApiProject(
     var issuedAt: LocalDateTime? = null
         protected set
 
-    // 만료 시각. null이면 만료되지 않는다.
+    // 만료 시각 = 발급·재발급·갱신 시각 + 60일. 첫 승인 전(키 없음)이면 null이다.
     @Column(name = "expires_at")
     var expiresAt: LocalDateTime? = null
         protected set
@@ -58,12 +58,21 @@ class ApiProject(
         val rawKey = ApiKeySecret.generate()
         keyHash = ApiKeySecret.hash(rawKey)
         issuedAt = now
+        expiresAt = now.plusDays(KEY_LIFETIME_DAYS)
         return rawKey
+    }
+
+    // 키 값은 그대로 두고 만료 시각만 지금부터 60일 뒤로 늦춘다.
+    fun renewKey(now: LocalDateTime) {
+        expiresAt = now.plusDays(KEY_LIFETIME_DAYS)
     }
 
     companion object {
         const val USER_ID_NAME_UNIQUE_CONSTRAINT = "uk_api_projects_user_id_name"
         const val KEY_HASH_UNIQUE_CONSTRAINT = "uk_api_projects_key_hash"
+
+        // 키를 발급·재발급·갱신한 뒤 쓸 수 있는 기간(일)
+        const val KEY_LIFETIME_DAYS = 60L
 
         // 사용자당 프로젝트 개수 상한
         const val MAX_PER_USER = 5

@@ -114,6 +114,9 @@
   - 동아리·자습 감독·일정 조회는 예전에 JWT(USER)로 열려 있었는데 키 체인으로 옮겼다. 이제 액세스 토큰만으로는 `401 INVALID_API_KEY`
   - `GET /study-supervisors/{id}`는 매핑이 없어 키 체인에 넣지 않았다(JWT 체인에서 405)
 - 공개 단계: 급식과 시간표(`GET /timetables`)는 키·토큰 없이 연다(`permitAll`). 시간표는 예전에 JWT(USER)였다
+- 60일 만료: 키를 발급(첫 승인)·재발급하면 `expires_at = 그 시각 + 60일`. `POST /projects/{projectId}/api-key/renew`(이메일 인증)는 키 값과 `issued_at`은 그대로 두고 `expires_at = 지금 + 60일`로 늦춘다. 이미 만료된 키도 갱신하면 다시 쓴다. 응답 `{ issuedAt, expiresAt }`(원문 없음). 키가 아직 없으면 `409 API_KEY_NOT_ISSUED`
+  - 만료 계산은 `Clock` 빈(서울)으로 한다. 테스트는 시각을 바꿀 수 있는 가짜 Clock(`MutableClockConfig`)으로 경계(만료 시각 직전·정각)를 확인한다
+  - 만료 전 알림 메일은 이번 범위 밖(명세 6절 5번)
 - 만료: `api_projects.expires_at`이 지금 시각(Clock 빈, 서울) 이하이면 만료로 보고 `401 API_KEY_EXPIRED`. 필터가 요청 속성에 만료 표시만 남기고 인증하지 않으면, 키 체인의 entry point가 그 표시를 보고 `INVALID_API_KEY` 대신 `API_KEY_EXPIRED`로 응답한다. `expires_at`이 null이면 만료되지 않는다
 
 # 학생·교직원

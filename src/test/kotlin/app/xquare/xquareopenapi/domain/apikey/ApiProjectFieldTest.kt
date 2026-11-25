@@ -106,6 +106,20 @@ class ApiProjectFieldTest {
         assertTrue(rawKey.startsWith("xq_"))
         assertEquals(ApiKeySecret.hash(rawKey), project.keyHash)
         assertEquals(LATER, project.issuedAt)
+        assertEquals(LATER.plusDays(60), project.expiresAt)
+    }
+
+    @Test
+    fun `갱신하면 키 값과 발급 시각은 그대로 두고 만료 시각만 60일 뒤로 늦춘다`() {
+        val project = ApiProject(1L, "급식 알리미", "급식 공유", NOW)
+        project.issueKey(NOW)
+        val keyHash = project.keyHash
+
+        project.renewKey(LATER.plusDays(30))
+
+        assertEquals(keyHash, project.keyHash)
+        assertEquals(NOW, project.issuedAt)
+        assertEquals(LATER.plusDays(90), project.expiresAt)
     }
 
     private fun reject(field: ApiProjectField) {

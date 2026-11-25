@@ -720,6 +720,94 @@ paths:
                   value:
                     code: API_KEY_NOT_ISSUED
                     message: 아직 발급된 API 키가 없습니다. 분야가 승인된 뒤 다시 시도해 주세요.
+  /projects/{projectId}/api-key/renew:
+    post:
+      tags:
+      - API 키
+      summary: 키 갱신
+      description: '키 값은 그대로 두고 만료 시각만 지금부터 60일 뒤로 늦춘다. 이미 만료된 키도 갱신하면 다시 쓸 수 있다. 이메일 인증이 필요하고, 성공하면 토큰은 폐기된다. 권한: USER,
+        ADMIN(로그인한 본인).'
+      operationId: renewProjectApiKey
+      security:
+      - bearerAuth: []
+      x-required-role: USER
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApiKeyEmailVerificationRequest'
+            example:
+              emailVerifiedToken: 3f1c2a9e-8b7d-4e6f-9a01-2b3c4d5e6f70
+      responses:
+        '200':
+          description: 갱신됨
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyRenewResponse'
+        '400':
+          description: '`INVALID_INPUT`: 이메일 인증 토큰 누락·공백, projectId가 숫자가 아님'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
+        '401':
+          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_TOKEN:
+                  value:
+                    code: INVALID_TOKEN
+                    message: 토큰이 없거나 유효하지 않습니다.
+        '403':
+          description: '`EMAIL_NOT_VERIFIED`: 이메일 인증 토큰이 없거나 만료됨, 또는 로그인한 사용자의 이메일로 받은 토큰이 아님'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                EMAIL_NOT_VERIFIED:
+                  value:
+                    code: EMAIL_NOT_VERIFIED
+                    message: 이메일 인증이 완료되지 않았습니다.
+        '404':
+          description: '`PROJECT_NOT_FOUND`: 없거나 내 프로젝트가 아님'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                PROJECT_NOT_FOUND:
+                  value:
+                    code: PROJECT_NOT_FOUND
+                    message: 존재하지 않는 프로젝트입니다.
+        '409':
+          description: '`API_KEY_NOT_ISSUED`: 승인된 분야가 없어 아직 키가 발급되지 않음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                API_KEY_NOT_ISSUED:
+                  value:
+                    code: API_KEY_NOT_ISSUED
+                    message: 아직 발급된 API 키가 없습니다. 분야가 승인된 뒤 다시 시도해 주세요.
   /projects/{projectId}/fields:
     post:
       tags:
@@ -3944,7 +4032,7 @@ components:
           - string
           - 'null'
           format: date-time
-          description: 만료 시각(+09:00). 발급 전이거나 만료가 없으면 null
+          description: 만료 시각(+09:00) = 발급·재발급·갱신 시각 + 60일. 발급 전이면 null
           example: '2027-01-23T10:00:00+09:00'
         fields:
           type: array
@@ -4025,8 +4113,24 @@ components:
           - string
           - 'null'
           format: date-time
-          description: 만료 시각(+09:00). 만료가 없으면 null
+          description: 만료 시각(+09:00) = 재발급 시각 + 60일
           example: '2027-01-23T10:00:00+09:00'
+    ApiKeyRenewResponse:
+      type: object
+      required:
+      - issuedAt
+      - expiresAt
+      properties:
+        issuedAt:
+          type: string
+          format: date-time
+          description: 키 값을 발급한 시각(+09:00). 갱신해도 바뀌지 않는다
+          example: '2026-11-24T10:00:00+09:00'
+        expiresAt:
+          type: string
+          format: date-time
+          description: 새 만료 시각(+09:00) = 갱신 시각 + 60일
+          example: '2027-02-02T10:00:00+09:00'
     ApiApplicationRejectRequest:
       type: object
       required:

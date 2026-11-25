@@ -15,7 +15,7 @@ data class ProjectSummaryResponse(
     val keyIssued: Boolean,
     // 지금 키 값을 발급한 시각. 발급 전이면 null. 한국 시간(+09:00)
     val issuedAt: OffsetDateTime?,
-    // 만료 시각. 발급 전이거나 만료가 없으면 null. 한국 시간(+09:00)
+    // 만료 시각(발급·재발급·갱신 + 60일). 발급 전이면 null. 한국 시간(+09:00)
     val expiresAt: OffsetDateTime?,
     // 처음 신청한 순서
     val fields: List<ProjectFieldResponse>,
