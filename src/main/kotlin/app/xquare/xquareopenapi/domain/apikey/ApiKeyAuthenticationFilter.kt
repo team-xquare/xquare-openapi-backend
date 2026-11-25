@@ -24,7 +24,8 @@ class ApiKeyAuthenticationFilter(
 ) : OncePerRequestFilter() {
 
     override fun doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, filterChain: FilterChain) {
-        val rawKey = request.getHeader(HEADER)
+        // 빈 문자열·공백 헤더는 키가 없는 것과 같게 보고 DB를 조회하지 않는다.
+        val rawKey = request.getHeader(HEADER)?.takeIf { it.isNotBlank() }
         val project = rawKey?.let { projectRepository.findByKeyHash(ApiKeySecret.hash(it)) }
         if (project != null) {
             val expiresAt = project.expiresAt

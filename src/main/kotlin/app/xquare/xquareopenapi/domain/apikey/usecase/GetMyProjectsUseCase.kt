@@ -19,6 +19,8 @@ class GetMyProjectsUseCase(
     @Transactional(readOnly = true)
     fun list(userId: Long): List<ProjectSummaryResponse> {
         val projects = projectRepository.findAllByUserIdOrderByIdAsc(userId)
+        // 프로젝트가 없으면 분야를 읽을 필요가 없다.
+        if (projects.isEmpty()) return emptyList()
         val fieldsByProject = fieldRepository.findAllByProjectIdInOrderByIdAsc(projects.map { it.id!! }).groupBy { it.projectId }
         return projects.map { ProjectSummaryResponse.of(it, fieldsByProject[it.id].orEmpty()) }
     }

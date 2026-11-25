@@ -5,7 +5,8 @@ package app.xquare.xquareopenapi.domain.apikey
 enum class ApiKeyField(val level: AccessLevel) {
     STUDENT(AccessLevel.RESTRICTED),
     TEACHER(AccessLevel.RESTRICTED),
-    CLUB(AccessLevel.SCHOOL),
+    // 동아리 응답에 부원 학번·실명이 들어가므로 관리자 승인이 필요한 제한 단계다.
+    CLUB(AccessLevel.RESTRICTED),
     SCHEDULE(AccessLevel.SCHOOL),
     STUDY_SUPERVISOR(AccessLevel.SCHOOL),
     ;

@@ -96,6 +96,10 @@ class SecurityConfig {
                 authorize(HttpMethod.GET, "/meals/*", permitAll)
                 // 시간표 조회도 공개(PUBLIC) 단계라 키·토큰 없이 연다.
                 authorize(HttpMethod.GET, "/timetables", permitAll)
+                // Spring MVC가 GET 매핑에 자동으로 붙이는 HEAD도 공개 GET과 같이 연다.
+                authorize(HttpMethod.HEAD, "/meals", permitAll)
+                authorize(HttpMethod.HEAD, "/meals/*", permitAll)
+                authorize(HttpMethod.HEAD, "/timetables", permitAll)
                 // 처리되지 않은 오류는 /error로 포워드된다. 이걸 막으면 415·500 같은 원래 응답이 전부 401로 바뀐다.
                 authorize(DispatcherTypeRequestMatcher(DispatcherType.ERROR), permitAll)
                 authorize(HttpMethod.POST, "/students", hasRole(ADMIN))

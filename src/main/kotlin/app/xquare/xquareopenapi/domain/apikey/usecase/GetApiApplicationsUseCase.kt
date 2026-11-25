@@ -27,6 +27,10 @@ class GetApiApplicationsUseCase(
     fun list(request: ApiApplicationSearchRequest): PageResponse<ApiApplicationSummaryResponse> {
         val pageable = PageRequest.of(request.page, request.size, Sort.by(Sort.Order.desc("appliedAt"), Sort.Order.desc("id")))
         val fields = fieldRepository.search(request.status, pageable)
+        // 페이지가 비면 붙일 프로젝트가 없으므로 프로젝트를 읽지 않는다.
+        if (fields.content.isEmpty()) {
+            return PageResponse(emptyList(), fields.number, fields.size, fields.totalElements, fields.totalPages)
+        }
         // 신청은 프로젝트 id만 들고 있어서, 한 페이지의 프로젝트를 한 번에 읽어 이름과 신청자를 붙인다.
         // 분야는 프로젝트와 같은 트랜잭션에서 지워지고 REPEATABLE READ라 같은 스냅샷을 보므로 프로젝트는 항상 있다.
         val projects = projectRepository.findAllById(fields.content.map { it.projectId }.toSet()).associateBy { it.id!! }

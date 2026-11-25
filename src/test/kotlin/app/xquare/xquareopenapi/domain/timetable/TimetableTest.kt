@@ -16,6 +16,7 @@ import org.springframework.test.context.TestPropertySource
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.head
 import java.time.LocalDate
 
 // 시간표 캐시는 컨텍스트에 남으므로 테스트마다 다른 학급·주를 쓴다.
@@ -116,5 +117,10 @@ class TimetableTest @Autowired constructor(
         mockMvc.get("/timetables?grade=2&classNum=6&date=2026-12-07") {
             header("Authorization", "Bearer invalid-token")
         }.andExpect { status { isOk() } }
+    }
+
+    @Test
+    fun `GET에 자동으로 붙는 HEAD도 키나 토큰 없이 401 없이 응답한다`() {
+        mockMvc.head("/timetables?grade=2&classNum=5&date=2026-12-07").andExpect { status { isOk() } }
     }
 }

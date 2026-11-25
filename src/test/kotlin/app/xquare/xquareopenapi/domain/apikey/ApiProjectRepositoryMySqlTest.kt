@@ -73,15 +73,15 @@ class ApiProjectRepositoryMySqlTest @Autowired constructor(
         val rawKey = project.issueKey(NOW)
         projectRepository.saveAndFlush(project)
         val other = projectRepository.saveAndFlush(project(3L, "다른 프로젝트"))
-        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.CLUB, NOW))
+        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.STUDY_SUPERVISOR, NOW))
         fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.STUDENT, NOW))
         fieldRepository.saveAndFlush(ApiProjectField(other.id!!, ApiKeyField.SCHEDULE, NOW))
 
         assertEquals(project.id, projectRepository.findByKeyHash(ApiKeySecret.hash(rawKey))?.id)
-        assertEquals(listOf(ApiKeyField.CLUB), fieldRepository.findFieldsByProjectIdAndStatus(project.id!!, ApplicationStatus.APPROVED))
+        assertEquals(listOf(ApiKeyField.STUDY_SUPERVISOR), fieldRepository.findFieldsByProjectIdAndStatus(project.id!!, ApplicationStatus.APPROVED))
         assertEquals(listOf(ApiKeyField.STUDENT), fieldRepository.findFieldsByProjectIdAndStatus(project.id!!, ApplicationStatus.PENDING))
         assertEquals(
-            listOf(ApiKeyField.CLUB, ApiKeyField.STUDENT),
+            listOf(ApiKeyField.STUDY_SUPERVISOR, ApiKeyField.STUDENT),
             fieldRepository.findAllByProjectIdOrderByIdAsc(project.id!!).map { it.field },
         )
     }
@@ -107,7 +107,7 @@ class ApiProjectRepositoryMySqlTest @Autowired constructor(
     @Test
     fun `관리자 목록은 상태로 거르고 null이면 전체를 읽는다`() {
         val project = projectRepository.saveAndFlush(project(2L, "급식 알리미"))
-        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.CLUB, NOW))
+        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.SCHEDULE, NOW))
         fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.STUDENT, NOW))
 
         val pageable = org.springframework.data.domain.PageRequest.of(0, 10)

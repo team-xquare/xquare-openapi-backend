@@ -115,6 +115,14 @@ class GetMyProjectsTest @Autowired constructor(
     }
 
     @Test
+    fun `프로젝트가 없으면 빈 목록이다`() {
+        mockMvc.get("/projects") { header("Authorization", "Bearer $userToken") }.andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(0) }
+        }
+    }
+
+    @Test
     fun `projectId가 숫자가 아니면 INVALID_INPUT`() {
         mockMvc.get("/projects/abc") { header("Authorization", "Bearer $userToken") }.andExpect {
             status { isBadRequest() }

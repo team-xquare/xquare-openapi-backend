@@ -78,6 +78,16 @@ class AdminApiApplicationTest @Autowired constructor(
     }
 
     @Test
+    fun `조건에 맞는 신청이 없으면 빈 목록이다`() {
+        mockMvc.get("/admin/api-applications?status=PENDING") { bearer(adminToken) }.andExpect {
+            status { isOk() }
+            jsonPath("$.content.length()") { value(0) }
+            jsonPath("$.totalCount") { value(0) }
+            jsonPath("$.totalPage") { value(0) }
+        }
+    }
+
+    @Test
     fun `상태로 거르고 페이지를 나눈다`() {
         val project = projectRepository.saveProject(userId)
         val now = LocalDateTime.of(2026, 11, 24, 9, 0)
@@ -271,6 +281,19 @@ class AdminApiApplicationTest @Autowired constructor(
         assertEquals(ADMIN_ID, rejected.decidedBy)
         assertNotNull(rejected.decidedAt)
         assertNull(projectRepository.findById(project.id!!).orElseThrow().keyHash)
+    }
+
+    @Test
+    fun `반려 사유는 앞뒤 공백을 다듬어 저장한다`() {
+        val project = projectRepository.saveProject(userId)
+        val application = fieldRepository.saveField(project.id!!, ApiKeyField.TEACHER, ApplicationStatus.PENDING)
+
+        mockMvc.post("/admin/api-applications/${application.id}/reject") { bearer(adminToken); reason("  목적과 맞지 않습니다.  ") }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.rejectReason") { value("목적과 맞지 않습니다.") }
+            }
+        assertEquals("목적과 맞지 않습니다.", fieldRepository.findById(application.id!!).orElseThrow().rejectReason)
     }
 
     @Test

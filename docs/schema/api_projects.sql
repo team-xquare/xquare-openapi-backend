@@ -33,5 +33,7 @@ create table api_project_fields (
     decided_at    datetime(6),
     decided_by    bigint,
     primary key (id),
-    unique key uk_api_project_fields_project_id_field (project_id, field)
+    unique key uk_api_project_fields_project_id_field (project_id, field),
+    -- 관리자 신청 목록(상태로 거르고 applied_at, id 역순)을 정렬 없이 읽기 위한 인덱스
+    index ix_api_project_fields_status_applied (status, applied_at, id)
 ) engine = InnoDB default charset = utf8mb4;

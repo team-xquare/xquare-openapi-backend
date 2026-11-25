@@ -37,13 +37,17 @@ class CreateProjectUseCase(
         if (projectRepository.countByUserId(userId) >= ApiProject.MAX_PER_USER) {
             throw XquareException(ErrorCode.PROJECT_LIMIT_EXCEEDED)
         }
-        if (projectRepository.existsByUserIdAndName(userId, request.name)) {
+        // 앞뒤 공백만 다른 이름이 따로 저장되지 않게 다듬어서 검사·저장한다.
+        // 공백뿐인 값은 DTO의 @NotBlank가 먼저 400 INVALID_INPUT으로 막으므로 다듬은 값은 비지 않는다.
+        val name = request.name.trim()
+        val purpose = request.purpose.trim()
+        if (projectRepository.existsByUserIdAndName(userId, name)) {
             throw XquareException(ErrorCode.PROJECT_NAME_DUPLICATED)
         }
         val now = LocalDateTime.now(clock)
         // 사용자 잠금으로 이름 검사를 차례로 지나므로 정상 흐름에서는 걸리지 않지만, 제약에 걸리면 같은 409로 바꾼다.
         val project = try {
-            projectRepository.saveAndFlush(ApiProject(userId, request.name, request.purpose, now))
+            projectRepository.saveAndFlush(ApiProject(userId, name, purpose, now))
         } catch (e: DataIntegrityViolationException) {
             if (e.violates(ApiProject.USER_ID_NAME_UNIQUE_CONSTRAINT)) throw XquareException(ErrorCode.PROJECT_NAME_DUPLICATED)
             throw e

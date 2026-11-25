@@ -34,7 +34,8 @@ class DecideApiApplicationUseCase(
         }
 
     fun reject(adminId: Long, applicationId: Long, reason: String): ApiApplicationDetailResponse =
-        decide(applicationId) { field, _, now -> field.reject(adminId, reason, now) }
+        // 사유의 앞뒤 공백은 다듬어 저장한다. 공백뿐인 사유는 DTO의 @NotBlank가 먼저 400으로 막는다.
+        decide(applicationId) { field, _, now -> field.reject(adminId, reason.trim(), now) }
 
     // 같은 프로젝트를 바꾸는 다른 요청(분야 신청·재발급·삭제·다른 승인)과 같은 순서로 프로젝트 행을 먼저 잠근다.
     // 잠글 프로젝트 id는 트랜잭션 밖에서 읽는다. 트랜잭션 안에서 잠금 전에 일반 조회를 하면 MySQL REPEATABLE READ가

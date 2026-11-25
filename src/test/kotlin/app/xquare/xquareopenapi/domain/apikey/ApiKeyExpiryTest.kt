@@ -57,7 +57,7 @@ class ApiKeyExpiryTest @Autowired constructor(
 
     @Test
     fun `프로젝트를 만들며 받은 키는 발급 시각부터 60일 뒤에 만료된다`() {
-        val created = post("/projects", """{"name":"급식 알리미","purpose":"급식","fields":["CLUB"],"emailVerifiedToken":"${token()}"}""")
+        val created = post("/projects", """{"name":"급식 알리미","purpose":"급식","fields":["SCHEDULE"],"emailVerifiedToken":"${token()}"}""")
             .andExpect { status { isCreated() } }.json()
         val apiKey = created["apiKey"].asString()
         val project = projectRepository.findAll().single()
@@ -69,9 +69,9 @@ class ApiKeyExpiryTest @Autowired constructor(
             jsonPath("$[0].expiresAt") { value("2027-01-23T10:00:00+09:00") }
         }
         clock.set(ISSUED.plusDays(60).minusNanos(1_000))
-        mockMvc.get("/clubs") { header("X-API-Key", apiKey) }.andExpect { status { isOk() } }
+        mockMvc.get("/schedules?startDate=2026-09-01&finishDate=2026-09-30") { header("X-API-Key", apiKey) }.andExpect { status { isOk() } }
         clock.set(ISSUED.plusDays(60))
-        mockMvc.get("/clubs") { header("X-API-Key", apiKey) }.andExpect {
+        mockMvc.get("/schedules?startDate=2026-09-01&finishDate=2026-09-30") { header("X-API-Key", apiKey) }.andExpect {
             status { isUnauthorized() }
             jsonPath("$.code") { value("API_KEY_EXPIRED") }
         }

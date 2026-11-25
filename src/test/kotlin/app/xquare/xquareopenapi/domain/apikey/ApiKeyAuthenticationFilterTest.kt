@@ -114,6 +114,19 @@ class ApiKeyAuthenticationFilterTest {
         assertNotNull(chain.request)
     }
 
+    @Test
+    fun `키 헤더가 빈 문자열이거나 공백이면 키가 없는 것과 같아 DB를 조회하지 않는다`() {
+        listOf("", " ", "\t ").forEach { blank ->
+            val chain = MockFilterChain()
+
+            filter.doFilter(request(blank), MockHttpServletResponse(), chain)
+
+            assertNull(SecurityContextHolder.getContext().authentication)
+            assertNotNull(chain.request)
+        }
+        verifyNoInteractions(projectRepository, fieldRepository)
+    }
+
     // 승인된 분야만 돌려주도록 APPROVED로 물을 때만 응답한다. 다른 상태로 물으면 mock 기본값인 빈 목록이다.
     private fun stubKey(projectId: Long, userId: Long, approved: List<ApiKeyField>, expiresAt: LocalDateTime? = null) {
         val project = ApiProject(userId, "급식 알리미", "급식 공유", NOW)

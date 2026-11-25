@@ -71,13 +71,13 @@ class CreateProjectTest @Autowired constructor(
     @Test
     fun `교내 분야를 신청하면 바로 승인되고 키를 발급해 원문을 준다`() {
         val before = LocalDateTime.now(SEOUL)
-        val result = create(body(fields = """["SCHEDULE","CLUB"]""")).andExpect {
+        val result = create(body(fields = """["SCHEDULE","STUDY_SUPERVISOR"]""")).andExpect {
             status { isCreated() }
             jsonPath("$.fields.length()") { value(2) }
             jsonPath("$.fields[0].field") { value("SCHEDULE") }
             jsonPath("$.fields[0].level") { value("SCHOOL") }
             jsonPath("$.fields[0].status") { value("APPROVED") }
-            jsonPath("$.fields[1].field") { value("CLUB") }
+            jsonPath("$.fields[1].field") { value("STUDY_SUPERVISOR") }
             jsonPath("$.fields[1].status") { value("APPROVED") }
         }.json()
         val after = LocalDateTime.now(SEOUL)
@@ -93,7 +93,7 @@ class CreateProjectTest @Autowired constructor(
         assertTrue(project.createdAt in before..after, "${project.createdAt}")
         assertEquals(project.createdAt, project.issuedAt)
         val fields = fieldRepository.findAllByProjectIdOrderByIdAsc(project.id!!)
-        assertEquals(listOf(ApiKeyField.SCHEDULE, ApiKeyField.CLUB), fields.map { it.field })
+        assertEquals(listOf(ApiKeyField.SCHEDULE, ApiKeyField.STUDY_SUPERVISOR), fields.map { it.field })
         fields.forEach {
             assertEquals(ApplicationStatus.APPROVED, it.status)
             assertEquals(project.createdAt, it.appliedAt)
@@ -106,9 +106,9 @@ class CreateProjectTest @Autowired constructor(
 
     @Test
     fun `받은 키로 승인된 교내 분야는 바로 조회하고 승인 대기 중인 제한 분야는 조회할 수 없다`() {
-        val apiKey = create(body(fields = """["CLUB","STUDENT"]""")).json()["apiKey"].asString()
+        val apiKey = create(body(fields = """["SCHEDULE","STUDENT"]""")).json()["apiKey"].asString()
 
-        mockMvc.get("/clubs") { header("X-API-Key", apiKey) }.andExpect { status { isOk() } }
+        mockMvc.get("/schedules?startDate=2026-09-01&finishDate=2026-09-30") { header("X-API-Key", apiKey) }.andExpect { status { isOk() } }
         mockMvc.get("/students") { header("X-API-Key", apiKey) }.andExpect {
             status { isForbidden() }
             jsonPath("$.code") { value("API_KEY_FIELD_FORBIDDEN") }
@@ -168,6 +168,26 @@ class CreateProjectTest @Autowired constructor(
         assertEquals(1, projectRepository.count())
         assertEquals(0, fieldRepository.count())
         assertEquals(EMAIL, emailVerifiedTokens.tokens[TOKEN])
+    }
+
+    @Test
+    fun `이름과 목적은 앞뒤 공백을 다듬어 저장한다`() {
+        create(body(name = " 급식 알리미 ", purpose = "  급식 공유  ")).andExpect { status { isCreated() } }
+
+        val project = projectRepository.findAll().single()
+        assertEquals("급식 알리미", project.name)
+        assertEquals("급식 공유", project.purpose)
+    }
+
+    @Test
+    fun `앞뒤 공백만 다른 이름은 같은 이름이라 PROJECT_NAME_DUPLICATED`() {
+        projectRepository.saveProject(userId, name = "급식 알리미")
+
+        create(body(name = " 급식 알리미 ")).andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("PROJECT_NAME_DUPLICATED") }
+        }
+        assertEquals(1, projectRepository.count())
     }
 
     @Test

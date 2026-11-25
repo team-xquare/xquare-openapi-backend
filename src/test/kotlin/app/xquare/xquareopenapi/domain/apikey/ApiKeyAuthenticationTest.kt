@@ -80,7 +80,7 @@ class ApiKeyAuthenticationTest @Autowired constructor(
     }
 
     @Test
-    fun `교내 분야 키로 동아리, 자습 감독, 일정을 조회하고 다른 교내 분야는 승인돼야 열린다`() {
+    fun `승인된 분야 키로 동아리, 자습 감독, 일정을 조회하고 다른 교내 분야는 승인돼야 열린다`() {
         saveApiKey(projectRepository, fieldRepository, 2L, KEY, ApiKeyField.CLUB, ApiKeyField.STUDY_SUPERVISOR)
 
         mockMvc.get("/clubs") { header("X-API-Key", KEY) }.andExpect { status { isOk() } }
@@ -145,6 +145,13 @@ class ApiKeyAuthenticationTest @Autowired constructor(
         mockMvc.get("/students") { header("X-API-Key", "xq_unknown") }.andExpect {
             status { isUnauthorized() }
             jsonPath("$.code") { value("INVALID_API_KEY") }
+        }
+        // 빈 키 헤더도 키가 없는 것과 같은 401이다.
+        listOf("", " ").forEach { blank ->
+            mockMvc.get("/students") { header("X-API-Key", blank) }.andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value("INVALID_API_KEY") }
+            }
         }
     }
 

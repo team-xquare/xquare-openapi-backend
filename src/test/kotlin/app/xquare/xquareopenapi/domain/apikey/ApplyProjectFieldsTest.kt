@@ -71,21 +71,21 @@ class ApplyProjectFieldsTest @Autowired constructor(
         val project = projectRepository.saveProject(userId)
         fieldRepository.saveField(project.id!!, ApiKeyField.STUDENT, ApplicationStatus.PENDING)
 
-        val apiKey = apply(project.id!!, """["CLUB"]""").andExpect {
+        val apiKey = apply(project.id!!, """["SCHEDULE"]""").andExpect {
             status { isCreated() }
             jsonPath("$.projectId") { value(project.id!!) }
             // 응답에는 프로젝트의 모든 분야가 처음 신청한 순서로 온다.
             jsonPath("$.fields.length()") { value(2) }
             jsonPath("$.fields[0].field") { value("STUDENT") }
             jsonPath("$.fields[0].status") { value("PENDING") }
-            jsonPath("$.fields[1].field") { value("CLUB") }
+            jsonPath("$.fields[1].field") { value("SCHEDULE") }
             jsonPath("$.fields[1].level") { value("SCHOOL") }
             jsonPath("$.fields[1].status") { value("APPROVED") }
         }.json()["apiKey"].asString()
 
         val saved = projectRepository.findById(project.id!!).orElseThrow()
         assertEquals(ApiKeySecret.hash(apiKey), saved.keyHash)
-        assertEquals(fieldRepository.findAll().single { it.field == ApiKeyField.CLUB }.appliedAt, saved.issuedAt)
+        assertEquals(fieldRepository.findAll().single { it.field == ApiKeyField.SCHEDULE }.appliedAt, saved.issuedAt)
     }
 
     @Test

@@ -58,7 +58,7 @@ abstract class ProjectApplyConcurrencyScenarios {
         val project = projectRepository.saveProject(userId)
 
         val results = concurrently { token ->
-            applyProjectFieldsUseCase.execute(userId, project.id!!, ApplyProjectFieldsRequest(listOf(ApiKeyField.CLUB), token))
+            applyProjectFieldsUseCase.execute(userId, project.id!!, ApplyProjectFieldsRequest(listOf(ApiKeyField.SCHEDULE), token))
         }
 
         assertEquals(1, results.count { it == null }, "$results")

@@ -64,6 +64,8 @@ class ApiProject(
 
     // 키 값은 그대로 두고 만료 시각만 지금부터 60일 뒤로 늦춘다.
     fun renewKey(now: LocalDateTime) {
+        // 발급된 키가 없으면 늘릴 만료 시각도 없다. 부르는 쪽이 키 발급 여부를 먼저 확인해야 한다.
+        check(keyIssued) { "키가 발급되지 않은 프로젝트는 갱신할 수 없습니다." }
         expiresAt = now.plusDays(KEY_LIFETIME_DAYS)
     }
 

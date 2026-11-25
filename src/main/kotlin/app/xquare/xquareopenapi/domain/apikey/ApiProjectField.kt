@@ -7,6 +7,7 @@ import jakarta.persistence.Enumerated
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 import java.time.LocalDateTime
@@ -19,6 +20,10 @@ import java.time.LocalDateTime
     name = "api_project_fields",
     uniqueConstraints = [
         UniqueConstraint(name = ApiProjectField.FIELD_UNIQUE_CONSTRAINT, columnNames = ["project_id", "field"]),
+    ],
+    // 관리자 신청 목록(상태로 거르고 applied_at, id 역순)용. docs/schema/api_projects.sql과 맞춘다.
+    indexes = [
+        Index(name = "ix_api_project_fields_status_applied", columnList = "status, applied_at, id"),
     ],
 )
 class ApiProjectField(

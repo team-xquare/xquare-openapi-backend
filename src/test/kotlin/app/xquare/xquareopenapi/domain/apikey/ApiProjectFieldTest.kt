@@ -11,11 +11,11 @@ import kotlin.test.assertTrue
 class ApiProjectFieldTest {
 
     @Test
-    fun `분야의 단계는 일정, 동아리, 자습 감독이 교내이고 학생, 교직원이 제한이다`() {
+    fun `분야의 단계는 일정, 자습 감독이 교내이고 학생, 교직원, 동아리가 제한이다`() {
         assertEquals(
             mapOf(
                 ApiKeyField.SCHEDULE to AccessLevel.SCHOOL,
-                ApiKeyField.CLUB to AccessLevel.SCHOOL,
+                ApiKeyField.CLUB to AccessLevel.RESTRICTED,
                 ApiKeyField.STUDY_SUPERVISOR to AccessLevel.SCHOOL,
                 ApiKeyField.TEACHER to AccessLevel.RESTRICTED,
                 ApiKeyField.STUDENT to AccessLevel.RESTRICTED,
@@ -26,7 +26,7 @@ class ApiProjectFieldTest {
 
     @Test
     fun `교내 분야는 신청과 동시에 승인되고 처리 시각은 신청 시각이다`() {
-        val field = ApiProjectField(1L, ApiKeyField.CLUB, NOW)
+        val field = ApiProjectField(1L, ApiKeyField.SCHEDULE, NOW)
 
         assertEquals(ApplicationStatus.APPROVED, field.status)
         assertEquals(NOW, field.appliedAt)
