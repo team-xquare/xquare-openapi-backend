@@ -50,6 +50,9 @@ class ApiUsageLogMySqlTest @Autowired constructor(
             listOf("/fixture/a%b", "/fixture/a_b", "/fixture/a!b", "/fixture/axb", "/fixture/ab", "UNMAPPED").forEach { route ->
                 recorder.execute(ApiUsageLog(fixtureTime, "GET", route, 200, 1))
             }
+            listOf("/students", "/students/{studentId}", "/STUDENTS", "/stúdents", "/students/", "/students/123").forEach { route ->
+                recorder.execute(ApiUsageLog(fixtureTime, "GET", route, 404, 1))
+            }
         }
         entityManager.clear()
         val row = repository.findAll().single { it.status == 415 }
@@ -71,6 +74,9 @@ class ApiUsageLogMySqlTest @Autowired constructor(
             assertEquals(listOf("/fixture/$term"), result.content.map { it.route })
         }
         assertEquals(0L, query.execute(ApiUsageLogQuery(searchStart, searchEnd, api = "UNMAPPED")).totalCount)
+        val firstPage = query.execute(ApiUsageLogQuery(searchStart, searchEnd, status = 404, size = 1, field = "STUDENT"))
+        assertEquals(2L, firstPage.totalCount)
+        assertEquals(listOf("/students/{studentId}"), firstPage.content.map { it.route })
     }
 
     companion object {
