@@ -58,6 +58,7 @@ class ApiKeyReadEndpointCoverageTest @Autowired constructor(
             "/notices/{noticeId}",
             // 시간표(#44)와 일정(#43)도 develop 그대로 JWT로 연다. 일정(SCHEDULE) 분야를 키 체인으로 옮길지는 따로 정한다.
             "/timetables",
+            "/schedules",
             "/schedules/{scheduleId}",
             // 관리자 API 사용 기록 조회(#55). ADMIN 액세스 토큰으로 연다.
             "/admin/api-usage-logs",
