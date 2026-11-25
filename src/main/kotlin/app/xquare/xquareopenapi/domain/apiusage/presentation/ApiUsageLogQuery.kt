@@ -1,5 +1,6 @@
 package app.xquare.xquareopenapi.domain.apiusage.presentation
 
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyField
 import app.xquare.xquareopenapi.domain.apiusage.ApiUsageLog
 import app.xquare.xquareopenapi.domain.apiusage.UsageHttpMethod
 import io.swagger.v3.oas.annotations.media.Schema
@@ -22,7 +23,21 @@ data class ApiUsageLogQuery(
     @field:Min(1) @field:Max(100)
     @field:Schema(defaultValue = "20")
     val size: Int = 20,
+    @field:Schema(
+        description = "저장된 API 경로 템플릿의 부분 일치 검색. UNMAPPED는 제외하며, 빈 문자열 또는 공백만 입력할 수 없습니다. %, _, !는 글자 그대로 비교합니다.",
+        minLength = 1,
+        maxLength = API_USAGE_ROUTE_MAX_LENGTH,
+        example = "/notices",
+    )
+    val api: String? = null,
+    @field:Schema(
+        description = "저장된 MVC 템플릿으로 정하는 기존 분야. 다른 필터와 AND로 적용합니다. 공개 급식과 UNMAPPED 등 미분류는 분야를 지정하면 제외합니다. 빈 값 또는 목록에 없는 값은 400입니다.",
+        implementation = ApiKeyField::class,
+    )
+    val field: String? = null,
 )
+
+internal const val API_USAGE_ROUTE_MAX_LENGTH = 160
 
 @Schema(requiredProperties = ["id", "occurredAt", "method", "route", "status", "durationMs"])
 data class ApiUsageLogResponse(

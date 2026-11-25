@@ -203,6 +203,12 @@ class ApiUsageLogHttpTest @Autowired constructor(
             assertFalse(marker in result.toString())
             assertFalse(marker in storedRows.toString())
         }
+
+        val byTemplate = json(send("GET", "$LIST?api=%7BnoticeId%7D&method=GET", admin))
+        assertEquals(listOf("/notices/{noticeId}"), byTemplate.path("content").values().map { it.path("route").asString() })
+        for (marker in listOf("876543210", "synthetic-query", "private-path-marker", "UNMAPPED")) {
+            assertEquals(0, json(send("GET", "$LIST?api=$marker", admin)).path("totalCount").asInt(), marker)
+        }
     }
 
     @Test
@@ -214,6 +220,9 @@ class ApiUsageLogHttpTest @Autowired constructor(
         assertEquals(401, send("HEAD", LIST).statusCode())
         assertEquals(403, send("HEAD", LIST, user).statusCode())
         assertEquals(200, send("HEAD", LIST, admin).statusCode())
+        assertCode(send("GET", "$LIST?api=meals"), 401, "INVALID_TOKEN")
+        assertCode(send("GET", "$LIST?api=meals", user), 403, "FORBIDDEN")
+        assertEquals(403, send("HEAD", "$LIST?api=meals", user).statusCode())
         for (query in listOf("size=101", "page=1001", "method=unknown", "status=99", "from=2026-11-15T00:00:00Z",
             "from=2026-11-15T00:00:00Z&to=2026-11-14T00:00:00Z",
             "from=2026-01-01T00:00:00Z&to=2026-03-01T00:00:00Z")) {
@@ -250,14 +259,129 @@ class ApiUsageLogHttpTest @Autowired constructor(
     }
 
     @Test
+    fun `API 검색을 기존 필터 및 페이지에 적용하고 생략하면 기존 결과를 유지한다`() {
+        val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
+        jdbc.update("delete from api_usage_logs")
+        seedRoute("/meals")
+        seedRoute("/meals/{mealId}", at = "2026-11-15 12:00:00")
+        seedRoute("/meals/{mealId}/fixture", at = "2026-11-15 12:00:00")
+        seedRoute("/meals", method = "POST")
+        seedRoute("/meals", status = 401)
+        seedRoute("/meals", at = "2026-11-16 00:00:00")
+        seedRoute("/notices")
+        val query = "$SEED_PERIOD&method=GET&status=200&size=1"
+        val pages = (0..2).map { page -> json(send("GET", "$LIST?$query&api=meals&page=$page", admin)) }
+        pages.forEach {
+            assertEquals(3, it.path("totalCount").asInt())
+            assertEquals(3, it.path("totalPage").asInt())
+        }
+        assertEquals(
+            listOf("/meals/{mealId}/fixture", "/meals/{mealId}", "/meals"),
+            pages.map { it.path("content").get(0).path("route").asString() },
+        )
+        assertEquals(4, json(send("GET", "$LIST?$query", admin)).path("totalCount").asInt())
+    }
+
+    @Test
+    fun `분야는 저장된 템플릿을 다른 필터와 함께 평가한 뒤 페이지에 적용한다`() {
+        val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
+        jdbc.update("delete from api_usage_logs")
+        seedRoute("/students", status = 404)
+        seedRoute("/students/{studentId}", status = 404)
+        seedRoute("/students/{studentId}", method = "PATCH", status = 404)
+        seedRoute("/students/{studentId}")
+        seedRoute("/students/{studentId}", at = "2026-11-16 00:00:00", status = 404)
+        seedRoute("/students/{studentId}/unknown", status = 404)
+        seedRoute("/students/12345", status = 404)
+        seedRoute("/students-extra", status = 404)
+        seedRoute("/STUDENTS", status = 404)
+        seedRoute("/teachers", status = 404)
+        seedRoute("UNMAPPED", status = 404)
+
+        val query = "$SEED_PERIOD&field=STUDENT&method=GET&status=404&api=students&size=1"
+        val pages = (0..2).map { page -> json(send("GET", "$LIST?$query&page=$page", admin)) }
+        pages.forEach {
+            assertEquals(2, it.path("totalCount").asInt())
+            assertEquals(2, it.path("totalPage").asInt())
+        }
+        assertEquals(listOf("/students/{studentId}", "/students"), pages.take(2).map { it.path("content").get(0).path("route").asString() })
+        assertTrue(pages.last().path("content").isEmpty)
+        assertEquals(0, json(send("GET", "$LIST?$SEED_PERIOD&field=STUDENT&api=teachers", admin)).path("totalCount").asInt())
+    }
+
+    @Test
+    fun `기존 분야만 선택할 수 있고 미분류와 공개 급식은 필터 생략 시 남는다`() {
+        val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
+        val user = jwtProvider.generateAccessToken(2L, Role.USER)
+        jdbc.update("delete from api_usage_logs")
+        val classified = mapOf(
+            "STUDENT" to listOf("/students", "/students/{studentId}"),
+            "TEACHER" to listOf("/teachers", "/teachers/{teacherId}"),
+            "CLUB" to listOf("/clubs", "/clubs/{clubId}"),
+            "SCHEDULE" to listOf("/schedules", "/schedules/{scheduleId}"),
+            "STUDY_SUPERVISOR" to listOf("/study-supervisors", "/study-supervisors/day", "/study-supervisors/{studySupervisorId}"),
+        )
+        val unclassified = listOf("/meals", "/meals/{mealId}", "/notices", "/timetables", "UNMAPPED")
+        val allRoutes = classified.values.flatten() + unclassified
+        allRoutes.forEach { seedRoute(it) }
+        fun routes(filter: String) = json(send("GET", "$LIST?$SEED_PERIOD$filter", admin))
+            .path("content").values().map { it.path("route").asString() }
+        assertEquals(allRoutes.reversed(), routes(""))
+        for ((field, expected) in classified) assertEquals(expected.reversed(), routes("&field=$field"), field)
+        assertEquals(listOf("/meals/{mealId}", "/meals"), routes("&api=meals"))
+        assertCode(send("GET", "$LIST?field=STUDENT"), 401, "INVALID_TOKEN")
+        assertCode(send("GET", "$LIST?field=STUDENT", user), 403, "FORBIDDEN")
+        for (invalid in listOf("MEAL", "UNMAPPED", "", "student", "%20", "%20STUDENT")) {
+            assertCode(send("GET", "$LIST?field=$invalid", admin), 400, "INVALID_INPUT")
+        }
+    }
+
+    @Test
+    fun `API 검색의 퍼센트 밑줄 느낌표는 글자 그대로 비교한다`() {
+        val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
+        jdbc.update("delete from api_usage_logs")
+        listOf("/fixture/a%b", "/fixture/a_b", "/fixture/a!b", "/fixture/axb", "/fixture/ab").forEach { seedRoute(it) }
+        for ((encoded, route) in listOf("a%25b" to "a%b", "a_b" to "a_b", "a%21b" to "a!b")) {
+            val result = json(send("GET", "$LIST?$SEED_PERIOD&api=$encoded", admin))
+            assertEquals(listOf("/fixture/$route"), result.path("content").values().map { it.path("route").asString() })
+        }
+    }
+
+    @Test
+    fun `API 검색은 빈 문자열 공백 및 160자 초과를 조회 연결 없이 거절한다`() {
+        val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
+        dataSource.connection.use {
+            dataSource.connection.use {
+                for (term in listOf("", "%20%09", "a".repeat(161), "%20".repeat(160) + "a")) {
+                    assertCode(send("GET", "$LIST?api=$term", admin), 400, "INVALID_INPUT")
+                }
+            }
+        }
+        jdbc.update("delete from api_usage_logs")
+        val longest = "/" + "a".repeat(159)
+        seedRoute(longest)
+        for (term in listOf("a", longest)) {
+            val result = json(send("GET", "$LIST?$SEED_PERIOD&api=$term", admin))
+            assertEquals(listOf(longest), result.path("content").values().map { it.path("route").asString() })
+        }
+    }
+
+    @Test
     fun `일정 조회도 업무 호출로 기록한다`() {
         val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
         assertEquals(200, send("GET", LIST, admin).statusCode())
         jdbc.update("delete from api_usage_logs")
         assertEquals(404, send("GET", "/schedules/987654321", admin).statusCode())
-        val rows = awaitRows(1)
-        assertEquals(listOf("/schedules/{scheduleId}"), rows.map { it["route"] })
-        assertEquals(listOf("GET"), rows.map { it["http_method"] })
+        assertEquals(200, send("GET", "/meals").statusCode())
+        assertEquals(401, send("GET", "/students/987654321").statusCode())
+        val rows = awaitRows(3)
+        assertEquals(listOf("/schedules/{scheduleId}", "/meals", "UNMAPPED"), rows.map { it["route"] })
+        assertTrue(rows.all { it["http_method"] == "GET" })
+        val schedules = json(send("GET", "$LIST?field=SCHEDULE&status=404", admin)).path("content").values()
+        assertEquals(listOf("/schedules/{scheduleId}"), schedules.map { it.path("route").asString() })
+        assertEquals(0, json(send("GET", "$LIST?field=STUDENT&status=401", admin)).path("totalCount").asInt())
+        assertEquals(1, json(send("GET", "$LIST?status=401", admin)).path("totalCount").asInt())
+        assertEquals(1, json(send("GET", "$LIST?api=meals", admin)).path("totalCount").asInt())
     }
 
     @Test
@@ -284,6 +408,7 @@ class ApiUsageLogHttpTest @Autowired constructor(
             .header("Access-Control-Request-Method", "GET")
             .method("OPTIONS", HttpRequest.BodyPublishers.noBody()).build()
         CLIENT.send(preflight, HttpResponse.BodyHandlers.ofString())
+        assertEquals(200, send("GET", "$LIST?api=synthetic-search-term", admin).statusCode())
         assertEquals(200, send("GET", "/meals").statusCode())
         val rows = awaitRows(1)
         assertEquals(listOf("/meals"), rows.map { it["route"] })
@@ -297,6 +422,15 @@ class ApiUsageLogHttpTest @Autowired constructor(
             mapper.valueToTree<JsonNode>(Yaml(SafeConstructor(options)).load<Any>(it))
         }
         assertEquals(openApiContract(static), openApiContract(generated))
+        val api = generated.path("paths").path(LIST).path("get").path("parameters").single { it.path("name").asString() == "api" }
+        assertEquals("query", api.path("in").asString())
+        assertFalse(api.path("required").asBoolean(false))
+        assertEquals(1, api.path("schema").path("minLength").asInt())
+        assertEquals(160, api.path("schema").path("maxLength").asInt())
+        val field = generated.path("paths").path(LIST).path("get").path("parameters").single { it.path("name").asString() == "field" }
+        assertEquals("query", field.path("in").asString())
+        assertFalse(field.path("required").asBoolean(false))
+        assertEquals(setOf("STUDENT", "TEACHER", "CLUB", "SCHEDULE", "STUDY_SUPERVISOR"), field.path("schema").path("enum").values().map { it.asString() }.toSet())
         for (name in listOf("Student", "Teacher", "Club")) {
             val schema = generated.path("components").path("schemas").path("PageResponse${name}Response")
             assertFalse(schema.isMissingNode, "$name 목록의 기존 페이지 스키마가 있어야 합니다")
@@ -322,6 +456,13 @@ class ApiUsageLogHttpTest @Autowired constructor(
         jdbc.update("delete from api_usage_logs")
         assertEquals(200, send("GET", "/meals").statusCode())
         assertEquals(listOf("/meals"), awaitRows(1).map { it["route"] })
+    }
+
+    private fun seedRoute(route: String, at: String = "2026-11-15 00:00:00", method: String = "GET", status: Int = 200) {
+        jdbc.update(
+            "insert into api_usage_logs (occurred_at, http_method, route, http_status, duration_ms) values (?, ?, ?, ?, ?)",
+            java.sql.Timestamp.valueOf(at), method, route, status, 1L,
+        )
     }
 
     private fun openApiContract(document: JsonNode): Map<String, Any> {
@@ -444,9 +585,10 @@ class ApiUsageLogHttpTest @Autowired constructor(
         }
 
         private const val LIST = "/admin/api-usage-logs"
+        private const val SEED_PERIOD = "from=2026-11-15T00:00:00Z&to=2026-11-16T00:00:00Z"
         private val CLIENT = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
         private val METADATA_FIELDS = setOf("id", "occurredAt", "method", "route", "status", "durationMs")
         private val STORAGE_FIELDS = setOf("id", "occurred_at", "http_method", "route", "http_status", "duration_ms")
-        private val SCHEMA_FIELDS = setOf("type", "format", "minimum", "maximum", "default", "maxLength", "nullable")
+        private val SCHEMA_FIELDS = setOf("type", "format", "minimum", "maximum", "default", "minLength", "maxLength", "nullable")
     }
 }
