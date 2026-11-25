@@ -2,8 +2,10 @@ package app.xquare.xquareopenapi.domain.student.presentation.dto
 
 import app.xquare.xquareopenapi.domain.club.presentation.dto.ClubSummaryResponse
 import app.xquare.xquareopenapi.domain.student.Student
+import io.swagger.v3.oas.annotations.media.Schema
 import java.time.LocalDate
 
+@Schema(requiredProperties = ["id", "studentNumber", "grade", "classNum", "number", "name", "birthDate", "email"])
 data class StudentResponse(
     val id: Long,
     val studentNumber: Int,

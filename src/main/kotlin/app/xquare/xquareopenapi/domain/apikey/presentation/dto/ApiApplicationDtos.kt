@@ -7,6 +7,8 @@ import app.xquare.xquareopenapi.domain.apikey.ApiProjectField
 import app.xquare.xquareopenapi.domain.apikey.ApplicationStatus
 import app.xquare.xquareopenapi.domain.apikey.withSeoulOffset
 import app.xquare.xquareopenapi.domain.user.User
+import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
@@ -15,13 +17,16 @@ import java.time.OffsetDateTime
 
 data class ApiApplicationSearchRequest(
     // 없으면 모든 상태
+    @field:Parameter(description = "신청 상태 필터 (생략 시 전체)")
     val status: ApplicationStatus? = null,
 
     // page × size(최대 100)가 int를 넘으면 Spring Data가 offset을 만들지 못하고 500을 낸다.
+    @field:Parameter(description = "페이지 번호 (0 이상)", example = "0")
     @field:Min(0)
     @field:Max(Int.MAX_VALUE / 100L)
     val page: Int = 0,
 
+    @field:Parameter(description = "페이지 크기 (1~100)", example = "20")
     @field:Min(1)
     @field:Max(100)
     val size: Int = 20,

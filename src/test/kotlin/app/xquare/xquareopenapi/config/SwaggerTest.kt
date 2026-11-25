@@ -21,6 +21,8 @@ class SwaggerTest @Autowired constructor(
         mockMvc.get("/v3/api-docs").andExpect {
             status { isOk() }
             jsonPath("$.openapi") { exists() }
+            jsonPath("$.info.title") { value("XQUARE Open API") }
+            jsonPath("$.info.version") { value("0.1.0") }
             jsonPath("$.paths['/auth/signup']") { exists() }
             jsonPath("$.paths['/auth/password/reset'].post") { exists() }
         }
@@ -85,7 +87,8 @@ class SwaggerTest @Autowired constructor(
         mockMvc.get("/v3/api-docs").andExpect {
             listOf(
                 "/students", "/students/{studentId}", "/teachers", "/teachers/{teacherId}",
-                "/clubs", "/clubs/{clubId}", "/study-supervisors", "/study-supervisors/day", "/schedules/{scheduleId}",
+                "/clubs", "/clubs/{clubId}", "/study-supervisors", "/study-supervisors/day",
+                "/schedules", "/schedules/{scheduleId}",
             ).forEach { path ->
                 jsonPath("$.paths['$path'].get.security.length()") { value(1) }
                 jsonPath("$.paths['$path'].get.security[0].apiKeyAuth") { exists() }
@@ -129,6 +132,79 @@ class SwaggerTest @Autowired constructor(
     fun `Swagger 경로를 열어도 다른 API는 여전히 토큰이 필요하다`() {
         mockMvc.get("/students").andExpect {
             status { isUnauthorized() }
+        }
+    }
+
+    @Test
+    fun `조회 API의 query DTO는 request 하나로 뭉개지지 않고 개별 query 파라미터로 노출된다`() {
+        mockMvc.get("/v3/api-docs").andExpect {
+            status { isOk() }
+            mapOf(
+                "/students" to listOf("name", "grade", "classNum", "page", "size"),
+                "/teachers" to listOf("name", "grade", "classNum", "subject", "office", "page", "size"),
+                "/clubs" to listOf("name", "member", "room", "teacher", "page", "size"),
+                "/meals" to listOf("startDate", "finishDate"),
+                "/notices" to listOf("page", "size"),
+                "/study-supervisors" to listOf("startDate", "finishDate"),
+                "/study-supervisors/day" to listOf("date"),
+                "/timetables" to listOf("grade", "classNum", "date"),
+                "/schedules" to listOf("startDate", "finishDate"),
+                "/admin/api-applications" to listOf("status", "page", "size"),
+                "/admin/api-usage-logs" to listOf("from", "to", "method", "status", "page", "size", "api", "field"),
+            ).forEach { (path, expectedParams) ->
+                jsonPath("$.paths['$path'].get.parameters.length()") { value(expectedParams.size) }
+                expectedParams.forEachIndexed { index, name ->
+                    jsonPath("$.paths['$path'].get.parameters[$index].name") { value(name) }
+                    jsonPath("$.paths['$path'].get.parameters[$index].in") { value("query") }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `리소스 생성 POST API는 201 응답과 Location 헤더를 문서화한다`() {
+        mockMvc.get("/v3/api-docs").andExpect {
+            status { isOk() }
+            listOf(
+                "/students",
+                "/teachers",
+                "/schedules",
+                "/study-supervisors",
+                "/meals",
+                "/clubs",
+                "/notices",
+            ).forEach { path ->
+                jsonPath("$.paths['$path'].post.responses['201']") { exists() }
+                jsonPath("$.paths['$path'].post.responses['201'].headers.Location") { exists() }
+                jsonPath("$.paths['$path'].post.responses['200']") { doesNotExist() }
+            }
+        }
+    }
+
+    @Test
+    fun `교직원 및 자습 감독 DTO 스키마가 실제 JSON 직렬화와 일치한다`() {
+        mockMvc.get("/v3/api-docs").andExpect {
+            status { isOk() }
+            jsonPath("$.components.schemas.TeacherRequest.properties.isManager") { exists() }
+            jsonPath("$.components.schemas.TeacherRequest.properties.manager") { doesNotExist() }
+            jsonPath("$.components.schemas.TeacherRequest.properties.homeroomComplete") { doesNotExist() }
+            jsonPath("$.components.schemas.TeacherResponse.properties.isManager") { exists() }
+            jsonPath("$.components.schemas.TeacherResponse.properties.manager") { doesNotExist() }
+            jsonPath("$.components.schemas.StudySupervisorRequest.properties.floorsDistinct") { doesNotExist() }
+            jsonPath("$.components.schemas.ErrorResponse") { exists() }
+        }
+    }
+
+    @Test
+    fun `프로젝트 및 관리자 활용신청 API가 API 키 태그와 권한 확장으로 문서화된다`() {
+        mockMvc.get("/v3/api-docs").andExpect {
+            status { isOk() }
+            jsonPath("$.paths['/projects'].post.tags[0]") { value("API 키") }
+            jsonPath("$.paths['/projects'].post.responses['201']") { exists() }
+            jsonPath("$.paths['/projects/{projectId}/fields'].post.responses['201']") { exists() }
+            jsonPath("$.paths['/projects/{projectId}/api-key/renew'].post.tags[0]") { value("API 키") }
+            jsonPath("$.paths['/admin/api-applications'].get.tags[0]") { value("API 키") }
+            jsonPath("$.paths['/admin/api-applications/{applicationId}/approve'].post.x-required-role") { value("ADMIN") }
         }
     }
 }

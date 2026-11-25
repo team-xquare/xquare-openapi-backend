@@ -2,8 +2,10 @@ package app.xquare.xquareopenapi.domain.user.presentation.dto
 
 import app.xquare.xquareopenapi.domain.user.Role
 import app.xquare.xquareopenapi.domain.user.User
+import io.swagger.v3.oas.annotations.media.Schema
 
 // 비밀번호 해시는 응답에 넣지 않는다.
+@Schema(requiredProperties = ["id", "username", "name", "studentNumber", "email", "role"])
 data class MyInfoResponse(
     val id: Long,
     val username: String,

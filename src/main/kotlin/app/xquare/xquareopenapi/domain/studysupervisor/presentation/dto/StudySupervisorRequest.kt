@@ -1,6 +1,7 @@
 package app.xquare.xquareopenapi.domain.studysupervisor.presentation.dto
 
 import app.xquare.xquareopenapi.global.validation.DbDateRange
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.Valid
 import jakarta.validation.constraints.AssertTrue
 import jakarta.validation.constraints.Max
@@ -10,26 +11,33 @@ import java.time.LocalDate
 
 // 등록과 수정이 같이 쓴다. 수정도 모든 필드를 받아 통째로 바꾸고, supervisors는 전달한 목록으로 교체한다.
 // 일부 층만 보내도 된다. 빠진 층은 조회에서 teacher가 null이다. 같은 교직원이 여러 층을 맡는 것은 막지 않는다.
+@Schema(requiredProperties = ["date", "supervisors"])
 data class StudySupervisorRequest(
     @field:DbDateRange
+    @field:Schema(description = "자습 감독 날짜", example = "2026-09-14")
     val date: LocalDate,
 
     // [null]처럼 null이 섞이면 Jackson이 읽지 못해 400 INVALID_INPUT이 된다.
     @field:NotEmpty
     @field:Valid
+    @field:Schema(description = "층별 감독 교직원 리스트")
     val supervisors: List<StudySupervisorAssignmentRequest>,
 ) {
     // 한 층에는 감독 교직원이 한 명이다(응답의 teacher가 객체 하나).
+    @get:Schema(hidden = true)
     @get:AssertTrue(message = "같은 층을 두 번 보낼 수 없습니다.")
     val isFloorsDistinct: Boolean
         get() = supervisors.distinctBy { it.floor }.size == supervisors.size
 }
 
+@Schema(requiredProperties = ["floor", "teacherId"])
 data class StudySupervisorAssignmentRequest(
     @field:Min(MIN_FLOOR)
     @field:Max(MAX_FLOOR)
+    @field:Schema(description = "감독 층(2~4)", example = "2")
     val floor: Int,
 
+    @field:Schema(description = "감독 교직원 id", example = "12")
     val teacherId: Long,
 ) {
     companion object {

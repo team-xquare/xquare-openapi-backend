@@ -4,7 +4,9 @@ import app.xquare.xquareopenapi.domain.club.Club
 import app.xquare.xquareopenapi.domain.club.ClubRoom
 import app.xquare.xquareopenapi.domain.student.Student
 import app.xquare.xquareopenapi.domain.teacher.Teacher
+import io.swagger.v3.oas.annotations.media.Schema
 
+@Schema(requiredProperties = ["id", "name", "logo", "room", "member"])
 data class ClubResponse(
     val id: Long,
     val name: String,
@@ -33,6 +35,7 @@ data class ClubResponse(
     }
 }
 
+@Schema(requiredProperties = ["id", "studentNumber", "name"])
 data class ClubStudentResponse(
     val id: Long,
     val studentNumber: Int,
@@ -43,6 +46,7 @@ data class ClubStudentResponse(
     }
 }
 
+@Schema(requiredProperties = ["id", "name"])
 data class ClubTeacherResponse(
     val id: Long,
     val name: String,
