@@ -1,8 +1,8 @@
 package app.xquare.xquareopenapi.domain.club
 
-import app.xquare.xquareopenapi.domain.apikey.ApiKeyApplicationRepository
+import app.xquare.xquareopenapi.domain.apikey.ApiProjectFieldRepository
 import app.xquare.xquareopenapi.domain.apikey.ApiKeyField
-import app.xquare.xquareopenapi.domain.apikey.ApiKeyRepository
+import app.xquare.xquareopenapi.domain.apikey.ApiProjectRepository
 import app.xquare.xquareopenapi.domain.apikey.saveApiKey
 import app.xquare.xquareopenapi.domain.student.Student
 import app.xquare.xquareopenapi.domain.student.StudentRepository
@@ -59,8 +59,8 @@ class ClubTest @Autowired constructor(
     private val studentRepository: StudentRepository,
     private val teacherRepository: TeacherRepository,
     private val transactionManager: PlatformTransactionManager,
-    private val apiKeyRepository: ApiKeyRepository,
-    private val apiKeyApplicationRepository: ApiKeyApplicationRepository,
+    private val apiProjectRepository: ApiProjectRepository,
+    private val apiProjectFieldRepository: ApiProjectFieldRepository,
     jwtProvider: JwtProvider,
 ) {
     // 동시 등록·수정을 흉내 내려고 중복 검사만 통과시킬 때 쓴다.
@@ -77,13 +77,13 @@ class ClubTest @Autowired constructor(
     // 학생·교직원 조회 API는 해당 분야를 신청한 API 키로만 인증한다.
     @BeforeEach
     fun setUp() {
-        saveApiKey(apiKeyRepository, apiKeyApplicationRepository, 2L, RAW_API_KEY, ApiKeyField.STUDENT, ApiKeyField.TEACHER)
+        saveApiKey(apiProjectRepository, apiProjectFieldRepository, 2L, RAW_API_KEY, ApiKeyField.STUDENT, ApiKeyField.TEACHER, ApiKeyField.CLUB)
     }
 
     @AfterEach
     fun tearDown() {
-        apiKeyApplicationRepository.deleteAll()
-        apiKeyRepository.deleteAll()
+        apiProjectFieldRepository.deleteAll()
+        apiProjectRepository.deleteAll()
         clubRepository.deleteAll()
         studentRepository.deleteAll()
         teacherRepository.deleteAll()
@@ -111,7 +111,7 @@ class ClubTest @Autowired constructor(
         assertEquals("logo.png", club.logo)
         assertEquals(ClubRoom.ROOM_2_1, club.room)
         mockMvc.get("/clubs/${club.id}") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             jsonPath("$.manager.id") { value(manager.id!!) }
             jsonPath("$.member[*].id") { value(contains(member.id!!.toInt(), manager.id!!.toInt())) }
@@ -135,7 +135,7 @@ class ClubTest @Autowired constructor(
             )
         }.andExpect { status { isCreated() } }
 
-        clubRepository.findAll().forEach { mockMvc.get("/clubs/${it.id}") { bearer(userToken) }.andExpect { jsonPath("$.teacher") { value(null as Any?) } } }
+        clubRepository.findAll().forEach { mockMvc.get("/clubs/${it.id}") { apiKey() }.andExpect { jsonPath("$.teacher") { value(null as Any?) } } }
     }
 
     @Test
@@ -150,7 +150,7 @@ class ClubTest @Autowired constructor(
 
         val club = clubRepository.findAll().single()
         mockMvc.get("/clubs/${club.id}") {
-            bearer(userToken)
+            apiKey()
         }.andExpect { jsonPath("$.member.length()") { value(2) } }
     }
 
@@ -338,7 +338,7 @@ class ClubTest @Autowired constructor(
         val teacher = teacherRepository.findAll().single()
 
         mockMvc.get("/clubs/${club.id}") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.id") { value(club.id!!) }
@@ -361,7 +361,7 @@ class ClubTest @Autowired constructor(
         val club = club()
 
         mockMvc.get("/clubs/${club.id}") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.teacher") { value(null as Any?) }
@@ -371,14 +371,14 @@ class ClubTest @Autowired constructor(
     @Test
     fun `없는 동아리면 CLUB_NOT_FOUND`() {
         mockMvc.get("/clubs/999") {
-            bearer(userToken)
+            apiKey()
         }.andExpectClubNotFound()
     }
 
     @Test
     fun `동아리 id가 숫자가 아니면 INVALID_INPUT`() {
         mockMvc.get("/clubs/abc") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("INVALID_INPUT") }
@@ -392,7 +392,7 @@ class ClubTest @Autowired constructor(
         val clubs = (1..21).map { club(name = "동아리$it", room = ClubRoom.entries[it], studentNumbers = listOf(1100 + it, 2100 + it)) }
 
         mockMvc.get("/clubs") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.content.length()") { value(20) }
@@ -417,7 +417,7 @@ class ClubTest @Autowired constructor(
         (1..5).forEach { club(name = "동아리$it", room = ClubRoom.entries[it], studentNumbers = listOf(1100 + it)) }
 
         mockMvc.get("/clubs?page=1&size=2") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             jsonPath("$.content[*].name") { value(contains("동아리3", "동아리4")) }
             jsonPath("$.page") { value(1) }
@@ -438,7 +438,7 @@ class ClubTest @Autowired constructor(
         expectClubNames("name=DMS", "DMS", "XQUARE DMS")
         listOf("%" to "100%", "_" to "a_b", "!" to "!").forEach { (name, expected) ->
             mockMvc.get("/clubs") {
-                bearer(userToken)
+                apiKey()
                 param("name", name)
             }.andExpect { jsonPath("$.content[*].name") { value(contains(expected)) } }
         }
@@ -465,7 +465,7 @@ class ClubTest @Autowired constructor(
 
         listOf("%" to "가", "_" to "나", "!" to "다").forEach { (member, expected) ->
             mockMvc.get("/clubs") {
-                bearer(userToken)
+                apiKey()
                 param("member", member)
             }.andExpect { jsonPath("$.content[*].name") { value(contains(expected)) } }
         }
@@ -505,7 +505,7 @@ class ClubTest @Autowired constructor(
             (1..11).joinToString("&") { "member=a$it" } to "member: ",
         ).forEach { (query, expectedMessage) ->
             mockMvc.get("/clubs?$query") {
-                bearer(userToken)
+                apiKey()
             }.andExpect {
                 status { isBadRequest() }
                 jsonPath("$.code") { value("INVALID_INPUT") }
@@ -517,7 +517,7 @@ class ClubTest @Autowired constructor(
     @Test
     fun `구성원 이름은 10개까지, size는 100까지, page는 offset이 int를 넘지 않는 데까지 받는다`() {
         mockMvc.get("/clubs?page=21474836&size=100&" + (1..10).joinToString("&") { "member=a$it" }) {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.page") { value(21474836) }
@@ -554,7 +554,7 @@ class ClubTest @Autowired constructor(
         }
 
         mockMvc.get("/clubs/${club.id}") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             jsonPath("$.name") { value("XQUARE") }
             jsonPath("$.logo") { value("new.png") }
@@ -579,7 +579,7 @@ class ClubTest @Autowired constructor(
         }.andExpect { status { isOk() } }
 
         mockMvc.get("/clubs/${club.id}") {
-            bearer(userToken)
+            apiKey()
         }.andExpect { jsonPath("$.teacher") { value(null as Any?) } }
         mockMvc.get("/teachers/${teacherRepository.findAll().single().id}") {
             apiKey()
@@ -597,7 +597,7 @@ class ClubTest @Autowired constructor(
         }.andExpect { status { isOk() } }
 
         mockMvc.get("/clubs/${club.id}") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             jsonPath("$.name") { value("바뀐 이름") }
             jsonPath("$.room") { value("ROOM_2_1") }
@@ -627,7 +627,7 @@ class ClubTest @Autowired constructor(
         }.andExpectTeacherInClub()
 
         mockMvc.get("/clubs/${club.id}") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             jsonPath("$.room") { value("ROOM_2_1") }
             jsonPath("$.teacher") { value(null as Any?) }
@@ -843,7 +843,7 @@ class ClubTest @Autowired constructor(
         }.andExpect { status { isOk() } }
 
         mockMvc.get("/clubs/${club.id}") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.manager") { value(null as Any?) }
@@ -858,7 +858,7 @@ class ClubTest @Autowired constructor(
         mockMvc.delete("/students/${club.manager!!.id}") { bearer(adminToken) }.andExpect { status { isOk() } }
 
         mockMvc.get("/clubs") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             jsonPath("$.content[0].id") { value(club.id!!) }
             jsonPath("$.content[0].manager") { value(null as Any?) }
@@ -875,7 +875,7 @@ class ClubTest @Autowired constructor(
         }.andExpect { status { isOk() } }
 
         mockMvc.get("/clubs/${club.id}") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.teacher") { value(null as Any?) }
@@ -898,8 +898,6 @@ class ClubTest @Autowired constructor(
         val club = club()
 
         listOf(
-            mockMvc.get("/clubs"),
-            mockMvc.get("/clubs/${club.id}"),
             mockMvc.post("/clubs") { json(body(manager = 1, member = listOf(1))) },
             mockMvc.patch("/clubs/${club.id}") { json(body(manager = 1, member = listOf(1))) },
             mockMvc.delete("/clubs/${club.id}"),
@@ -930,11 +928,19 @@ class ClubTest @Autowired constructor(
     }
 
     @Test
-    fun `ADMIN도 조회할 수 있다`() {
+    fun `조회는 API 키로만 하고 키가 없으면 액세스 토큰이 있어도 INVALID_API_KEY`() {
         val club = club()
 
-        mockMvc.get("/clubs") { bearer(adminToken) }.andExpect { status { isOk() } }
-        mockMvc.get("/clubs/${club.id}") { bearer(adminToken) }.andExpect { status { isOk() } }
+        listOf("/clubs", "/clubs/${club.id}").forEach { path ->
+            mockMvc.get(path).andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value("INVALID_API_KEY") }
+            }
+            mockMvc.get(path) { bearer(adminToken) }.andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value("INVALID_API_KEY") }
+            }
+        }
     }
 
     // 첫 번째 학번이 팀장이다. 기본값은 팀장 2315 김준서, 구성원 2101 박성준.
@@ -976,9 +982,8 @@ class ClubTest @Autowired constructor(
     private fun queryCount(uri: String): Long {
         val statistics = entityManagerFactory.unwrap(SessionFactory::class.java).statistics
         statistics.clear()
-        // /clubs는 토큰, /students·/teachers는 API 키로 인증하므로 둘 다 보낸다. 키 확인 쿼리는 동아리 수와 상관없다.
+        // 동아리·학생·교직원 조회는 모두 API 키로 인증한다. 키 확인 쿼리는 동아리 수와 상관없다.
         mockMvc.get(uri) {
-            bearer(userToken)
             apiKey()
         }.andExpect { status { isOk() } }
         return statistics.prepareStatementCount
@@ -988,7 +993,7 @@ class ClubTest @Autowired constructor(
 
     private fun expectClubNames(query: String, vararg expected: String) {
         mockMvc.get("/clubs?$query") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             if (expected.isEmpty()) {
@@ -1002,7 +1007,7 @@ class ClubTest @Autowired constructor(
 
     private fun expectMemberNames(clubId: Long, vararg expected: String) {
         mockMvc.get("/clubs/$clubId") {
-            bearer(userToken)
+            apiKey()
         }.andExpect { jsonPath("$.member[*].name") { value(contains(*expected)) } }
     }
 

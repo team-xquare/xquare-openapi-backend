@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.net.URI
 
-// 권한(조회는 USER, 등록·수정·삭제는 ADMIN)은 SecurityConfig에서 검사한다.
+// 권한(조회는 STUDY_SUPERVISOR 분야가 승인된 API 키, 등록·수정·삭제는 ADMIN)은 SecurityConfig에서 검사한다.
 // 명세에 단건 조회가 없어서 GET /study-supervisors/{id}는 만들지 않았다. Location은 수정·삭제할 URI다.
 @RestController
 @RequestMapping("/study-supervisors")

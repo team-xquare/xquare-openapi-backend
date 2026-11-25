@@ -46,6 +46,7 @@ class SwaggerTest @Autowired constructor(
         "post, /auth/password/reset",
         "get, /meals",
         "get, /meals/{mealId}",
+        "get, /timetables",
     )
     fun `공개 API는 기본 인증을 빈 배열로 재정의한다`(method: String, path: String) {
         mockMvc.get("/v3/api-docs").andExpect {
@@ -82,18 +83,29 @@ class SwaggerTest @Autowired constructor(
     @Test
     fun `조회 API의 GET에만 API 키 인증이 걸리고 같은 경로의 다른 메서드는 Bearer 토큰 그대로다`() {
         mockMvc.get("/v3/api-docs").andExpect {
-            listOf("/students", "/students/{studentId}", "/teachers", "/teachers/{teacherId}").forEach { path ->
+            listOf(
+                "/students", "/students/{studentId}", "/teachers", "/teachers/{teacherId}",
+                "/clubs", "/clubs/{clubId}", "/study-supervisors", "/study-supervisors/day", "/schedules/{scheduleId}",
+            ).forEach { path ->
                 jsonPath("$.paths['$path'].get.security.length()") { value(1) }
                 jsonPath("$.paths['$path'].get.security[0].apiKeyAuth") { exists() }
             }
             jsonPath("$.paths['/students'].post.security") { doesNotExist() }
             jsonPath("$.paths['/students/{studentId}'].patch.security") { doesNotExist() }
             jsonPath("$.paths['/teachers/{teacherId}'].delete.security") { doesNotExist() }
-            jsonPath("$.paths['/api-keys'].post.security") { doesNotExist() }
-            // 액세스 토큰으로 여는 GET(내 키, 관리자 활용신청)은 Bearer 토큰 그대로다.
-            jsonPath("$.paths['/api-keys/me'].get.security") { doesNotExist() }
-            jsonPath("$.paths['/api-key-applications'].get.security") { doesNotExist() }
-            jsonPath("$.paths['/api-key-applications/{applicationId}'].get.security") { doesNotExist() }
+            jsonPath("$.paths['/clubs'].post.security") { doesNotExist() }
+            jsonPath("$.paths['/schedules/{scheduleId}'].patch.security") { doesNotExist() }
+            jsonPath("$.paths['/study-supervisors/{studySupervisorId}'].delete.security") { doesNotExist() }
+            // 프로젝트(키 관리) API는 액세스 토큰으로 연다.
+            jsonPath("$.paths['/projects'].post") { exists() }
+            jsonPath("$.paths['/projects'].post.security") { doesNotExist() }
+            jsonPath("$.paths['/projects/{projectId}/fields'].post.security") { doesNotExist() }
+            jsonPath("$.paths['/projects'].get") { exists() }
+            jsonPath("$.paths['/projects'].get.security") { doesNotExist() }
+            jsonPath("$.paths['/projects/{projectId}'].get.security") { doesNotExist() }
+            jsonPath("$.paths['/admin/api-applications'].get") { exists() }
+            jsonPath("$.paths['/admin/api-applications'].get.security") { doesNotExist() }
+            jsonPath("$.paths['/admin/api-applications/{applicationId}'].get.security") { doesNotExist() }
         }
     }
 

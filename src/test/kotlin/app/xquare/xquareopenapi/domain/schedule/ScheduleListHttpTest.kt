@@ -1,8 +1,13 @@
 package app.xquare.xquareopenapi.domain.schedule
 
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyField
+import app.xquare.xquareopenapi.domain.apikey.ApiProjectFieldRepository
+import app.xquare.xquareopenapi.domain.apikey.ApiProjectRepository
+import app.xquare.xquareopenapi.domain.apikey.saveApiKey
 import app.xquare.xquareopenapi.domain.user.Role
 import app.xquare.xquareopenapi.global.jwt.JwtProvider
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -30,12 +35,23 @@ import kotlin.test.assertTrue
 )
 class ScheduleListHttpTest @Autowired constructor(
     private val scheduleRepository: ScheduleRepository,
+    private val projectRepository: ApiProjectRepository,
+    private val fieldRepository: ApiProjectFieldRepository,
     private val jwtProvider: JwtProvider,
     private val jsonMapper: JsonMapper,
     @LocalServerPort private val port: Int,
 ) {
+    @BeforeEach
+    fun setUp() {
+        saveApiKey(projectRepository, fieldRepository, 1L, SCHEDULE_KEY, ApiKeyField.SCHEDULE)
+    }
+
     @AfterEach
-    fun tearDown() = scheduleRepository.deleteAll()
+    fun tearDown() {
+        scheduleRepository.deleteAll()
+        fieldRepository.deleteAll()
+        projectRepository.deleteAll()
+    }
 
     @Test
     fun `조회 기간에 일정이 없으면 빈 배열을 반환한다`() {
@@ -108,19 +124,19 @@ class ScheduleListHttpTest @Autowired constructor(
     }
 
     @Test
-    fun `목록 GET과 HEAD는 기존 상세 GET과 같은 JWT 경계를 유지한다`() {
+    fun `목록 GET과 HEAD는 상세 GET과 같이 SCHEDULE 분야가 승인된 API 키로만 연다`() {
         val id = save("2026-09-01", "일정")
+        saveApiKey(projectRepository, fieldRepository, 2L, OTHER_KEY, ApiKeyField.STUDENT)
         val listPath = "/schedules?$MONTH"
         for (path in listOf(listPath, "/schedules/$id")) {
-            assertError(get(path), 401, "INVALID_TOKEN")
-            assertError(get(path, "not-a-jwt"), 401, "INVALID_TOKEN")
-            assertError(get(path, apiKey = "fixture-api-key"), 401, "INVALID_TOKEN")
-            for (role in listOf(Role.USER, Role.ADMIN)) {
-                assertEquals(200, get(path, jwtProvider.generateAccessToken(2L, role)).statusCode(), "$role $path")
-            }
+            assertError(get(path), 401, "INVALID_API_KEY", path)
+            assertError(get(path, jwtProvider.generateAccessToken(2L, Role.ADMIN)), 401, "INVALID_API_KEY", path)
+            assertError(get(path, apiKey = "xq_unknown"), 401, "INVALID_API_KEY", path)
+            assertError(get(path, apiKey = OTHER_KEY), 403, "API_KEY_FIELD_FORBIDDEN", path)
+            assertEquals(200, get(path, apiKey = SCHEDULE_KEY).statusCode(), path)
         }
         assertEquals(401, get(listPath, method = "HEAD").statusCode())
-        assertEquals(200, get(listPath, jwtProvider.generateAccessToken(2L, Role.USER), method = "HEAD").statusCode())
+        assertEquals(200, get(listPath, apiKey = SCHEDULE_KEY, method = "HEAD").statusCode())
     }
 
     @Test
@@ -133,9 +149,7 @@ class ScheduleListHttpTest @Autowired constructor(
             jsonMapper.valueToTree<JsonNode>(Yaml(SafeConstructor(options)).load<Any>(it))
         }
         assertEquals(contract(static), contract(generated))
-        assertEquals(generated.path("security"), generated.at("/paths/~1schedules~1{scheduleId}/get/security")
-            .takeUnless { it.isMissingNode } ?: generated.path("security"))
-        assertEquals(generated.path("security"), generated.at("/paths/~1schedules/get/security"))
+        assertEquals(generated.at("/paths/~1schedules~1{scheduleId}/get/security"), generated.at("/paths/~1schedules/get/security"))
     }
 
     private fun contract(document: JsonNode): Map<String, Any> {
@@ -185,7 +199,7 @@ class ScheduleListHttpTest @Autowired constructor(
     private fun save(date: String, title: String, source: ScheduleSource = ScheduleSource.SCHOOL, content: String? = null): Long =
         scheduleRepository.save(Schedule(LocalDate.parse(date), title, content, source)).id!!
 
-    private fun list(query: String = MONTH) = get("/schedules?$query", jwtProvider.generateAccessToken(2L, Role.USER))
+    private fun list(query: String = MONTH) = get("/schedules?$query", apiKey = SCHEDULE_KEY)
 
     private fun get(path: String, token: String? = null, apiKey: String? = null, method: String = "GET"): HttpResponse<String> {
         val request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:$port$path"))
@@ -198,6 +212,8 @@ class ScheduleListHttpTest @Autowired constructor(
 
     companion object {
         private const val MONTH = "startDate=2026-09-01&finishDate=2026-09-30"
+        private const val SCHEDULE_KEY = "xq_schedule-list-key"
+        private const val OTHER_KEY = "xq_schedule-other-key"
         private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
     }
 }

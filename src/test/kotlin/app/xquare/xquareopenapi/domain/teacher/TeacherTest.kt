@@ -4,9 +4,9 @@ import app.xquare.xquareopenapi.domain.user.Role
 import app.xquare.xquareopenapi.global.jwt.JwtProvider
 import org.hamcrest.Matchers.contains
 import org.hamcrest.Matchers.containsString
-import app.xquare.xquareopenapi.domain.apikey.ApiKeyApplicationRepository
+import app.xquare.xquareopenapi.domain.apikey.ApiProjectFieldRepository
 import app.xquare.xquareopenapi.domain.apikey.ApiKeyField
-import app.xquare.xquareopenapi.domain.apikey.ApiKeyRepository
+import app.xquare.xquareopenapi.domain.apikey.ApiProjectRepository
 import app.xquare.xquareopenapi.domain.apikey.saveApiKey
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -32,8 +32,8 @@ import kotlin.test.assertTrue
 class TeacherTest @Autowired constructor(
     private val mockMvc: MockMvc,
     private val teacherRepository: TeacherRepository,
-    private val apiKeyRepository: ApiKeyRepository,
-    private val apiKeyApplicationRepository: ApiKeyApplicationRepository,
+    private val apiProjectRepository: ApiProjectRepository,
+    private val apiProjectFieldRepository: ApiProjectFieldRepository,
     jwtProvider: JwtProvider,
 ) {
     private val adminToken = jwtProvider.generateAccessToken(1L, Role.ADMIN)
@@ -42,13 +42,13 @@ class TeacherTest @Autowired constructor(
     // 조회 API는 API 키로만 인증한다.
     @BeforeEach
     fun setUp() {
-        saveApiKey(apiKeyRepository, apiKeyApplicationRepository, 2L, RAW_API_KEY, ApiKeyField.TEACHER)
+        saveApiKey(apiProjectRepository, apiProjectFieldRepository, 2L, RAW_API_KEY, ApiKeyField.TEACHER)
     }
 
     @AfterEach
     fun tearDown() {
-        apiKeyApplicationRepository.deleteAll()
-        apiKeyRepository.deleteAll()
+        apiProjectFieldRepository.deleteAll()
+        apiProjectRepository.deleteAll()
         teacherRepository.deleteAll()
     }
 
