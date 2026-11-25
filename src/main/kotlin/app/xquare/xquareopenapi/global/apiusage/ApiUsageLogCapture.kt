@@ -30,7 +30,10 @@ class ApiUsageLogCapture(private val clock: Clock, private val writer: ApiUsageL
         } catch (_: IllegalArgumentException) {
             return true
         }
-        val root = path.elements().filterIsInstance<PathContainer.PathSegment>().firstOrNull()?.valueToMatch()
+        val segments = path.elements().filterIsInstance<PathContainer.PathSegment>().map { it.valueToMatch() }
+        val root = segments.firstOrNull()
+        // 관리자 경로 중 분야 신청 처리는 업무 호출이라 기록하고, 사용 기록 조회 같은 나머지 관리자 조회는 기록하지 않는다.
+        if (root == ADMIN_ROOT) return segments.getOrNull(1) !in BUSINESS_ADMIN_ROOTS
         return root !in BUSINESS_ROOTS
     }
 
@@ -68,6 +71,8 @@ class ApiUsageLogCapture(private val clock: Clock, private val writer: ApiUsageL
     companion object {
         private const val CAPTURE_ATTRIBUTE = "xquare.apiUsage.capture"
         private const val MAX_ROUTE_LENGTH = 160
+        private const val ADMIN_ROOT = "admin"
+        private val BUSINESS_ADMIN_ROOTS = setOf("api-applications")
         private val BUSINESS_ROOTS = setOf("auth", "users", "students", "teachers", "clubs", "meals", "notices", "study-supervisors", "timetables", "schedules", "projects")
     }
 }

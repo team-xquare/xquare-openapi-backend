@@ -104,6 +104,17 @@ class ApiProjectRepositoryMySqlTest @Autowired constructor(
         assertEquals(listOf(b.id), fieldRepository.findAll().map { it.id })
     }
 
+    @Test
+    fun `관리자 목록은 상태로 거르고 null이면 전체를 읽는다`() {
+        val project = projectRepository.saveAndFlush(project(2L, "급식 알리미"))
+        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.CLUB, NOW))
+        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.STUDENT, NOW))
+
+        val pageable = org.springframework.data.domain.PageRequest.of(0, 10)
+        assertEquals(listOf(ApiKeyField.STUDENT), fieldRepository.search(ApplicationStatus.PENDING, pageable).content.map { it.field })
+        assertEquals(2, fieldRepository.search(null, pageable).totalElements)
+    }
+
     private fun project(userId: Long, name: String) = ApiProject(userId, name, "급식 공유", NOW)
 
     companion object {

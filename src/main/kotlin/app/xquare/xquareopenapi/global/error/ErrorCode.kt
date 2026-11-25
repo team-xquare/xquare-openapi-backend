@@ -34,6 +34,8 @@ enum class ErrorCode(
     PROJECT_NAME_DUPLICATED(HttpStatus.CONFLICT, "같은 이름의 프로젝트가 이미 있습니다."),
     PROJECT_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "프로젝트는 최대 5개까지 만들 수 있습니다."),
     API_KEY_NOT_ISSUED(HttpStatus.CONFLICT, "아직 발급된 API 키가 없습니다. 분야가 승인된 뒤 다시 시도해 주세요."),
+    APPLICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 신청입니다."),
+    APPLICATION_ALREADY_DECIDED(HttpStatus.CONFLICT, "이미 처리된 신청입니다."),
     FIELD_ALREADY_APPLIED(HttpStatus.CONFLICT, "이미 신청했거나 승인된 분야입니다."),
     INVALID_DATE_RANGE(HttpStatus.BAD_REQUEST, "조회 기간이 올바르지 않습니다."),
     MEAL_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 급식 정보입니다."),

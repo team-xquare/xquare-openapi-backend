@@ -281,8 +281,10 @@ class ApiUsageLogHttpTest @Autowired constructor(
         jdbc.update("delete from api_usage_logs")
         val body = """{"fields":["CLUB"],"emailVerifiedToken":"unknown-token"}"""
         assertEquals(404, send("POST", "/projects/987654321/fields", admin, body).statusCode())
-        val rows = awaitRows(1)
-        assertEquals(listOf("/projects/{projectId}/fields"), rows.map { it["route"] })
+        // 관리자 경로 중 분야 신청 처리는 업무 호출로 기록한다(관리자 사용 기록 조회는 기록하지 않음).
+        assertEquals(404, send("GET", "/admin/api-applications/987654321", admin).statusCode())
+        val rows = awaitRows(2)
+        assertEquals(listOf("/projects/{projectId}/fields", "/admin/api-applications/{applicationId}"), rows.map { it["route"] })
     }
 
     @Test

@@ -71,6 +71,31 @@ class ApiProjectFieldTest {
     }
 
     @Test
+    fun `관리자가 승인하면 승인 상태와 처리 시각, 처리한 관리자를 남긴다`() {
+        val field = ApiProjectField(1L, ApiKeyField.STUDENT, NOW)
+
+        field.approve(9L, LATER)
+
+        assertEquals(ApplicationStatus.APPROVED, field.status)
+        assertEquals(LATER, field.decidedAt)
+        assertEquals(9L, field.decidedBy)
+        assertNull(field.rejectReason)
+        assertEquals(NOW, field.appliedAt)
+    }
+
+    @Test
+    fun `관리자가 반려하면 사유와 처리 기록을 남긴다`() {
+        val field = ApiProjectField(1L, ApiKeyField.TEACHER, NOW)
+
+        field.reject(9L, "목적이 불분명합니다.", LATER)
+
+        assertEquals(ApplicationStatus.REJECTED, field.status)
+        assertEquals("목적이 불분명합니다.", field.rejectReason)
+        assertEquals(LATER, field.decidedAt)
+        assertEquals(9L, field.decidedBy)
+    }
+
+    @Test
     fun `키를 발급하면 원문의 해시만 남기고 발급 시각을 기록한다`() {
         val project = ApiProject(1L, "급식 알리미", "급식 공유", NOW)
         assertFalse(project.keyIssued)

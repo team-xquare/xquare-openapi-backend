@@ -93,6 +93,12 @@
 - `POST /projects/{projectId}/api-key/reissue`: 이메일 인증 후 새 키 원문을 준다(`{ apiKey, issuedAt, expiresAt }`). 이전 키는 바로 `401 INVALID_API_KEY`. 아직 발급 전(승인된 분야 없음)이면 `409 API_KEY_NOT_ISSUED`. 관리자 승인으로 첫 발급된 키는 원문을 받은 사람이 없으므로 이 API로 받는다
 - `DELETE /projects/{projectId}`: 프로젝트·분야·키를 모두 지운다(하드 삭제). 이메일 인증은 요구하지 않는다(예전 키 삭제와 같음). 성공하면 `200 {"message":"삭제되었습니다."}`. 같은 프로젝트를 동시에 지우면 하나만 200이고 나머지는 404
 - 남의 프로젝트(목록 제외 모든 프로젝트 API)는 `404 PROJECT_NOT_FOUND`
+- 관리자(OPN-71 대체): `GET /admin/api-applications?status=&page=&size=`(PageResponse, 신청 시각 역순·같으면 id 역순, page 0~21474836·size 1~100), `GET /admin/api-applications/{applicationId}`, `POST .../approve`, `POST .../reject`(`{ "reason" }` 1~200자, 공백만이면 400). `applicationId`는 `api_project_fields.id`. ADMIN 액세스 토큰으로 열고 USER는 `403 FORBIDDEN`. 옛 `/api-key-applications`는 1단계에서 테이블과 함께 지웠다
+  - 상세: 신청 내용·처리 기록(`decidedAt`, `decidedBy`, `rejectReason`) + 프로젝트(이름·목적·키 발급 여부·분야 전체) + 신청자(`applicant`, 사용자 행이 없으면 null). 승인·반려 응답도 처리 뒤의 상세를 준다
+  - `PENDING`이 아닌 신청을 승인·반려하면 `409 APPLICATION_ALREADY_DECIDED`, 없는 신청은 `404 APPLICATION_NOT_FOUND`
+  - 첫 승인이면 키를 발급하되 해시만 저장한다. 승인 응답에 원문은 없고, 사용자가 `POST /projects/{projectId}/api-key/reissue`로 받는다(명세 4.1 제안)
+  - 동시성: 승인·반려도 프로젝트 행을 잠근다. 잠글 프로젝트 id는 트랜잭션 밖에서 먼저 읽는다. 트랜잭션 안에서 잠금 전에 일반 조회를 하면 REPEATABLE READ 스냅샷이 잠금 전에 생겨, 두 관리자가 같은 신청을 동시에 처리할 때 늦은 쪽이 이미 처리된 상태를 못 보기 때문이다(`DecideApiApplicationMySqlConcurrencyTest`)
+  - API 사용 기록: `/admin/api-applications/**`는 업무 호출로 기록한다(예전 `/api-key-applications`도 기록 대상이었음). 관리자 사용 기록 조회(`/admin/api-usage-logs`)는 여전히 기록하지 않는다. `ApiUsageLogCapture`는 첫 세그먼트가 `admin`이면 두 번째 세그먼트로 판단한다
 - 동시성
   - 프로젝트 만들기는 사용자 행을 `SELECT ... FOR UPDATE`로 잠가 개수 상한·이름 중복 검사를 한 줄로 세운다. 이름이 unique 제약(`uk_api_projects_user_id_name`)에 걸려도 `409 PROJECT_NAME_DUPLICATED`
   - 분야 신청·승인·재발급·삭제는 프로젝트 행을 잠근다(`findByIdForUpdate`). 같은 분야가 unique 제약(`uk_api_project_fields_project_id_field`)에 걸려도 `409 FIELD_ALREADY_APPLIED`

@@ -103,6 +103,9 @@ class SwaggerTest @Autowired constructor(
             jsonPath("$.paths['/projects'].get") { exists() }
             jsonPath("$.paths['/projects'].get.security") { doesNotExist() }
             jsonPath("$.paths['/projects/{projectId}'].get.security") { doesNotExist() }
+            jsonPath("$.paths['/admin/api-applications'].get") { exists() }
+            jsonPath("$.paths['/admin/api-applications'].get.security") { doesNotExist() }
+            jsonPath("$.paths['/admin/api-applications/{applicationId}'].get.security") { doesNotExist() }
         }
     }
 

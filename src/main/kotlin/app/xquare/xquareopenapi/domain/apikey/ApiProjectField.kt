@@ -67,6 +67,21 @@ class ApiProjectField(
         rejectReason = null
     }
 
+    // 관리자 승인. 대기(PENDING)인지는 부르는 쪽(DecideApiApplicationUseCase)이 확인한다.
+    fun approve(adminId: Long, now: LocalDateTime) {
+        status = ApplicationStatus.APPROVED
+        decidedAt = now
+        decidedBy = adminId
+    }
+
+    // 관리자 반려. 사유는 사용자에게 그대로 보인다.
+    fun reject(adminId: Long, reason: String, now: LocalDateTime) {
+        status = ApplicationStatus.REJECTED
+        rejectReason = reason
+        decidedAt = now
+        decidedBy = adminId
+    }
+
     companion object {
         const val FIELD_UNIQUE_CONSTRAINT = "uk_api_project_fields_project_id_field"
 
