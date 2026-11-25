@@ -170,6 +170,7 @@ DB에는 해시만 두므로 원문은 한 번만 보여 줄 수 있습니다.
 | `API_KEY_FIELD_FORBIDDEN` | 403 | 승인되지 않은 분야 (기존, 의미 확장) |
 | `PROJECT_NOT_FOUND` | 404 | 없거나 내 프로젝트가 아님 |
 | `PROJECT_NAME_DUPLICATED` | 409 | 같은 이름의 내 프로젝트가 있음 |
+| `PROJECT_LIMIT_EXCEEDED` | 409 | 내 프로젝트가 이미 5개(사용자당 상한) |
 | `API_KEY_NOT_ISSUED` | 409 | 승인 전이라 갱신·재발급할 키가 없음 |
 | `FIELD_ALREADY_APPLIED` | 409 | 이미 신청(대기·승인)한 분야 |
 | `APPLICATION_NOT_FOUND` | 404 | 없는 신청 |
