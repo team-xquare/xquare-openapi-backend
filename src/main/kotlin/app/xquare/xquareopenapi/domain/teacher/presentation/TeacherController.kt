@@ -56,7 +56,7 @@ class TeacherController(
     )
     @ApiResponse(responseCode = "200", description = "교직원 목록")
     @ApiResponse(responseCode = "400", description = "INVALID_INPUT", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
-    @ApiResponse(responseCode = "401", description = "INVALID_API_KEY", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "401", description = "INVALID_API_KEY / API_KEY_EXPIRED", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     @ApiResponse(responseCode = "403", description = "API_KEY_FIELD_FORBIDDEN", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     @ApiResponse(responseCode = "500", description = "INTERNAL_SERVER_ERROR", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     fun getTeachers(@ParameterObject @ModelAttribute @Valid request: TeacherSearchRequest): PageResponse<TeacherResponse> =
@@ -93,7 +93,7 @@ class TeacherController(
     )
     @ApiResponse(responseCode = "200", description = "교직원 정보")
     @ApiResponse(responseCode = "400", description = "INVALID_INPUT", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
-    @ApiResponse(responseCode = "401", description = "INVALID_API_KEY", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "401", description = "INVALID_API_KEY / API_KEY_EXPIRED", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     @ApiResponse(responseCode = "403", description = "API_KEY_FIELD_FORBIDDEN", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     @ApiResponse(responseCode = "404", description = "TEACHER_NOT_FOUND", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     @ApiResponse(responseCode = "500", description = "INTERNAL_SERVER_ERROR", content = [Content(schema = Schema(implementation = ErrorResponse::class))])

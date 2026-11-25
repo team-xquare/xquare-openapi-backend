@@ -56,7 +56,7 @@ class StudentController(
     )
     @ApiResponse(responseCode = "200", description = "학생 목록")
     @ApiResponse(responseCode = "400", description = "INVALID_INPUT", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
-    @ApiResponse(responseCode = "401", description = "INVALID_API_KEY", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "401", description = "INVALID_API_KEY / API_KEY_EXPIRED", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     @ApiResponse(responseCode = "403", description = "API_KEY_FIELD_FORBIDDEN", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     @ApiResponse(responseCode = "500", description = "INTERNAL_SERVER_ERROR", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     fun getStudents(@ParameterObject @ModelAttribute @Valid request: StudentSearchRequest): PageResponse<StudentResponse> =
@@ -94,7 +94,7 @@ class StudentController(
     )
     @ApiResponse(responseCode = "200", description = "학생 정보")
     @ApiResponse(responseCode = "400", description = "INVALID_INPUT", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
-    @ApiResponse(responseCode = "401", description = "INVALID_API_KEY", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "401", description = "INVALID_API_KEY / API_KEY_EXPIRED", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     @ApiResponse(responseCode = "403", description = "API_KEY_FIELD_FORBIDDEN", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     @ApiResponse(responseCode = "404", description = "STUDENT_NOT_FOUND", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     @ApiResponse(responseCode = "500", description = "INTERNAL_SERVER_ERROR", content = [Content(schema = Schema(implementation = ErrorResponse::class))])

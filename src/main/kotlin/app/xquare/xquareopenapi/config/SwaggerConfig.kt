@@ -28,14 +28,15 @@ class SwaggerConfig {
                     .description(
                         "XQUARE Open API 백엔드 명세입니다.\n\n" +
                             "인증 방식:\n" +
-                            "- `security: []`: 인증 없이 호출할 수 있는 공개 API (`/auth/**`, `GET /meals`, `GET /meals/{mealId}`)\n" +
-                            "- `apiKeyAuth`: `X-API-Key: <apiKey>` 헤더가 필요한 조회 API (`GET /students`, `GET /students/{studentId}`, `GET /teachers`, `GET /teachers/{teacherId}`). 액세스 토큰으로는 호출할 수 없으며 신청하지 않은 분야면 `403 API_KEY_FIELD_FORBIDDEN`입니다.\n" +
+                            "- `security: []`: 인증 없이 호출할 수 있는 공개 API (`/auth/**`, `GET /meals`, `GET /meals/{mealId}`, `GET /timetables`)\n" +
+                            "- `apiKeyAuth`: `X-API-Key: <apiKey>` 헤더가 필요한 조회 API (`GET /students/**`, `GET /teachers/**`, `GET /clubs/**`, `GET /study-supervisors`, `GET /study-supervisors/day`, `GET /schedules/**`). 액세스 토큰으로는 호출할 수 없으며 승인되지 않은 분야면 `403 API_KEY_FIELD_FORBIDDEN`, 만료된 키면 `401 API_KEY_EXPIRED`입니다.\n" +
                             "- `bearerAuth`: `Authorization: Bearer <accessToken>` 헤더가 필요한 API. 필요한 권한(`USER`, `ADMIN`)은 각 API의 `x-required-role`을 참고하세요.",
                     ),
             )
             .tags(
                 listOf(
                     Tag().name("인증/인가"),
+                    Tag().name("API 키"),
                     Tag().name("사용자"),
                     Tag().name("학생"),
                     Tag().name("교직원"),

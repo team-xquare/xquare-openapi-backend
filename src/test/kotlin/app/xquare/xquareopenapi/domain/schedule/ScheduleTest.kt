@@ -1,9 +1,14 @@
 package app.xquare.xquareopenapi.domain.schedule
 
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyField
+import app.xquare.xquareopenapi.domain.apikey.ApiProjectFieldRepository
+import app.xquare.xquareopenapi.domain.apikey.ApiProjectRepository
+import app.xquare.xquareopenapi.domain.apikey.saveApiKey
 import app.xquare.xquareopenapi.domain.user.Role
 import app.xquare.xquareopenapi.global.jwt.JwtProvider
 import org.hamcrest.Matchers.containsString
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -27,13 +32,23 @@ import kotlin.test.assertTrue
 class ScheduleTest @Autowired constructor(
     private val mockMvc: MockMvc,
     private val scheduleRepository: ScheduleRepository,
+    private val apiProjectRepository: ApiProjectRepository,
+    private val apiProjectFieldRepository: ApiProjectFieldRepository,
     jwtProvider: JwtProvider,
 ) {
     private val adminToken = jwtProvider.generateAccessToken(1L, Role.ADMIN)
     private val userToken = jwtProvider.generateAccessToken(2L, Role.USER)
 
+    // 조회 API는 SCHEDULE 분야가 승인된 API 키로만 인증한다.
+    @BeforeEach
+    fun setUp() {
+        saveApiKey(apiProjectRepository, apiProjectFieldRepository, 2L, RAW_API_KEY, ApiKeyField.SCHEDULE)
+    }
+
     @AfterEach
     fun tearDown() {
+        apiProjectFieldRepository.deleteAll()
+        apiProjectRepository.deleteAll()
         scheduleRepository.deleteAll()
     }
 
@@ -113,7 +128,7 @@ class ScheduleTest @Autowired constructor(
         val schedule = save(content = "우천 시 순연")
 
         mockMvc.get("/schedules/${schedule.id}") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.id") { value(schedule.id!!) }
@@ -129,7 +144,7 @@ class ScheduleTest @Autowired constructor(
         val schedule = save(content = null, source = ScheduleSource.NEIS)
 
         mockMvc.get("/schedules/${schedule.id}") {
-            bearer(adminToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             // 명세가 "없으면 null"이라 필드를 빼지 않고 null로 준다.
@@ -141,14 +156,14 @@ class ScheduleTest @Autowired constructor(
     @Test
     fun `없는 일정은 SCHEDULE_NOT_FOUND`() {
         mockMvc.get("/schedules/999999") {
-            bearer(userToken)
+            apiKey()
         }.andExpectScheduleNotFound()
     }
 
     @Test
     fun `일정 id가 숫자가 아니면 INVALID_INPUT`() {
         mockMvc.get("/schedules/abc") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("INVALID_INPUT") }
@@ -156,12 +171,16 @@ class ScheduleTest @Autowired constructor(
     }
 
     @Test
-    fun `조회는 토큰이 필요하다`() {
+    fun `조회는 API 키로만 하고 키가 없으면 액세스 토큰이 있어도 INVALID_API_KEY`() {
         val schedule = save()
 
         mockMvc.get("/schedules/${schedule.id}").andExpect {
             status { isUnauthorized() }
-            jsonPath("$.code") { value("INVALID_TOKEN") }
+            jsonPath("$.code") { value("INVALID_API_KEY") }
+        }
+        mockMvc.get("/schedules/${schedule.id}") { bearer(adminToken) }.andExpect {
+            status { isUnauthorized() }
+            jsonPath("$.code") { value("INVALID_API_KEY") }
         }
     }
 
@@ -337,6 +356,8 @@ class ScheduleTest @Autowired constructor(
 
     private fun MockHttpServletRequestDsl.bearer(token: String) = header("Authorization", "Bearer $token")
 
+    private fun MockHttpServletRequestDsl.apiKey() = header("X-API-Key", RAW_API_KEY)
+
     private fun MockHttpServletRequestDsl.json(body: String) {
         contentType = MediaType.APPLICATION_JSON
         content = body
@@ -348,4 +369,8 @@ class ScheduleTest @Autowired constructor(
         } else {
             """{"date":"$date","title":"$title","content":"$content"}"""
         }
+
+    companion object {
+        private const val RAW_API_KEY = "xq_test-api-key"
+    }
 }

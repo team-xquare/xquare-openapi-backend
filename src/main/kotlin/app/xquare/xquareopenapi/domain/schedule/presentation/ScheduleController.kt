@@ -38,7 +38,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.net.URI
 
-// 권한(조회는 로그인, 등록·수정·삭제는 ADMIN)은 SecurityConfig에서 검사한다.
+// 권한(조회는 SCHEDULE 분야가 승인된 API 키, 등록·수정·삭제는 ADMIN)은 SecurityConfig에서 검사한다.
 @Tag(name = "일정")
 @RestController
 @RequestMapping("/schedules")
@@ -79,9 +79,9 @@ class ScheduleController(
         summary = "학사 일정 목록 조회",
         description = "시작일과 종료일을 포함해 최대 ${MAX_DAYS}일의 학사 일정을 날짜 오름차순, 같은 날짜는 id 오름차순으로 반환한다. " +
             "결과가 없으면 빈 배열이다. NEIS와 SCHOOL 일정을 모두 반환하며 ${MAX_RESULTS}건을 넘으면 " +
-            "일부 목록 대신 400을 반환한다. 기간을 나눠 조회할 수 있지만 하루에 ${MAX_RESULTS}건을 넘는 날짜는 목록으로 조회할 수 없다. 권한: 로그인 JWT(USER/ADMIN).",
-        security = [SecurityRequirement(name = "bearerAuth")],
-        extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "USER")])],
+            "일부 목록 대신 400을 반환한다. 기간을 나눠 조회할 수 있지만 하루에 ${MAX_RESULTS}건을 넘는 날짜는 목록으로 조회할 수 없다. 권한: API 키(SCHEDULE 분야 승인).",
+        security = [SecurityRequirement(name = "apiKeyAuth")],
+        extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "API_KEY")])],
     )
     @ApiResponse(
         responseCode = "200", description = "기간 내 학사 일정",
@@ -93,7 +93,8 @@ class ScheduleController(
             "${MAX_DAYS}일 초과 / SCHEDULE_LIST_LIMIT_EXCEEDED: ${MAX_RESULTS}건 초과",
         content = [Content(schema = Schema(implementation = ScheduleListErrorSchema::class))],
     )
-    @ApiResponse(responseCode = "401", description = "INVALID_TOKEN: 유효한 액세스 토큰이 없음", content = [Content(schema = Schema(implementation = ScheduleListErrorSchema::class))])
+    @ApiResponse(responseCode = "401", description = "INVALID_API_KEY: API 키가 없거나 유효하지 않음 / API_KEY_EXPIRED: 만료된 키", content = [Content(schema = Schema(implementation = ScheduleListErrorSchema::class))])
+    @ApiResponse(responseCode = "403", description = "API_KEY_FIELD_FORBIDDEN: SCHEDULE 분야가 승인되지 않음", content = [Content(schema = Schema(implementation = ScheduleListErrorSchema::class))])
     @ApiResponse(responseCode = "409", description = "CONCURRENT_UPDATE: 저장소 잠금 충돌", content = [Content(schema = Schema(implementation = ScheduleListErrorSchema::class))])
     @ApiResponse(responseCode = "500", description = "INTERNAL_SERVER_ERROR: 저장소 접근 실패", content = [Content(schema = Schema(implementation = ScheduleListErrorSchema::class))])
     fun listSchedules(@ParameterObject @ModelAttribute @Valid query: ScheduleSearchRequest): List<ScheduleResponse> =
@@ -103,12 +104,13 @@ class ScheduleController(
     @Operation(
         operationId = "getSchedule",
         summary = "일정 조회",
-        description = "일정 하나를 조회합니다. content가 없으면 null입니다. 권한: USER.",
-        extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "USER")])],
+        description = "일정 하나를 조회합니다. content가 없으면 null입니다. 인증: API 키(X-API-Key, SCHEDULE 분야).",
+        extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "API_KEY")])],
     )
     @ApiResponse(responseCode = "200", description = "조회 성공")
     @ApiResponse(responseCode = "400", description = "INVALID_INPUT", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
-    @ApiResponse(responseCode = "401", description = "INVALID_TOKEN", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "401", description = "INVALID_API_KEY / API_KEY_EXPIRED", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "403", description = "API_KEY_FIELD_FORBIDDEN", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     @ApiResponse(responseCode = "404", description = "SCHEDULE_NOT_FOUND", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     @ApiResponse(responseCode = "500", description = "INTERNAL_SERVER_ERROR", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     fun getSchedule(@Parameter(description = "일정 id", example = "1") @PathVariable scheduleId: Long): ScheduleResponse =

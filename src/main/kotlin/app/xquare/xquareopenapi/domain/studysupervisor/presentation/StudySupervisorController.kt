@@ -36,7 +36,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.net.URI
 
-// 권한(조회는 USER, 등록·수정·삭제는 ADMIN)은 SecurityConfig에서 검사한다.
+// 권한(조회는 STUDY_SUPERVISOR 분야가 승인된 API 키, 등록·수정·삭제는 ADMIN)은 SecurityConfig에서 검사한다.
 // 명세에 단건 조회가 없어서 GET /study-supervisors/{id}는 만들지 않았다. Location은 수정·삭제할 URI다.
 @Tag(name = "자습 감독")
 @RestController
@@ -53,12 +53,13 @@ class StudySupervisorController(
     @Operation(
         operationId = "getStudySupervisors",
         summary = "자습 감독 정보 전체 조회",
-        description = "기간(startDate~finishDate, 최대 92일)에 해당하는 날짜별 자습 감독 배정을 반환합니다. 권한: USER.",
-        extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "USER")])],
+        description = "기간(startDate~finishDate, 최대 92일)에 해당하는 날짜별 자습 감독 배정을 반환합니다. 인증: API 키(X-API-Key, STUDY_SUPERVISOR 분야).",
+        extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "API_KEY")])],
     )
     @ApiResponse(responseCode = "200", description = "조회 성공")
     @ApiResponse(responseCode = "400", description = "INVALID_DATE_RANGE / INVALID_INPUT", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
-    @ApiResponse(responseCode = "401", description = "INVALID_TOKEN", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "401", description = "INVALID_API_KEY / API_KEY_EXPIRED", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "403", description = "API_KEY_FIELD_FORBIDDEN", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     @ApiResponse(responseCode = "500", description = "INTERNAL_SERVER_ERROR", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     fun getStudySupervisors(@ParameterObject @ModelAttribute @Valid request: StudySupervisorSearchRequest): StudySupervisorRangeResponse =
         getStudySupervisorsUseCase.execute(request.startDate!!, request.finishDate!!)
@@ -91,12 +92,13 @@ class StudySupervisorController(
     @Operation(
         operationId = "getStudySupervisorByDay",
         summary = "자습 감독 정보 일별로 조회",
-        description = "해당 날짜의 층별 자습 감독 배정을 반환합니다. 권한: USER.",
-        extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "USER")])],
+        description = "해당 날짜의 층별 자습 감독 배정을 반환합니다. 인증: API 키(X-API-Key, STUDY_SUPERVISOR 분야).",
+        extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "API_KEY")])],
     )
     @ApiResponse(responseCode = "200", description = "조회 성공")
     @ApiResponse(responseCode = "400", description = "INVALID_INPUT", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
-    @ApiResponse(responseCode = "401", description = "INVALID_TOKEN", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "401", description = "INVALID_API_KEY / API_KEY_EXPIRED", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "403", description = "API_KEY_FIELD_FORBIDDEN", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     @ApiResponse(responseCode = "500", description = "INTERNAL_SERVER_ERROR", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     fun getStudySupervisorByDay(@ParameterObject @ModelAttribute @Valid request: StudySupervisorDayRequest): StudySupervisorDayResponse =
         getStudySupervisorByDayUseCase.execute(request.date!!)

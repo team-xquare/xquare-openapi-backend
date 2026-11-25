@@ -1,5 +1,9 @@
 package app.xquare.xquareopenapi.domain.studysupervisor
 
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyField
+import app.xquare.xquareopenapi.domain.apikey.ApiProjectFieldRepository
+import app.xquare.xquareopenapi.domain.apikey.ApiProjectRepository
+import app.xquare.xquareopenapi.domain.apikey.saveApiKey
 import app.xquare.xquareopenapi.domain.teacher.Teacher
 import app.xquare.xquareopenapi.domain.teacher.TeacherPosition
 import app.xquare.xquareopenapi.domain.teacher.TeacherRepository
@@ -12,6 +16,7 @@ import org.hamcrest.Matchers.containsString
 import org.hibernate.SessionFactory
 import org.hibernate.exception.ConstraintViolationException
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentMatchers.anyLong
@@ -47,6 +52,8 @@ class StudySupervisorTest @Autowired constructor(
     private val studySupervisorRepository: StudySupervisorRepository,
     private val assignmentRepository: StudySupervisorAssignmentRepository,
     private val teacherRepository: TeacherRepository,
+    private val apiProjectRepository: ApiProjectRepository,
+    private val apiProjectFieldRepository: ApiProjectFieldRepository,
     jwtProvider: JwtProvider,
 ) {
     // 동시 등록·수정을 흉내 내려고 중복 검사만 통과시킬 때 쓴다.
@@ -56,8 +63,16 @@ class StudySupervisorTest @Autowired constructor(
     private val adminToken = jwtProvider.generateAccessToken(1L, Role.ADMIN)
     private val userToken = jwtProvider.generateAccessToken(2L, Role.USER)
 
+    // 조회 API는 STUDY_SUPERVISOR 분야가 승인된 API 키로만 인증한다.
+    @BeforeEach
+    fun setUp() {
+        saveApiKey(apiProjectRepository, apiProjectFieldRepository, 2L, RAW_API_KEY, ApiKeyField.STUDY_SUPERVISOR)
+    }
+
     @AfterEach
     fun tearDown() {
+        apiProjectFieldRepository.deleteAll()
+        apiProjectRepository.deleteAll()
         assignmentRepository.deleteAll()
         studySupervisorRepository.deleteAll()
         teacherRepository.deleteAll()
@@ -83,7 +98,7 @@ class StudySupervisorTest @Autowired constructor(
         assertEquals("/study-supervisors/${saved.id}", location)
         assertEquals(LocalDate.of(2026, 9, 14), saved.date)
         mockMvc.get("/study-supervisors/day?date=2026-09-14") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.id") { value(saved.id!!) }
@@ -105,7 +120,7 @@ class StudySupervisorTest @Autowired constructor(
 
         assertEquals(2, assignmentRepository.count())
         mockMvc.get("/study-supervisors/day?date=2026-09-14") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             jsonPath("$.supervisors[*].floor") { value(contains(2, 3, 4)) }
             jsonPath("$.supervisors[0].teacher.name") { value("이진경") }
@@ -241,23 +256,23 @@ class StudySupervisorTest @Autowired constructor(
     fun `조회 날짜도 1000-01-01부터 9999-12-31까지 받는다`() {
         listOf("0999-12-31", "+10000-01-01", "+999999999-12-31").forEach { date ->
             mockMvc.get("/study-supervisors") {
-                bearer(userToken)
+                apiKey()
                 param("startDate", "2026-09-14")
                 param("finishDate", date)
             }.andExpectInvalidInput("finishDate: 1000-01-01부터 9999-12-31까지의 날짜여야 합니다.")
             mockMvc.get("/study-supervisors") {
-                bearer(userToken)
+                apiKey()
                 param("startDate", date)
                 param("finishDate", "2026-09-14")
             }.andExpectInvalidInput("startDate: 1000-01-01부터 9999-12-31까지의 날짜여야 합니다.")
             mockMvc.get("/study-supervisors/day") {
-                bearer(userToken)
+                apiKey()
                 param("date", date)
             }.andExpectInvalidInput("date: 1000-01-01부터 9999-12-31까지의 날짜여야 합니다.")
         }
-        mockMvc.get("/study-supervisors?startDate=1000-01-01&finishDate=1000-01-01") { bearer(userToken) }.andExpect { status { isOk() } }
-        mockMvc.get("/study-supervisors?startDate=9999-12-31&finishDate=9999-12-31") { bearer(userToken) }.andExpect { status { isOk() } }
-        mockMvc.get("/study-supervisors/day?date=9999-12-31") { bearer(userToken) }.andExpect { status { isOk() } }
+        mockMvc.get("/study-supervisors?startDate=1000-01-01&finishDate=1000-01-01") { apiKey() }.andExpect { status { isOk() } }
+        mockMvc.get("/study-supervisors?startDate=9999-12-31&finishDate=9999-12-31") { apiKey() }.andExpect { status { isOk() } }
+        mockMvc.get("/study-supervisors/day?date=9999-12-31") { apiKey() }.andExpect { status { isOk() } }
     }
 
     // 기간 조회
@@ -272,7 +287,7 @@ class StudySupervisorTest @Autowired constructor(
         supervision(LocalDate.of(2026, 9, 17), 2 to first)
 
         mockMvc.get("/study-supervisors?startDate=2026-09-14&finishDate=2026-09-16") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.startDate") { value("2026-09-14") }
@@ -295,7 +310,7 @@ class StudySupervisorTest @Autowired constructor(
     @Test
     fun `정보가 하나도 없는 기간이면 모든 날짜가 빈 배열이다`() {
         mockMvc.get("/study-supervisors?startDate=2026-09-14&finishDate=2026-09-15") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.supervisions.length()") { value(2) }
@@ -307,13 +322,13 @@ class StudySupervisorTest @Autowired constructor(
     @Test
     fun `하루만 조회할 수 있고 기간은 92일까지 받는다`() {
         mockMvc.get("/study-supervisors?startDate=2026-09-14&finishDate=2026-09-14") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.supervisions[*].date") { value(contains("2026-09-14")) }
         }
         mockMvc.get("/study-supervisors?startDate=2026-09-01&finishDate=2026-12-01") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.supervisions.length()") { value(92) }
@@ -328,7 +343,7 @@ class StudySupervisorTest @Autowired constructor(
             "startDate=2026-09-01&finishDate=2026-12-02",
         ).forEach { query ->
             mockMvc.get("/study-supervisors?$query") {
-                bearer(userToken)
+                apiKey()
             }.andExpect {
                 status { isBadRequest() }
                 jsonPath("$.code") { value("INVALID_DATE_RANGE") }
@@ -347,7 +362,7 @@ class StudySupervisorTest @Autowired constructor(
             "startDate=2026-09-14&finishDate=abc" to "finishDate: 형식이 올바르지 않습니다.",
         ).forEach { (query, expectedMessage) ->
             mockMvc.get("/study-supervisors?$query") {
-                bearer(userToken)
+                apiKey()
             }.andExpectInvalidInput(expectedMessage)
         }
     }
@@ -372,7 +387,7 @@ class StudySupervisorTest @Autowired constructor(
         supervision(LocalDate.of(2026, 9, 15), 2 to teacher)
 
         mockMvc.get("/study-supervisors/day?date=2026-09-14") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.id") { value(supervision.id!!) }
@@ -390,7 +405,7 @@ class StudySupervisorTest @Autowired constructor(
         supervision(LocalDate.of(2026, 9, 15), 2 to teacher("이진경"))
 
         mockMvc.get("/study-supervisors/day?date=2026-09-14") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.id") { value(null as Any?) }
@@ -407,7 +422,7 @@ class StudySupervisorTest @Autowired constructor(
             "?date=abc" to "date: 형식이 올바르지 않습니다.",
         ).forEach { (query, expectedMessage) ->
             mockMvc.get("/study-supervisors/day$query") {
-                bearer(userToken)
+                apiKey()
             }.andExpectInvalidInput(expectedMessage)
         }
     }
@@ -444,7 +459,7 @@ class StudySupervisorTest @Autowired constructor(
         assertEquals(2, assignmentIds.toSet().size)
         assertEquals(emptyList(), assignmentIds.filter { it in previousAssignmentIds })
         mockMvc.get("/study-supervisors?startDate=2026-09-14&finishDate=2026-09-15") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             jsonPath("$.supervisions[0].supervisors") { isEmpty() }
             jsonPath("$.supervisions[1].id") { value(supervision.id!!) }
@@ -596,7 +611,7 @@ class StudySupervisorTest @Autowired constructor(
         assertEquals(1, assignmentRepository.count())
         assertEquals(1, teacherRepository.count())
         mockMvc.get("/study-supervisors/day?date=2026-09-14") {
-            bearer(userToken)
+            apiKey()
         }.andExpect { jsonPath("$.supervisors") { isEmpty() } }
     }
 
@@ -670,8 +685,6 @@ class StudySupervisorTest @Autowired constructor(
         val supervision = supervision(LocalDate.of(2026, 9, 14), 2 to teacher)
 
         listOf(
-            mockMvc.get("/study-supervisors?startDate=2026-09-14&finishDate=2026-09-14"),
-            mockMvc.get("/study-supervisors/day?date=2026-09-14"),
             mockMvc.post("/study-supervisors") { json(body(date = "2026-09-15", assignments = listOf(2 to teacher.id!!))) },
             mockMvc.patch("/study-supervisors/${supervision.id}") { json(body(assignments = listOf(3 to teacher.id!!))) },
             mockMvc.delete("/study-supervisors/${supervision.id}"),
@@ -705,9 +718,17 @@ class StudySupervisorTest @Autowired constructor(
     }
 
     @Test
-    fun `ADMIN도 조회할 수 있다`() {
-        mockMvc.get("/study-supervisors?startDate=2026-09-14&finishDate=2026-09-14") { bearer(adminToken) }.andExpect { status { isOk() } }
-        mockMvc.get("/study-supervisors/day?date=2026-09-14") { bearer(adminToken) }.andExpect { status { isOk() } }
+    fun `조회는 API 키로만 하고 키가 없으면 액세스 토큰이 있어도 INVALID_API_KEY`() {
+        listOf("/study-supervisors?startDate=2026-09-14&finishDate=2026-09-14", "/study-supervisors/day?date=2026-09-14").forEach { uri ->
+            mockMvc.get(uri).andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value("INVALID_API_KEY") }
+            }
+            mockMvc.get(uri) { bearer(adminToken) }.andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value("INVALID_API_KEY") }
+            }
+        }
     }
 
     private fun teacher(name: String) =
@@ -722,7 +743,7 @@ class StudySupervisorTest @Autowired constructor(
     // 2, 3, 4층 순서로 감독 교직원 이름을 확인한다. null은 배정이 없는 층이다.
     private fun expectDayTeachers(date: String, vararg names: String?) {
         mockMvc.get("/study-supervisors/day?date=$date") {
-            bearer(userToken)
+            apiKey()
         }.andExpect {
             status { isOk() }
             jsonPath("$.supervisors[*].floor") { value(contains(2, 3, 4)) }
@@ -739,7 +760,7 @@ class StudySupervisorTest @Autowired constructor(
     private fun queryCount(uri: String): Long {
         val statistics = entityManagerFactory.unwrap(SessionFactory::class.java).statistics
         statistics.clear()
-        mockMvc.get(uri) { bearer(userToken) }.andExpect { status { isOk() } }
+        mockMvc.get(uri) { apiKey() }.andExpect { status { isOk() } }
         return statistics.prepareStatementCount
     }
 
@@ -785,6 +806,8 @@ class StudySupervisorTest @Autowired constructor(
 
     private fun MockHttpServletRequestDsl.bearer(token: String) = header("Authorization", "Bearer $token")
 
+    private fun MockHttpServletRequestDsl.apiKey() = header("X-API-Key", RAW_API_KEY)
+
     private fun MockHttpServletRequestDsl.json(body: String) {
         contentType = MediaType.APPLICATION_JSON
         content = body
@@ -796,4 +819,8 @@ class StudySupervisorTest @Autowired constructor(
           "supervisors": ${assignments.joinToString(",", "[", "]") { (floor, teacherId) -> """{"floor":$floor,"teacherId":$teacherId}""" }}
         }
     """.trimIndent()
+
+    companion object {
+        private const val RAW_API_KEY = "xq_test-api-key"
+    }
 }

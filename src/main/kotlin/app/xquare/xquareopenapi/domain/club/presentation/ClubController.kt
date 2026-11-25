@@ -35,7 +35,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.net.URI
 
-// 권한(조회는 USER, 등록·수정·삭제는 ADMIN)은 SecurityConfig에서 검사한다.
+// 권한(조회는 CLUB 분야가 승인된 API 키, 등록·수정·삭제는 ADMIN)은 SecurityConfig에서 검사한다.
 @Tag(name = "동아리")
 @RestController
 @RequestMapping("/clubs")
@@ -51,12 +51,13 @@ class ClubController(
     @Operation(
         operationId = "searchClubs",
         summary = "동아리 검색",
-        description = "동아리명(부분 일치), 구성원 이름(복수 AND, 부분 일치), 교실, 담당 선생님 이름(정확 일치)으로 동아리를 페이지 조회합니다. 권한: USER.",
-        extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "USER")])],
+        description = "동아리명(부분 일치), 구성원 이름(복수 AND, 부분 일치), 교실, 담당 선생님 이름(정확 일치)으로 동아리를 페이지 조회합니다. 인증: API 키(X-API-Key, CLUB 분야).",
+        extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "API_KEY")])],
     )
     @ApiResponse(responseCode = "200", description = "동아리 목록")
     @ApiResponse(responseCode = "400", description = "INVALID_INPUT", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
-    @ApiResponse(responseCode = "401", description = "INVALID_TOKEN", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "401", description = "INVALID_API_KEY / API_KEY_EXPIRED", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "403", description = "API_KEY_FIELD_FORBIDDEN", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     @ApiResponse(responseCode = "500", description = "INTERNAL_SERVER_ERROR", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     fun getClubs(@ParameterObject @ModelAttribute @Valid request: ClubSearchRequest): PageResponse<ClubResponse> =
         getClubsUseCase.execute(request)
@@ -89,12 +90,13 @@ class ClubController(
     @Operation(
         operationId = "getClub",
         summary = "동아리 조회",
-        description = "동아리 1건을 id로 조회합니다. 권한: USER.",
-        extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "USER")])],
+        description = "동아리 1건을 id로 조회합니다. 인증: API 키(X-API-Key, CLUB 분야).",
+        extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "API_KEY")])],
     )
     @ApiResponse(responseCode = "200", description = "동아리 상세")
     @ApiResponse(responseCode = "400", description = "INVALID_INPUT", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
-    @ApiResponse(responseCode = "401", description = "INVALID_TOKEN", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "401", description = "INVALID_API_KEY / API_KEY_EXPIRED", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "403", description = "API_KEY_FIELD_FORBIDDEN", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     @ApiResponse(responseCode = "404", description = "CLUB_NOT_FOUND", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     @ApiResponse(responseCode = "500", description = "INTERNAL_SERVER_ERROR", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     fun getClub(@Parameter(description = "조회할 동아리의 id", example = "1") @PathVariable clubId: Long): ClubResponse =

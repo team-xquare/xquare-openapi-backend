@@ -48,6 +48,7 @@ class SwaggerTest @Autowired constructor(
         "post, /auth/password/reset",
         "get, /meals",
         "get, /meals/{mealId}",
+        "get, /timetables",
     )
     fun `공개 API는 기본 인증을 빈 배열로 재정의한다`(method: String, path: String) {
         mockMvc.get("/v3/api-docs").andExpect {
@@ -84,18 +85,30 @@ class SwaggerTest @Autowired constructor(
     @Test
     fun `조회 API의 GET에만 API 키 인증이 걸리고 같은 경로의 다른 메서드는 Bearer 토큰 그대로다`() {
         mockMvc.get("/v3/api-docs").andExpect {
-            listOf("/students", "/students/{studentId}", "/teachers", "/teachers/{teacherId}").forEach { path ->
+            listOf(
+                "/students", "/students/{studentId}", "/teachers", "/teachers/{teacherId}",
+                "/clubs", "/clubs/{clubId}", "/study-supervisors", "/study-supervisors/day",
+                "/schedules", "/schedules/{scheduleId}",
+            ).forEach { path ->
                 jsonPath("$.paths['$path'].get.security.length()") { value(1) }
                 jsonPath("$.paths['$path'].get.security[0].apiKeyAuth") { exists() }
             }
             jsonPath("$.paths['/students'].post.security") { doesNotExist() }
             jsonPath("$.paths['/students/{studentId}'].patch.security") { doesNotExist() }
             jsonPath("$.paths['/teachers/{teacherId}'].delete.security") { doesNotExist() }
-            jsonPath("$.paths['/api-keys'].post.security") { doesNotExist() }
-            // 액세스 토큰으로 여는 GET(내 키, 관리자 활용신청)은 Bearer 토큰 그대로다.
-            jsonPath("$.paths['/api-keys/me'].get.security") { doesNotExist() }
-            jsonPath("$.paths['/api-key-applications'].get.security") { doesNotExist() }
-            jsonPath("$.paths['/api-key-applications/{applicationId}'].get.security") { doesNotExist() }
+            jsonPath("$.paths['/clubs'].post.security") { doesNotExist() }
+            jsonPath("$.paths['/schedules/{scheduleId}'].patch.security") { doesNotExist() }
+            jsonPath("$.paths['/study-supervisors/{studySupervisorId}'].delete.security") { doesNotExist() }
+            // 프로젝트(키 관리) API는 액세스 토큰으로 연다.
+            jsonPath("$.paths['/projects'].post") { exists() }
+            jsonPath("$.paths['/projects'].post.security") { doesNotExist() }
+            jsonPath("$.paths['/projects/{projectId}/fields'].post.security") { doesNotExist() }
+            jsonPath("$.paths['/projects'].get") { exists() }
+            jsonPath("$.paths['/projects'].get.security") { doesNotExist() }
+            jsonPath("$.paths['/projects/{projectId}'].get.security") { doesNotExist() }
+            jsonPath("$.paths['/admin/api-applications'].get") { exists() }
+            jsonPath("$.paths['/admin/api-applications'].get.security") { doesNotExist() }
+            jsonPath("$.paths['/admin/api-applications/{applicationId}'].get.security") { doesNotExist() }
         }
     }
 
@@ -136,6 +149,7 @@ class SwaggerTest @Autowired constructor(
                 "/study-supervisors/day" to listOf("date"),
                 "/timetables" to listOf("grade", "classNum", "date"),
                 "/schedules" to listOf("startDate", "finishDate"),
+                "/admin/api-applications" to listOf("status", "page", "size"),
                 "/admin/api-usage-logs" to listOf("from", "to", "method", "status", "page", "size", "api", "field"),
             ).forEach { (path, expectedParams) ->
                 jsonPath("$.paths['$path'].get.parameters.length()") { value(expectedParams.size) }
@@ -178,6 +192,19 @@ class SwaggerTest @Autowired constructor(
             jsonPath("$.components.schemas.TeacherResponse.properties.manager") { doesNotExist() }
             jsonPath("$.components.schemas.StudySupervisorRequest.properties.floorsDistinct") { doesNotExist() }
             jsonPath("$.components.schemas.ErrorResponse") { exists() }
+        }
+    }
+
+    @Test
+    fun `프로젝트 및 관리자 활용신청 API가 API 키 태그와 권한 확장으로 문서화된다`() {
+        mockMvc.get("/v3/api-docs").andExpect {
+            status { isOk() }
+            jsonPath("$.paths['/projects'].post.tags[0]") { value("API 키") }
+            jsonPath("$.paths['/projects'].post.responses['201']") { exists() }
+            jsonPath("$.paths['/projects/{projectId}/fields'].post.responses['201']") { exists() }
+            jsonPath("$.paths['/projects/{projectId}/api-key/renew'].post.tags[0]") { value("API 키") }
+            jsonPath("$.paths['/admin/api-applications'].get.tags[0]") { value("API 키") }
+            jsonPath("$.paths['/admin/api-applications/{applicationId}/approve'].post.x-required-role") { value("ADMIN") }
         }
     }
 }
