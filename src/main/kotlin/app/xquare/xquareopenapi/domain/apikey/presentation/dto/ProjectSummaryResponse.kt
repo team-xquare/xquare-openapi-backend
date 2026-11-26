@@ -32,14 +32,16 @@ data class ProjectSummaryResponse(
     }
 }
 
-// 프로젝트의 분야 하나와 신청 상태. 반려됐으면 사유가 있다.
+// 프로젝트의 분야 하나와 사용 목적, 신청 상태. 반려됐으면 사유가 있다.
 data class ProjectFieldResponse(
     val field: ApiKeyField,
     val level: AccessLevel,
     val status: ApplicationStatus,
+    val purpose: String,
     val rejectReason: String?,
 ) {
     companion object {
-        fun from(field: ApiProjectField) = ProjectFieldResponse(field.field, field.field.level, field.status, field.rejectReason)
+        fun from(field: ApiProjectField) =
+            ProjectFieldResponse(field.field, field.field.level, field.status, field.purpose, field.rejectReason)
     }
 }

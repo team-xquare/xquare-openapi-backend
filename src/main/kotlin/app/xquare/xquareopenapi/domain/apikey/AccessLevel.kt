@@ -1,7 +1,10 @@
 package app.xquare.xquareopenapi.domain.apikey
 
-// 분야의 접근 단계. 공개 단계(급식·시간표)는 키 없이 열려 분야가 없으므로 여기에 두지 않는다.
+// 분야의 접근 단계
 enum class AccessLevel {
+    // 누구나 쓰는 공개 정보(급식). 조회 API는 키 없이도 열려 있고, 분야를 신청하면 바로 승인한다.
+    PUBLIC,
+
     // 교내 정보, 개인정보 최소. 신청하면 바로 승인한다.
     SCHOOL,
 

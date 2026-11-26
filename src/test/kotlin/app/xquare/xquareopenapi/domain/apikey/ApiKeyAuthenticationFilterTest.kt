@@ -129,7 +129,7 @@ class ApiKeyAuthenticationFilterTest {
 
     // 승인된 분야만 돌려주도록 APPROVED로 물을 때만 응답한다. 다른 상태로 물으면 mock 기본값인 빈 목록이다.
     private fun stubKey(projectId: Long, userId: Long, approved: List<ApiKeyField>, expiresAt: LocalDateTime? = null) {
-        val project = ApiProject(userId, "급식 알리미", "급식 공유", NOW)
+        val project = ApiProject(userId, "급식 알리미", NOW)
         ReflectionTestUtils.setField(project, "id", projectId)
         ReflectionTestUtils.setField(project, "expiresAt", expiresAt)
         doReturn(project).`when`(projectRepository).findByKeyHash(ApiKeySecret.hash("xq_valid"))
