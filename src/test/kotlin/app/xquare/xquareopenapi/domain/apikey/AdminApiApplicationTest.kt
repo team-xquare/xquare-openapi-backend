@@ -159,6 +159,7 @@ class AdminApiApplicationTest @Autowired constructor(
             jsonPath("$.applicationType") { value("FIRST") }
             jsonPath("$.project.purpose") { doesNotExist() }
             jsonPath("$.project.keyIssued") { value(false) }
+            jsonPath("$.project.serviceUrl") { value(nullValue()) }
             jsonPath("$.project.fields[*].field") { value(contains("CLUB", "STUDENT")) }
             jsonPath("$.userId") { value(userId) }
             jsonPath("$.applicant.username") { value("junseo") }

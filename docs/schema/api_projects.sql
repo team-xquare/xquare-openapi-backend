@@ -2,7 +2,7 @@
 -- - api_projects는 프로젝트 하나에 키 하나다. 이름만으로 만들고, 키 원문 대신 SHA-256 16진수 해시만 두며, 첫 분야 신청 전에는 key_hash가 null이다.
 --   issued_at은 키 발급·재발급 시각, expires_at은 만료 시각이다(모두 Asia/Seoul, null이면 아직 발급 전 또는 만료 없음).
 -- - api_project_fields는 프로젝트의 분야별 사용 목적·신청 구분(FIRST/ADDITIONAL)·승인 상태다. 관리자 API의 applicationId가 이 테이블의 id다.
--- - 기존 DB는 migrations/2026-11-28-project-structure.sql로 바꾼다.
+-- - 기존 DB는 migrations/2026-11-28-project-structure.sql, migrations/2026-11-28-project-service-url.sql 순서로 바꾼다.
 --   decided_by는 처리한 관리자의 userId이고 자동 승인이면 null이다. 프로젝트를 지울 때 앱이 함께 지운다.
 -- - unique 제약 이름(uk_api_projects_user_id_name, uk_api_project_fields_project_id_field)은
 --   앱이 동시 요청 충돌을 409로 바꾸는 데 쓰는 계약이라 바꾸지 않는다.
@@ -14,6 +14,7 @@ create table api_projects (
     id         bigint       not null auto_increment,
     user_id    bigint       not null,
     name       varchar(30)  not null,
+    service_url varchar(255),
     key_hash   varchar(64),
     issued_at  datetime(6),
     expires_at datetime(6),

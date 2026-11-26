@@ -89,6 +89,7 @@ data class ApiApplicationDetailResponse(
     data class Project(
         val projectId: Long,
         val name: String,
+        val serviceUrl: String?,
         val keyIssued: Boolean,
         val createdAt: OffsetDateTime,
         // 이 프로젝트의 분야 전체(처음 신청한 순서)
@@ -118,6 +119,7 @@ data class ApiApplicationDetailResponse(
                 project = Project(
                     projectId = project.id!!,
                     name = project.name,
+                    serviceUrl = project.serviceUrl,
                     keyIssued = project.keyIssued,
                     createdAt = project.createdAt.withSeoulOffset(),
                     fields = projectFields.map(ProjectFieldResponse::from),

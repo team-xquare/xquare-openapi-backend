@@ -9,6 +9,8 @@ import java.time.OffsetDateTime
 data class ProjectDetailResponse(
     val projectId: Long,
     val name: String,
+    // 서비스 URL. 없으면 null
+    val serviceUrl: String?,
     // 한국 시간(+09:00)
     val createdAt: OffsetDateTime,
     val keyIssued: Boolean,
@@ -20,6 +22,7 @@ data class ProjectDetailResponse(
         fun of(project: ApiProject, fields: List<ApiProjectField>) = ProjectDetailResponse(
             projectId = project.id!!,
             name = project.name,
+            serviceUrl = project.serviceUrl,
             createdAt = project.createdAt.withSeoulOffset(),
             keyIssued = project.keyIssued,
             issuedAt = project.issuedAt?.withSeoulOffset(),

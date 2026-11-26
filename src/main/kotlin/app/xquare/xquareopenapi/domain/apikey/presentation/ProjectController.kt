@@ -13,6 +13,7 @@ import app.xquare.xquareopenapi.domain.apikey.usecase.CreateProjectUseCase
 import app.xquare.xquareopenapi.domain.apikey.usecase.DeleteProjectUseCase
 import app.xquare.xquareopenapi.domain.apikey.usecase.GetMyProjectsUseCase
 import app.xquare.xquareopenapi.domain.apikey.usecase.ReissueProjectApiKeyUseCase
+import app.xquare.xquareopenapi.domain.apikey.usecase.UpdateProjectUseCase
 import app.xquare.xquareopenapi.domain.apikey.usecase.RenewProjectApiKeyUseCase
 import app.xquare.xquareopenapi.global.dto.MessageResponse
 import app.xquare.xquareopenapi.global.error.ErrorResponse
@@ -30,6 +31,7 @@ import org.springframework.http.MediaType
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -48,6 +50,7 @@ class ProjectController(
     private val reissueProjectApiKeyUseCase: ReissueProjectApiKeyUseCase,
     private val deleteProjectUseCase: DeleteProjectUseCase,
     private val renewProjectApiKeyUseCase: RenewProjectApiKeyUseCase,
+    private val updateProjectUseCase: UpdateProjectUseCase,
 ) {
 
     @PostMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -55,7 +58,7 @@ class ProjectController(
     @Operation(
         operationId = "createProject",
         summary = "프로젝트 만들기",
-        description = "이름만으로 빈 프로젝트(서비스)를 만듭니다. 분야·사용 목적·이메일 인증은 분야 신청 API에서 받고, 키도 첫 분야 신청 때 발급됩니다. 사용자당 최대 5개입니다. 권한: USER.",
+        description = "이름(과 선택 입력인 서비스 URL)만으로 빈 프로젝트(서비스)를 만듭니다. 분야·사용 목적·이메일 인증은 분야 신청 API에서 받고, 키도 첫 분야 신청 때 발급됩니다. 사용자당 최대 5개입니다. 권한: USER.",
         extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "USER")])],
     )
     @ApiResponse(responseCode = "201", description = "생성됨")
@@ -123,6 +126,26 @@ class ProjectController(
         @Parameter(description = "프로젝트 id", example = "1") @PathVariable projectId: Long,
     ): ProjectDetailResponse =
         getMyProjectsUseCase.detail(userId, projectId)
+
+    @PatchMapping("/{projectId}", produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(
+        operationId = "updateProject",
+        summary = "프로젝트 수정",
+        description = "내 프로젝트의 이름과 서비스 URL을 바꿉니다. 모든 값을 받아 통째로 바꾸므로 serviceUrl을 빼거나 null로 보내면 지웁니다. 분야·키는 그대로입니다. 권한: USER.",
+        extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "USER")])],
+    )
+    @ApiResponse(responseCode = "200", description = "수정됨")
+    @ApiResponse(responseCode = "400", description = "INVALID_INPUT", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "401", description = "INVALID_TOKEN", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "404", description = "PROJECT_NOT_FOUND", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "409", description = "PROJECT_NAME_DUPLICATED", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "500", description = "INTERNAL_SERVER_ERROR", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    fun update(
+        @AuthenticationPrincipal userId: Long,
+        @Parameter(description = "프로젝트 id", example = "1") @PathVariable projectId: Long,
+        @RequestBody @Valid request: CreateProjectRequest,
+    ): ProjectDetailResponse =
+        updateProjectUseCase.execute(userId, projectId, request)
 
     @PostMapping("/{projectId}/api-key/reissue", produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(

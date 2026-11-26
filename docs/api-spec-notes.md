@@ -90,8 +90,9 @@
 
 ### 구현하면서 정한 것
 - 테이블: `api_projects`(프로젝트 = 키 1개, `key_hash`는 첫 분야 신청 전 null), `api_project_fields`(프로젝트의 분야별 사용 목적·구분·신청·승인 상태). 스키마는 `docs/schema/api_projects.sql`, 기존 DB 변경은 `docs/schema/migrations/2026-11-28-project-structure.sql`
-- `POST /projects`: 이름 1~30자(같은 사용자 안에서 unique)만 받는다. 이메일 인증 없음. 응답 `201`은 프로젝트 상세(`fields: []`, `keyIssued: false`). 토큰의 사용자가 지워졌으면 `401 INVALID_TOKEN`
+- `POST /projects`: 이름 1~30자(같은 사용자 안에서 unique)와 선택 입력인 서비스 URL(`serviceUrl`, http/https, 255자, 공백 불가)만 받는다. 이메일 인증 없음. 응답 `201`은 프로젝트 상세(`fields: []`, `keyIssued: false`). 토큰의 사용자가 지워졌으면 `401 INVALID_TOKEN`
 - `POST /projects/{projectId}/fields`: 분야 신청. `{ fields: [{ field, purpose }], emailVerifiedToken }`, 사용 목적 1~200자(앞뒤 공백 제거). 같은 분야를 두 번 넣으면 `400 INVALID_INPUT`. 응답 `201 { projectId, apiKey, fields[{field, level, status, purpose}] }`. 대기·승인된 분야를 다시 넣으면 `409 FIELD_ALREADY_APPLIED`이고 함께 보낸 다른 분야도 신청되지 않는다(트랜잭션 롤백). 응답은 프로젝트의 모든 분야(처음 신청한 순서). 없거나 남의 프로젝트면 `404 PROJECT_NOT_FOUND`(남의 프로젝트 존재 여부를 드러내지 않음)
+- `PATCH /projects/{projectId}`: 이름·서비스 URL 수정(11/27 태스크). 등록과 같은 DTO로 모든 값을 받아 통째로 바꾼다(`serviceUrl`을 빼면 지움). 이름을 그대로 두면 막지 않고, 내 다른 프로젝트와 겹치면 `409 PROJECT_NAME_DUPLICATED`. 프로젝트 행을 잠근다. 응답은 프로젝트 상세
 - `GET /projects`: 내 프로젝트를 만든 순서대로 `{ projectId, name, keyIssued, issuedAt, expiresAt, fields[{field, level, status, rejectReason}] }`. 키 원문·해시는 내려주지 않는다. `fields[]`에는 `purpose`도 있다. `GET /projects/{projectId}`는 여기에 `createdAt`을 더한다
 - `POST /projects/{projectId}/api-key/reissue`: 이메일 인증 후 새 키 원문을 준다(`{ apiKey, issuedAt, expiresAt }`). 이전 키는 바로 `401 INVALID_API_KEY`. 아직 발급 전(분야 신청 전)이면 `409 API_KEY_NOT_ISSUED`
 - `DELETE /projects/{projectId}`: 프로젝트·분야·키를 모두 지운다(하드 삭제). 이메일 인증은 요구하지 않는다(예전 키 삭제와 같음). 성공하면 `200 {"message":"삭제되었습니다."}`. 같은 프로젝트를 동시에 지우면 하나만 200이고 나머지는 404

@@ -385,7 +385,7 @@ paths:
       tags:
       - API 키
       summary: 프로젝트 만들기
-      description: '이름만으로 빈 프로젝트(서비스)를 만든다. API 키는 프로젝트마다 하나다. 분야·사용 목적·이메일 인증은 `POST /projects/{projectId}/fields`에서 받고,
+      description: '이름(과 선택 입력인 서비스 URL)만으로 빈 프로젝트(서비스)를 만든다. API 키는 프로젝트마다 하나다. 분야·사용 목적·이메일 인증은 `POST /projects/{projectId}/fields`에서 받고,
         키도 첫 분야 신청 때 발급된다. 사용자당 프로젝트는 5개까지다. 권한: USER, ADMIN(로그인한 본인).'
       operationId: createProject
       security:
@@ -399,6 +399,7 @@ paths:
               $ref: '#/components/schemas/ProjectCreateRequest'
             example:
               name: 급식 알리미
+              serviceUrl: https://meal.example.com
       responses:
         '201':
           description: 만들어짐. 분야가 없고 키도 발급 전이다
@@ -409,13 +410,14 @@ paths:
               example:
                 projectId: 1
                 name: 급식 알리미
+                serviceUrl: https://meal.example.com
                 createdAt: '2026-11-24T10:00:00+09:00'
                 keyIssued: false
                 issuedAt: null
                 expiresAt: null
                 fields: []
         '400':
-          description: '`INVALID_INPUT`: 이름 누락·공백·30자 초과'
+          description: '`INVALID_INPUT`: 이름 누락·공백·30자 초과, 서비스 URL이 http/https 주소가 아니거나 255자 초과'
           content:
             application/json:
               schema:
@@ -473,6 +475,7 @@ paths:
               example:
               - projectId: 1
                 name: 급식 알리미
+                serviceUrl: https://meal.example.com
                 keyIssued: true
                 issuedAt: '2026-11-24T10:00:00+09:00'
                 expiresAt: '2027-01-23T10:00:00+09:00'
@@ -555,6 +558,83 @@ paths:
                   value:
                     code: PROJECT_NOT_FOUND
                     message: 존재하지 않는 프로젝트입니다.
+    patch:
+      tags:
+      - API 키
+      summary: 프로젝트 수정
+      description: '내 프로젝트의 이름과 서비스 URL을 바꾼다. 다른 수정 API처럼 모든 값을 받아 통째로 바꾸므로 `serviceUrl`을 빼거나 null로 보내면 지운다. 이름을 그대로 두는 수정은
+        막지 않는다. 분야·키는 그대로다. 권한: USER, ADMIN(로그인한 본인).'
+      operationId: updateProject
+      security:
+      - bearerAuth: []
+      x-required-role: USER
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCreateRequest'
+            example:
+              name: 급식 알리미 2
+              serviceUrl: https://meal.example.com
+      responses:
+        '200':
+          description: 수정됨. 수정한 뒤의 프로젝트 상세
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectDetailResponse'
+        '400':
+          description: '`INVALID_INPUT`: 이름 누락·공백·30자 초과, 서비스 URL이 http/https 주소가 아니거나 255자 초과, projectId가 숫자가 아님'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
+        '401':
+          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_TOKEN:
+                  value:
+                    code: INVALID_TOKEN
+                    message: 토큰이 없거나 유효하지 않습니다.
+        '404':
+          description: '`PROJECT_NOT_FOUND`: 없거나 내 프로젝트가 아님'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                PROJECT_NOT_FOUND:
+                  value:
+                    code: PROJECT_NOT_FOUND
+                    message: 존재하지 않는 프로젝트입니다.
+        '409':
+          description: '`PROJECT_NAME_DUPLICATED`: 같은 이름의 내 다른 프로젝트가 있음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                PROJECT_NAME_DUPLICATED:
+                  value:
+                    code: PROJECT_NAME_DUPLICATED
+                    message: 같은 이름의 프로젝트가 이미 있습니다.
     delete:
       tags:
       - API 키
@@ -3975,6 +4055,14 @@ components:
           maxLength: 30
           description: 서비스(프로젝트) 이름. 같은 사용자 안에서 겹치지 않아야 한다
           example: 급식 알리미
+        serviceUrl:
+          type:
+          - string
+          - 'null'
+          maxLength: 255
+          pattern: ^https?://\S+$
+          description: 서비스 주소(http/https). 선택 입력이고, 수정 때 빼거나 null로 보내면 지운다
+          example: https://meal.example.com
     ProjectFieldsApplyRequest:
       type: object
       required:
@@ -4075,6 +4163,7 @@ components:
       required:
       - projectId
       - name
+      - serviceUrl
       - keyIssued
       - issuedAt
       - expiresAt
@@ -4087,6 +4176,12 @@ components:
         name:
           type: string
           example: 급식 알리미
+        serviceUrl:
+          type:
+          - string
+          - 'null'
+          description: 서비스 주소. 없으면 null
+          example: https://meal.example.com
         keyIssued:
           type: boolean
           description: 키가 발급됐는지(첫 분야 신청 전이면 false)
@@ -4114,6 +4209,7 @@ components:
       required:
       - projectId
       - name
+      - serviceUrl
       - createdAt
       - keyIssued
       - issuedAt
@@ -4127,6 +4223,12 @@ components:
         name:
           type: string
           example: 급식 알리미
+        serviceUrl:
+          type:
+          - string
+          - 'null'
+          description: 서비스 주소. 없으면 null
+          example: https://meal.example.com
         createdAt:
           type: string
           format: date-time
@@ -4323,6 +4425,7 @@ components:
           required:
           - projectId
           - name
+          - serviceUrl
           - keyIssued
           - createdAt
           - fields
@@ -4332,6 +4435,10 @@ components:
               format: int64
             name:
               type: string
+            serviceUrl:
+              type:
+              - string
+              - 'null'
             keyIssued:
               type: boolean
             createdAt:

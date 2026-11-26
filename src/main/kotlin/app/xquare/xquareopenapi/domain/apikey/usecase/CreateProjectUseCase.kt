@@ -39,7 +39,7 @@ class CreateProjectUseCase(
         }
         // 사용자 잠금으로 이름 검사를 차례로 지나므로 정상 흐름에서는 걸리지 않지만, 제약에 걸리면 같은 409로 바꾼다.
         val project = try {
-            projectRepository.saveAndFlush(ApiProject(userId, name, LocalDateTime.now(clock)))
+            projectRepository.saveAndFlush(ApiProject(userId, name, LocalDateTime.now(clock), request.serviceUrl))
         } catch (e: DataIntegrityViolationException) {
             if (e.violates(ApiProject.USER_ID_NAME_UNIQUE_CONSTRAINT)) throw XquareException(ErrorCode.PROJECT_NAME_DUPLICATED)
             throw e

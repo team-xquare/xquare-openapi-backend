@@ -24,11 +24,12 @@ class ApiProject(
     @Column(name = "user_id", nullable = false)
     val userId: Long,
 
-    @Column(nullable = false, length = 30)
-    val name: String,
+    name: String,
 
     @Column(name = "created_at", nullable = false)
     val createdAt: LocalDateTime,
+
+    serviceUrl: String? = null,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -48,7 +49,23 @@ class ApiProject(
     var expiresAt: LocalDateTime? = null
         protected set
 
+    // 같은 사용자 안에서 겹치지 않아야 한다. 수정 API로 바꿀 수 있다.
+    @Column(nullable = false, length = 30)
+    var name: String = name
+        protected set
+
+    // 프로젝트(서비스)의 주소. 선택 입력이라 null일 수 있다.
+    @Column(name = "service_url", length = 255)
+    var serviceUrl: String? = serviceUrl
+        protected set
+
     val keyIssued: Boolean get() = keyHash != null
+
+    // 이름과 서비스 URL을 통째로 바꾼다. serviceUrl을 null로 주면 지운다.
+    fun update(name: String, serviceUrl: String?) {
+        this.name = name
+        this.serviceUrl = serviceUrl
+    }
 
     // 새 키를 만들어 해시만 남기고 원문을 돌려준다. 이미 키가 있으면 해시가 바뀌어 이전 키로는 더 이상 찾을 수 없다.
     fun issueKey(now: LocalDateTime): String {
