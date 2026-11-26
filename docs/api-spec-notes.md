@@ -335,3 +335,14 @@
 - 삭제는 실제로 지운다(하드 삭제).
 - 작성자 사용자를 지우면 공지는 남고 `author`가 null이 된다(`notices.author_id` 외래 키 `ON DELETE SET NULL`). 사용자 삭제 API는 아직 없지만 DB에서 지우는 경우를 위해서다. 그래서 응답의 `author`는 nullable이다.
 - `NOTICE_NOT_FOUND` 메시지는 조회·수정·삭제 모두 `이미 삭제되었거나 존재하지 않는 공지입니다.` 하나다(명세는 수정만 `존재하지 않는 공지 id`).
+
+### 구현하면서 정한 것 (API 사용 기록 상세)
+- 기록 행에 `project_id`, `user_id`, `key_prefix`, `error_code`, `access_level`을 더했다. 모두 nullable이고 FK는 걸지 않는다. 프로젝트·사용자를 지워도 기록은 남고, 상세의 이름만 null이 된다.
+- `user_id`: API 키 호출이면 프로젝트 주인(신청자), JWT 호출이면 토큰의 사용자. 공개 조회에 유효한 토큰을 같이 보내면 그 사용자도 남는다. 토큰만 보낸 키 조회는 키 체인에 JWT 필터가 없어 남지 않는다.
+- `project_id`·`key_prefix`는 키로 프로젝트를 찾았을 때만 남긴다. 만료된 키(`401 API_KEY_EXPIRED`)와 분야 미승인(`403 API_KEY_FIELD_FORBIDDEN`)은 남기고, 맞지 않는 키(`401 INVALID_API_KEY`)는 임의 입력이라 앞부분도 남기지 않는다. `key_prefix`는 원문의 앞 11글자(`xq_` + 8글자)다.
+- `error_code`: 응답 본문의 `code`. MVC가 쓰는 `ErrorResponse`는 `ApiUsageErrorCodeAdvice`(ResponseBodyAdvice)가, Security 필터의 401·403은 `SecurityErrorResponder`가 요청 속성으로 남긴다. `code`가 없는 Spring 기본 오류 응답(미매핑 404, 415 등)은 null이다.
+- `access_level`: 요청 경로로 정한다(저장 템플릿이 아님). GET·HEAD이고 `/meals`, `/meals/*`, `/timetables`면 `PUBLIC`, `SecurityConfig.API_KEY_READ_PATHS`에 맞으면 그 분야의 단계(`SCHOOL`/`RESTRICTED`), 그 밖(등록·수정·삭제, 공지 등)은 null. 인증에서 막혀 템플릿이 `UNMAPPED`인 키 조회도 단계로 찾을 수 있다. 단계 값은 `AccessLevel`이 아니라 기록 전용 `UsageAccessLevel`(PUBLIC/SCHOOL/RESTRICTED)이고 DB에는 이름 문자열로 둔다. `AccessLevel`에 `PUBLIC`이 생겨도 이름으로 옮기므로 그대로 동작한다.
+- 목록 필터 `level`, `projectId`, `userId`, `errorCode`를 더했다. `level`·`errorCode`는 정의된 이름이 아니면(대소문자·공백 포함) `400 INVALID_INPUT`. 단계·프로젝트·사용자·오류 코드가 없는 행은 해당 필터를 지정하면 빠진다.
+- 상세 `GET /admin/api-usage-logs/{logId}`: ADMIN 전용(USER `403 FORBIDDEN`), 없으면 `404 API_USAGE_LOG_NOT_FOUND`. 목록 필드에 `projectName`(api_projects.name), `applicantName`(users.name), `applicantUsername`(users.username)을 더한다. 이름은 조회 시점의 값이다. 상세 조회도 관리자 조회라 사용 기록에 남지 않는다.
+- 인덱스는 프로젝트별 조회용 `(project_id, occurred_at)` 하나만 더했다. 단계는 값이 3개뿐이라 인덱스 효과가 적고, 사용자·오류 코드 필터는 기간 인덱스로 충분하다고 봤다.
+- 기존 DB는 `docs/schema/migrations/2026-11-28-api-usage-logs-detail.sql`을 배포 전에 적용해야 한다(`ddl-auto=validate`).

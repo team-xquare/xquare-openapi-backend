@@ -124,6 +124,8 @@ class SecurityConfig {
                 authorize(HttpMethod.DELETE, "/notices/*", hasRole(ADMIN))
                 // 메서드를 한정하지 않아 Spring MVC가 GET에 붙이는 HEAD도 관리자만 호출한다.
                 authorize("/admin/api-usage-logs", hasRole(ADMIN))
+                // 사용 기록 상세. 메서드를 한정하지 않아 HEAD도 관리자만 호출한다.
+                authorize("/admin/api-usage-logs/*", hasRole(ADMIN))
                 // 관리자 분야 신청 목록·상세·승인·반려
                 authorize("/admin/api-applications/**", hasRole(ADMIN))
                 // 나머지는 로그인만 하면 된다(USER, ADMIN). 조회 API는 위의 API 키 체인이 먼저 가져간다.

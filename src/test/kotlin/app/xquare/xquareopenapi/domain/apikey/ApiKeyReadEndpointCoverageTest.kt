@@ -56,6 +56,7 @@ class ApiKeyReadEndpointCoverageTest @Autowired constructor(
             "/timetables",
             // 관리자 API 사용 기록 조회(#55). ADMIN 액세스 토큰으로 연다.
             "/admin/api-usage-logs",
+            "/admin/api-usage-logs/{logId}",
             // 관리자 분야 신청 목록·상세. ADMIN 액세스 토큰으로 연다.
             "/admin/api-applications",
             "/admin/api-applications/{applicationId}",

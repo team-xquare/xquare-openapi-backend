@@ -1,5 +1,6 @@
 package app.xquare.xquareopenapi.config
 
+import app.xquare.xquareopenapi.domain.apiusage.UsageAccessLevel
 import app.xquare.xquareopenapi.domain.apiusage.usecase.RecordApiUsageUseCase
 import app.xquare.xquareopenapi.global.apiusage.ApiUsageLogCapture
 import app.xquare.xquareopenapi.global.apiusage.ApiUsageLogWriter
@@ -50,7 +51,7 @@ class ApiUsageLogConfig {
 
     @Bean
     fun apiUsageLogCapture(clock: Clock, writer: ApiUsageLogWriter): ApiUsageLogCapture =
-        ApiUsageLogCapture(clock, writer)
+        ApiUsageLogCapture(clock, writer, ACCESS_LEVELS)
 
     @Bean
     fun apiUsageLogFilter(capture: ApiUsageLogCapture): FilterRegistrationBean<ApiUsageLogCapture> =
@@ -63,4 +64,15 @@ class ApiUsageLogConfig {
     @Bean
     fun apiUsageLogListener(capture: ApiUsageLogCapture): ServletListenerRegistrationBean<ApiUsageLogCapture> =
         ServletListenerRegistrationBean(capture)
+
+    companion object {
+        // SecurityConfig에서 permitAll로 여는 공개 조회 경로(급식·시간표). 공개 조회를 추가하면 여기에도 넣는다.
+        private val PUBLIC_READ_PATHS = listOf("/meals", "/meals/*", "/timetables")
+
+        // 사용 기록의 단계: 키 없이 여는 공개 조회는 PUBLIC, 키로 여는 조회는 경로의 분야 단계.
+        // 분야 단계는 이름으로 옮겨서, AccessLevel에 값이 늘거나 공개 경로가 키 조회 목록으로 옮겨 가도 그대로 따른다.
+        private val ACCESS_LEVELS: List<Pair<String, UsageAccessLevel>> =
+            SecurityConfig.API_KEY_READ_PATHS.map { (path, field) -> path to UsageAccessLevel.valueOf(field.level.name) } +
+                PUBLIC_READ_PATHS.map { it to UsageAccessLevel.PUBLIC }
+    }
 }

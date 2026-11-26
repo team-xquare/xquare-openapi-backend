@@ -2,6 +2,7 @@ package app.xquare.xquareopenapi.domain.apiusage
 
 import app.xquare.xquareopenapi.domain.apikey.ApiKeySecret
 import app.xquare.xquareopenapi.domain.user.Role
+import app.xquare.xquareopenapi.global.error.ErrorCode
 import app.xquare.xquareopenapi.global.jwt.JwtProvider
 import ch.qos.logback.classic.Logger
 import ch.qos.logback.classic.spi.ILoggingEvent
@@ -196,7 +197,7 @@ class ApiUsageLogHttpTest @Autowired constructor(
         assertEquals("UNMAPPED", rows[1].path("route").asString())
         assertEquals("UNMAPPED", rows[4].path("route").asString())
         assertTrue(rows.all { it.path("durationMs").asLong() >= 0 && it.path("occurredAt").asString().endsWith("Z") })
-        assertTrue(rows.all { row -> row.properties().map { it.key }.toSet() == METADATA_FIELDS })
+        assertTrue(rows.all { row -> row.properties().map { it.key }.toSet() == LIST_FIELDS })
         val storedRows = jdbc.queryForList("select * from api_usage_logs")
         assertEquals(6, storedRows.size)
         assertEquals(STORAGE_FIELDS, storedRows.first().keys.map { it.lowercase() }.toSet())
@@ -438,6 +439,7 @@ class ApiUsageLogHttpTest @Autowired constructor(
             mapper.valueToTree<JsonNode>(Yaml(SafeConstructor(options)).load<Any>(it))
         }
         assertEquals(openApiContract(static), openApiContract(generated))
+        assertEquals(openApiContract(static, DETAIL), openApiContract(generated, DETAIL))
         val api = generated.path("paths").path(LIST).path("get").path("parameters").single { it.path("name").asString() == "api" }
         assertEquals("query", api.path("in").asString())
         assertFalse(api.path("required").asBoolean(false))
@@ -474,6 +476,242 @@ class ApiUsageLogHttpTest @Autowired constructor(
         assertEquals(listOf("/meals"), awaitRows(1).map { it["route"] })
     }
 
+    @Test
+    fun `API 키 호출은 프로젝트와 신청자 키 접두사 단계를 남기고 키 원문은 남기지 않는다`() {
+        val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
+        assertEquals(200, send("GET", LIST, admin).statusCode())
+        jdbc.update("delete from api_project_fields")
+        jdbc.update("delete from api_projects")
+        val key = ApiKeySecret.generate()
+        val expiredKey = ApiKeySecret.generate()
+        val projectId = seedProject(ownerId = 31L, name = "기록 상세", rawKey = key, fields = listOf("SCHEDULE", "STUDENT"))
+        val expiredId = seedProject(ownerId = 32L, name = "만료 키", rawKey = expiredKey, fields = listOf("SCHEDULE"), expired = true)
+        val scheduleOnly = ApiKeySecret.generate()
+        val scheduleOnlyId = seedProject(ownerId = 33L, name = "일정만", rawKey = scheduleOnly, fields = listOf("SCHEDULE"))
+        jdbc.update("delete from api_usage_logs")
+
+        assertEquals(200, send("GET", "/schedules?startDate=2026-11-01&finishDate=2026-11-30", apiKey = key).statusCode())
+        assertEquals(200, send("GET", "/students", apiKey = key).statusCode())
+        assertEquals(200, send("HEAD", "/students", apiKey = key).statusCode())
+        assertCode(send("GET", "/students/987654321", apiKey = scheduleOnly), 403, "API_KEY_FIELD_FORBIDDEN")
+        assertCode(send("GET", "/students", apiKey = "xq_not-a-registered-key"), 401, "INVALID_API_KEY")
+        assertCode(send("GET", "/schedules?startDate=2026-11-01&finishDate=2026-11-30", apiKey = expiredKey), 401, "API_KEY_EXPIRED")
+        assertCode(send("GET", "/schedules/987654321", apiKey = key), 404, "SCHEDULE_NOT_FOUND")
+        // 토큰만 보내면 키 체인이 401로 막고 JWT 필터는 돌지 않아 사용자를 남기지 않는다.
+        assertCode(send("GET", "/students", jwtProvider.generateAccessToken(9L, Role.USER)), 401, "INVALID_API_KEY")
+
+        val rows = awaitRows(8)
+        fun row(i: Int) = with(rows[i]) {
+            listOf(this["route"], this["http_status"], this["project_id"], this["user_id"], this["key_prefix"], this["error_code"], this["access_level"])
+        }
+        val prefix = key.take(11)
+        assertEquals(listOf("/schedules", 200, projectId, 31L, prefix, null, "SCHOOL"), row(0))
+        assertEquals(listOf("/students", 200, projectId, 31L, prefix, null, "RESTRICTED"), row(1))
+        assertEquals(listOf("/students", 200, projectId, 31L, prefix, null, "RESTRICTED"), row(2))
+        assertEquals(listOf("UNMAPPED", 403, scheduleOnlyId, 33L, scheduleOnly.take(11), "API_KEY_FIELD_FORBIDDEN", "RESTRICTED"), row(3))
+        assertEquals(listOf("UNMAPPED", 401, null, null, null, "INVALID_API_KEY", "RESTRICTED"), row(4))
+        assertEquals(listOf("UNMAPPED", 401, expiredId, 32L, expiredKey.take(11), "API_KEY_EXPIRED", "SCHOOL"), row(5))
+        assertEquals(listOf("/schedules/{scheduleId}", 404, projectId, 31L, prefix, "SCHEDULE_NOT_FOUND", "SCHOOL"), row(6))
+        assertEquals(listOf("UNMAPPED", 401, null, null, null, "INVALID_API_KEY", "RESTRICTED"), row(7))
+        val stored = rows.toString()
+        for (secret in listOf(key, expiredKey, scheduleOnly, ApiKeySecret.hash(key), "xq_not-a-registered-key", "xq_not-a-r")) {
+            assertFalse(secret in stored, secret)
+        }
+        assertTrue(key.length > 11)
+    }
+
+    @Test
+    fun `JWT 호출은 로그인한 사용자를 남기고 공개 조회는 PUBLIC 단계로 남긴다`() {
+        val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
+        val user = jwtProvider.generateAccessToken(42L, Role.USER)
+        assertEquals(200, send("GET", LIST, admin).statusCode())
+        jdbc.update("delete from api_usage_logs")
+
+        assertEquals(200, send("GET", "/notices", user).statusCode())
+        assertCode(send("GET", "/notices/876543210", user), 404, "NOTICE_NOT_FOUND")
+        assertCode(send("POST", "/meals", user, "{}"), 403, "FORBIDDEN")
+        assertEquals(200, send("GET", "/meals").statusCode())
+        assertEquals(200, send("HEAD", "/meals").statusCode())
+        assertEquals(200, send("GET", "/meals", user).statusCode())
+        assertCode(send("GET", "/meals/not-a-number"), 400, "INVALID_INPUT")
+        assertCode(send("GET", "/notices", "invalid-token"), 401, "INVALID_TOKEN")
+        assertCode(send("GET", "/meals?startDate=2026-11-01&finishDate=2026-10-01"), 400, "INVALID_DATE_RANGE")
+
+        val rows = awaitRows(9).map { listOf(it["route"], it["user_id"], it["project_id"], it["key_prefix"], it["error_code"], it["access_level"]) }
+        assertEquals(
+            listOf(
+                listOf("/notices", 42L, null, null, null, null),
+                listOf("/notices/{noticeId}", 42L, null, null, "NOTICE_NOT_FOUND", null),
+                listOf("UNMAPPED", 42L, null, null, "FORBIDDEN", null),
+                listOf("/meals", null, null, null, null, "PUBLIC"),
+                listOf("/meals", null, null, null, null, "PUBLIC"),
+                listOf("/meals", 42L, null, null, null, "PUBLIC"),
+                listOf("/meals/{mealId}", null, null, null, "INVALID_INPUT", "PUBLIC"),
+                listOf("UNMAPPED", null, null, null, "INVALID_TOKEN", null),
+                listOf("/meals", null, null, null, "INVALID_DATE_RANGE", "PUBLIC"),
+            ),
+            rows,
+        )
+    }
+
+    @Test
+    fun `단계 프로젝트 사용자 오류 코드 필터를 다른 필터와 함께 적용한다`() {
+        val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
+        jdbc.update("delete from api_usage_logs")
+        seedDetail("/students", projectId = 7L, userId = 70L, errorCode = null, level = "RESTRICTED")
+        seedDetail("/students/{studentId}", projectId = 7L, userId = 70L, errorCode = "STUDENT_NOT_FOUND", level = "RESTRICTED", status = 404)
+        seedDetail("/schedules", projectId = 8L, userId = 70L, errorCode = null, level = "SCHOOL")
+        seedDetail("UNMAPPED", projectId = null, userId = null, errorCode = "INVALID_API_KEY", level = "RESTRICTED", status = 401)
+        seedDetail("/meals", projectId = null, userId = 71L, errorCode = null, level = "PUBLIC")
+        seedDetail("/notices", projectId = null, userId = 71L, errorCode = null, level = null)
+        seedDetail("/meals", projectId = null, userId = null, errorCode = null, level = "PUBLIC", at = "2026-11-16 00:00:00")
+
+        fun routes(filter: String) = json(send("GET", "$LIST?$SEED_PERIOD$filter", admin)).path("content").values()
+            .map { it.path("route").asString() }
+        assertEquals(listOf("UNMAPPED", "/students/{studentId}", "/students"), routes("&level=RESTRICTED"))
+        assertEquals(listOf("/schedules"), routes("&level=SCHOOL"))
+        assertEquals(listOf("/meals"), routes("&level=PUBLIC"))
+        assertEquals(listOf("/students/{studentId}", "/students"), routes("&projectId=7"))
+        assertEquals(listOf("/students"), routes("&projectId=7&status=200"))
+        assertEquals(listOf("/schedules", "/students/{studentId}", "/students"), routes("&userId=70"))
+        assertEquals(listOf("/notices", "/meals"), routes("&userId=71"))
+        assertEquals(listOf("/meals"), routes("&userId=71&level=PUBLIC"))
+        assertEquals(listOf("UNMAPPED"), routes("&errorCode=INVALID_API_KEY"))
+        assertEquals(listOf("/students/{studentId}"), routes("&errorCode=STUDENT_NOT_FOUND&level=RESTRICTED&projectId=7&userId=70"))
+        assertEquals(emptyList(), routes("&errorCode=STUDENT_NOT_FOUND&projectId=8"))
+        assertEquals(emptyList(), routes("&projectId=999"))
+        assertEquals(6, json(send("GET", "$LIST?$SEED_PERIOD", admin)).path("totalCount").asInt())
+
+        val first = json(send("GET", "$LIST?$SEED_PERIOD&errorCode=STUDENT_NOT_FOUND", admin)).path("content").get(0)
+        assertEquals(LIST_FIELDS, first.properties().map { it.key }.toSet())
+        assertEquals(
+            listOf(7L, 70L, "STUDENT_NOT_FOUND", "RESTRICTED", "xq_detail01"),
+            listOf(
+                first.path("projectId").asLong(), first.path("userId").asLong(), first.path("errorCode").asString(),
+                first.path("accessLevel").asString(), first.path("keyPrefix").asString(),
+            ),
+        )
+        val anonymous = json(send("GET", "$LIST?$SEED_PERIOD&api=notices", admin)).path("content").get(0)
+        for (name in listOf("projectId", "keyPrefix", "errorCode", "accessLevel")) assertTrue(anonymous.path(name).isNull, name)
+
+        for (invalid in listOf(
+            "level=", "level=public", "level=MEAL", "level=%20PUBLIC", "errorCode=", "errorCode=NOT_A_CODE",
+            "errorCode=invalid_api_key", "projectId=abc", "userId=1.5",
+        )) {
+            assertCode(send("GET", "$LIST?$invalid", admin), 400, "INVALID_INPUT")
+        }
+        assertCode(send("GET", "$LIST?level=PUBLIC"), 401, "INVALID_TOKEN")
+        assertCode(send("GET", "$LIST?level=PUBLIC", jwtProvider.generateAccessToken(2L, Role.USER)), 403, "FORBIDDEN")
+    }
+
+    @Test
+    fun `상세는 기록과 프로젝트 이름 신청자 이름 아이디를 돌려주고 삭제된 대상은 null이다`() {
+        val admin = jwtProvider.generateAccessToken(1L, Role.ADMIN)
+        jdbc.update("delete from api_usage_logs")
+        jdbc.update("delete from api_project_fields")
+        jdbc.update("delete from api_projects")
+        jdbc.update("delete from users where username in ('logowner', 'logother')")
+        val ownerId = seedUser("logowner", "기록주인")
+        val otherId = seedUser("logother", "다른사람")
+        val projectId = seedProject(ownerId = ownerId, name = "상세 프로젝트", rawKey = ApiKeySecret.generate(), fields = emptyList())
+        seedDetail("/students/{studentId}", projectId = projectId, userId = ownerId, errorCode = "STUDENT_NOT_FOUND", level = "RESTRICTED", status = 404)
+        seedDetail("/notices", projectId = null, userId = otherId, errorCode = null, level = null)
+        seedDetail("UNMAPPED", projectId = 987654L, userId = 876543L, errorCode = "API_KEY_EXPIRED", level = "SCHOOL", status = 401)
+        val ids = jdbc.queryForList("select id from api_usage_logs order by id", Long::class.java).map { it!! }
+
+        val withProject = send("GET", "$LIST/${ids[0]}", admin)
+        assertEquals(200, withProject.statusCode())
+        val body = json(withProject)
+        assertEquals(DETAIL_FIELDS, body.properties().map { it.key }.toSet())
+        assertEquals(
+            listOf(
+                ids[0], "2026-11-15T00:00:00Z", "GET", "/students/{studentId}", 404, 1L, projectId, "상세 프로젝트",
+                ownerId, "기록주인", "logowner", "xq_detail01", "STUDENT_NOT_FOUND", "RESTRICTED",
+            ),
+            listOf(
+                body.path("id").asLong(), body.path("occurredAt").asString(), body.path("method").asString(), body.path("route").asString(),
+                body.path("status").asInt(), body.path("durationMs").asLong(), body.path("projectId").asLong(), body.path("projectName").asString(),
+                body.path("userId").asLong(), body.path("applicantName").asString(), body.path("applicantUsername").asString(),
+                body.path("keyPrefix").asString(), body.path("errorCode").asString(), body.path("accessLevel").asString(),
+            ),
+        )
+
+        val jwtCall = json(send("GET", "$LIST/${ids[1]}", admin))
+        assertEquals(
+            listOf(otherId, "다른사람", "logother"),
+            listOf(jwtCall.path("userId").asLong(), jwtCall.path("applicantName").asString(), jwtCall.path("applicantUsername").asString()),
+        )
+        for (name in listOf("projectId", "projectName", "accessLevel", "errorCode")) assertTrue(jwtCall.path(name).isNull, name)
+
+        val deleted = json(send("GET", "$LIST/${ids[2]}", admin))
+        assertEquals(listOf(987654L, 876543L), listOf(deleted.path("projectId").asLong(), deleted.path("userId").asLong()))
+        for (name in listOf("projectName", "applicantName", "applicantUsername")) assertTrue(deleted.path(name).isNull, name)
+
+        assertCode(send("GET", "$LIST/${ids.last() + 1000}", admin), 404, "API_USAGE_LOG_NOT_FOUND")
+        assertCode(send("GET", "$LIST/abc", admin), 400, "INVALID_INPUT")
+        assertCode(send("GET", "$LIST/${ids[0]}"), 401, "INVALID_TOKEN")
+        val user = jwtProvider.generateAccessToken(ownerId, Role.USER)
+        assertCode(send("GET", "$LIST/${ids[0]}", user), 403, "FORBIDDEN")
+        assertEquals(403, send("HEAD", "$LIST/${ids[0]}", user).statusCode())
+        assertEquals(200, send("HEAD", "$LIST/${ids[0]}", admin).statusCode())
+
+        // 상세 조회는 관리자 조회라 사용 기록에 남기지 않는다.
+        assertEquals(200, send("GET", "/meals").statusCode())
+        val rows = awaitRows(4)
+        assertEquals(4, rows.size)
+        assertEquals("/meals", rows.last()["route"])
+        jdbc.update("delete from api_projects")
+        jdbc.update("delete from users where username in ('logowner', 'logother')")
+    }
+
+    @Test
+    fun `오류 코드와 단계 이름은 모두 저장 열 길이 안에 들어간다`() {
+        assertEquals(emptyList(), ErrorCode.entries.map { it.name }.filter { it.length > ApiUsageLog.ERROR_CODE_MAX_LENGTH })
+        assertEquals(emptyList(), UsageAccessLevel.entries.map { it.name }.filter { it.length > ApiUsageLog.ACCESS_LEVEL_MAX_LENGTH })
+    }
+
+    private fun seedProject(ownerId: Long, name: String, rawKey: String, fields: List<String>, expired: Boolean = false): Long {
+        val now = LocalDateTime.now()
+        val expiresAt = if (expired) now.minusDays(1) else now.plusDays(30)
+        jdbc.update(
+            "insert into api_projects (user_id, name, purpose, key_hash, issued_at, expires_at, created_at) values (?, ?, ?, ?, ?, ?, ?)",
+            ownerId, name, "목적", ApiKeySecret.hash(rawKey), now, expiresAt, now,
+        )
+        val projectId = jdbc.queryForObject("select id from api_projects where key_hash = ?", Long::class.java, ApiKeySecret.hash(rawKey))!!
+        for (field in fields) {
+            jdbc.update(
+                "insert into api_project_fields (project_id, field, status, applied_at) values (?, ?, 'APPROVED', ?)",
+                projectId, field, now,
+            )
+        }
+        return projectId
+    }
+
+    private fun seedUser(username: String, name: String): Long {
+        jdbc.update(
+            "insert into users (username, password, student_number, name, email, role) values (?, ?, ?, ?, ?, 'USER')",
+            username, "{noop}unused", 1101, name, "$username@dsm.hs.kr",
+        )
+        return jdbc.queryForObject("select id from users where username = ?", Long::class.java, username)!!
+    }
+
+    private fun seedDetail(
+        route: String,
+        projectId: Long?,
+        userId: Long?,
+        errorCode: String?,
+        level: String?,
+        status: Int = 200,
+        at: String = "2026-11-15 00:00:00",
+    ) {
+        jdbc.update(
+            "insert into api_usage_logs (occurred_at, http_method, route, http_status, duration_ms, " +
+                "project_id, user_id, key_prefix, error_code, access_level) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            java.sql.Timestamp.valueOf(at), "GET", route, status, 1L,
+            projectId, userId, if (projectId == null) null else "xq_detail01", errorCode, level,
+        )
+    }
+
     private fun seedRoute(route: String, at: String = "2026-11-15 00:00:00", method: String = "GET", status: Int = 200) {
         jdbc.update(
             "insert into api_usage_logs (occurred_at, http_method, route, http_status, duration_ms) values (?, ?, ?, ?, ?)",
@@ -481,8 +719,9 @@ class ApiUsageLogHttpTest @Autowired constructor(
         )
     }
 
-    private fun openApiContract(document: JsonNode): Map<String, Any> {
-        val operation = document.path("paths").path(LIST).path("get")
+    private fun openApiContract(document: JsonNode, path: String = LIST): Map<String, Any> {
+        val operation = document.path("paths").path(path).path("get")
+        assertFalse(operation.isMissingNode, "$path 문서가 있어야 합니다")
         val parameters = operation.path("parameters").values().associate { parameter ->
             parameter.path("name").asString() to mapOf(
                 "in" to parameter.path("in").asString(),
@@ -616,11 +855,17 @@ class ApiUsageLogHttpTest @Autowired constructor(
         }
 
         private const val LIST = "/admin/api-usage-logs"
+        private const val DETAIL = "/admin/api-usage-logs/{logId}"
         private const val API_KEY = "xq_usage-log-key"
         private const val SEED_PERIOD = "from=2026-11-15T00:00:00Z&to=2026-11-16T00:00:00Z"
         private val CLIENT = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
         private val METADATA_FIELDS = setOf("id", "occurredAt", "method", "route", "status", "durationMs")
-        private val STORAGE_FIELDS = setOf("id", "occurred_at", "http_method", "route", "http_status", "duration_ms")
+        private val LIST_FIELDS = METADATA_FIELDS + setOf("projectId", "userId", "keyPrefix", "errorCode", "accessLevel")
+        private val DETAIL_FIELDS = LIST_FIELDS + setOf("projectName", "applicantName", "applicantUsername")
+        private val STORAGE_FIELDS = setOf(
+            "id", "occurred_at", "http_method", "route", "http_status", "duration_ms",
+            "project_id", "user_id", "key_prefix", "error_code", "access_level",
+        )
         private val SCHEMA_FIELDS = setOf("type", "format", "minimum", "maximum", "default", "minLength", "maxLength", "nullable")
     }
 }
