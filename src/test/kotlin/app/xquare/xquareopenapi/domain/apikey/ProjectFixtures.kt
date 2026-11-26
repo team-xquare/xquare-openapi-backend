@@ -13,7 +13,7 @@ fun ApiProjectRepository.saveProject(
     rawKey: String? = null,
 ): ApiProject {
     val now = LocalDateTime.now(SEOUL)
-    val project = ApiProject(userId, name, "테스트 목적", now)
+    val project = ApiProject(userId, name, now)
     if (rawKey != null) {
         project.issueKey(now)
         ReflectionTestUtils.setField(project, "keyHash", ApiKeySecret.hash(rawKey))
@@ -27,7 +27,7 @@ fun ApiProjectFieldRepository.saveField(
     field: ApiKeyField,
     status: ApplicationStatus = ApplicationStatus.APPROVED,
 ): ApiProjectField {
-    val projectField = ApiProjectField(projectId, field, LocalDateTime.now(SEOUL))
+    val projectField = ApiProjectField(projectId, field, "테스트 목적", ApplicationType.FIRST, LocalDateTime.now(SEOUL))
     ReflectionTestUtils.setField(projectField, "status", status)
     return save(projectField)
 }

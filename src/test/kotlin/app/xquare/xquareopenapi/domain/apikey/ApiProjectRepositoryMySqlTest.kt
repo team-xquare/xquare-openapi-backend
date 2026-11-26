@@ -49,10 +49,10 @@ class ApiProjectRepositoryMySqlTest @Autowired constructor(
     @Test
     fun `같은 프로젝트에 같은 분야를 두 번 넣으면 분야 제약 위반으로 구분한다`() {
         val project = projectRepository.saveAndFlush(project(2L, "급식 알리미"))
-        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.CLUB, NOW))
+        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.CLUB, "테스트 목적", ApplicationType.FIRST, NOW))
 
         val e = assertFailsWith<DataIntegrityViolationException> {
-            fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.CLUB, NOW))
+            fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.CLUB, "테스트 목적", ApplicationType.FIRST, NOW))
         }
 
         assertTrue(e.violates(ApiProjectField.FIELD_UNIQUE_CONSTRAINT))
@@ -73,9 +73,9 @@ class ApiProjectRepositoryMySqlTest @Autowired constructor(
         val rawKey = project.issueKey(NOW)
         projectRepository.saveAndFlush(project)
         val other = projectRepository.saveAndFlush(project(3L, "다른 프로젝트"))
-        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.STUDY_SUPERVISOR, NOW))
-        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.STUDENT, NOW))
-        fieldRepository.saveAndFlush(ApiProjectField(other.id!!, ApiKeyField.SCHEDULE, NOW))
+        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.STUDY_SUPERVISOR, "테스트 목적", ApplicationType.FIRST, NOW))
+        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.STUDENT, "테스트 목적", ApplicationType.FIRST, NOW))
+        fieldRepository.saveAndFlush(ApiProjectField(other.id!!, ApiKeyField.SCHEDULE, "테스트 목적", ApplicationType.FIRST, NOW))
 
         assertEquals(project.id, projectRepository.findByKeyHash(ApiKeySecret.hash(rawKey))?.id)
         assertEquals(listOf(ApiKeyField.STUDY_SUPERVISOR), fieldRepository.findFieldsByProjectIdAndStatus(project.id!!, ApplicationStatus.APPROVED))
@@ -91,9 +91,9 @@ class ApiProjectRepositoryMySqlTest @Autowired constructor(
         val first = projectRepository.saveAndFlush(project(2L, "하나"))
         projectRepository.saveAndFlush(project(3L, "남의 것"))
         val second = projectRepository.saveAndFlush(project(2L, "둘"))
-        val a = fieldRepository.saveAndFlush(ApiProjectField(first.id!!, ApiKeyField.CLUB, NOW))
-        val b = fieldRepository.saveAndFlush(ApiProjectField(second.id!!, ApiKeyField.STUDENT, NOW))
-        val c = fieldRepository.saveAndFlush(ApiProjectField(first.id!!, ApiKeyField.TEACHER, NOW))
+        val a = fieldRepository.saveAndFlush(ApiProjectField(first.id!!, ApiKeyField.CLUB, "테스트 목적", ApplicationType.FIRST, NOW))
+        val b = fieldRepository.saveAndFlush(ApiProjectField(second.id!!, ApiKeyField.STUDENT, "테스트 목적", ApplicationType.FIRST, NOW))
+        val c = fieldRepository.saveAndFlush(ApiProjectField(first.id!!, ApiKeyField.TEACHER, "테스트 목적", ApplicationType.FIRST, NOW))
 
         assertEquals(listOf(first.id, second.id), projectRepository.findAllByUserIdOrderByIdAsc(2L).map { it.id })
         assertEquals(
@@ -107,15 +107,15 @@ class ApiProjectRepositoryMySqlTest @Autowired constructor(
     @Test
     fun `관리자 목록은 상태로 거르고 null이면 전체를 읽는다`() {
         val project = projectRepository.saveAndFlush(project(2L, "급식 알리미"))
-        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.SCHEDULE, NOW))
-        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.STUDENT, NOW))
+        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.SCHEDULE, "테스트 목적", ApplicationType.FIRST, NOW))
+        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.STUDENT, "테스트 목적", ApplicationType.FIRST, NOW))
 
         val pageable = org.springframework.data.domain.PageRequest.of(0, 10)
         assertEquals(listOf(ApiKeyField.STUDENT), fieldRepository.search(ApplicationStatus.PENDING, pageable).content.map { it.field })
         assertEquals(2, fieldRepository.search(null, pageable).totalElements)
     }
 
-    private fun project(userId: Long, name: String) = ApiProject(userId, name, "급식 공유", NOW)
+    private fun project(userId: Long, name: String) = ApiProject(userId, name, NOW)
 
     companion object {
         private val NOW = LocalDateTime.of(2026, 11, 24, 10, 0)

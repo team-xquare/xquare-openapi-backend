@@ -16,7 +16,8 @@ import java.time.Clock
 import java.time.LocalDateTime
 
 // 관리자가 대기(PENDING) 중인 분야 신청을 승인·반려한다. 이미 처리된 신청이면 409 APPLICATION_ALREADY_DECIDED.
-// 승인이 프로젝트의 첫 승인이면 키를 발급하되 해시만 남긴다. 원문은 사용자가 재발급 API로 받는다(명세 4.1).
+// 키는 첫 분야 신청 때 발급되므로 승인은 상태만 바꾼다. 다만 그 규칙 전에 만든 프로젝트는 키 없이 대기 중일 수 있어,
+// 그때만 키를 발급하고 해시만 남긴다. 원문은 사용자가 재발급 API로 받는다.
 @Service
 class DecideApiApplicationUseCase(
     private val projectRepository: ApiProjectRepository,

@@ -170,7 +170,7 @@ class ApiKeyAuthenticationTest @Autowired constructor(
             mockMvc.post("/projects") {
                 header("X-API-Key", KEY)
                 contentType = MediaType.APPLICATION_JSON
-                content = """{"name":"새 프로젝트","purpose":"목적","fields":["CLUB"],"emailVerifiedToken":"t"}"""
+                content = """{"name":"새 프로젝트"}"""
             },
         ).forEach {
             it.andExpect {

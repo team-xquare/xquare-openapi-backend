@@ -155,8 +155,11 @@ class AdminApiApplicationTest @Autowired constructor(
             jsonPath("$.decidedBy") { value(nullValue()) }
             jsonPath("$.project.projectId") { value(project.id!!) }
             jsonPath("$.project.name") { value("급식 알리미") }
-            jsonPath("$.project.purpose") { value("테스트 목적") }
+            jsonPath("$.purpose") { value("테스트 목적") }
+            jsonPath("$.applicationType") { value("FIRST") }
+            jsonPath("$.project.purpose") { doesNotExist() }
             jsonPath("$.project.keyIssued") { value(false) }
+            jsonPath("$.project.serviceUrl") { value(nullValue()) }
             jsonPath("$.project.fields[*].field") { value(contains("CLUB", "STUDENT")) }
             jsonPath("$.userId") { value(userId) }
             jsonPath("$.applicant.username") { value("junseo") }
@@ -325,7 +328,7 @@ class AdminApiApplicationTest @Autowired constructor(
         val application = fieldRepository.saveField(project.id!!, ApiKeyField.TEACHER, ApplicationStatus.PENDING)
         mockMvc.post("/admin/api-applications/${application.id}/reject") { bearer(adminToken); reason("사유") }
         val rejected = fieldRepository.findById(application.id!!).orElseThrow()
-        rejected.resubmit(LocalDateTime.now(SEOUL))
+        rejected.resubmit("다시 신청한 목적", LocalDateTime.now(SEOUL))
         fieldRepository.save(rejected)
 
         mockMvc.post("/admin/api-applications/${application.id}/approve") { bearer(adminToken) }.andExpect {

@@ -58,13 +58,13 @@ abstract class ProjectApplyConcurrencyScenarios {
         val project = projectRepository.saveProject(userId)
 
         val results = concurrently { token ->
-            applyProjectFieldsUseCase.execute(userId, project.id!!, ApplyProjectFieldsRequest(listOf(ApiKeyField.SCHEDULE), token))
+            applyProjectFieldsUseCase.execute(userId, project.id!!, ApplyProjectFieldsRequest(listOf(ApplyProjectFieldsRequest.FieldApplication(ApiKeyField.SCHEDULE, "일정 알림")), token))
         }
 
         assertEquals(1, results.count { it == null }, "$results")
         assertEquals(THREADS - 1, results.count { it == ErrorCode.FIELD_ALREADY_APPLIED }, "$results")
         assertEquals(1, fieldRepository.count())
-        // 첫 승인으로 키가 한 번만 발급됐다.
+        // 첫 신청으로 키가 한 번만 발급됐다.
         assertNotNull(projectRepository.findById(project.id!!).orElseThrow().keyHash)
     }
 
@@ -86,11 +86,10 @@ abstract class ProjectApplyConcurrencyScenarios {
         assertEquals(1, results.count { it == null }, "$results")
         assertEquals(THREADS - 1, results.count { it == ErrorCode.PROJECT_NAME_DUPLICATED }, "$results")
         assertEquals(1, projectRepository.count())
-        assertEquals(1, fieldRepository.count())
     }
 
     private fun create(name: String, token: String) {
-        createProjectUseCase.execute(userId, CreateProjectRequest(name, "급식 공유", listOf(ApiKeyField.CLUB), token))
+        createProjectUseCase.execute(userId, CreateProjectRequest(name))
     }
 
     // 먼저 끝난 요청이 토큰을 지워도 나머지가 인증에 걸리지 않도록 스레드마다 토큰을 따로 둔다.
