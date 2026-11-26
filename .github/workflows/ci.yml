@@ -1,10 +1,8 @@
 name: CI
 
-# develop push는 deploy-stag.yml이 테스트까지 돌리므로 여기서는 PR과 main만 맡는다.
+# develop·main push는 deploy-stag.yml·deploy-prod.yml이 테스트까지 돌리므로 여기서는 PR만 맡는다.
 on:
   pull_request:
-  push:
-    branches: [main]
 
 permissions:
   contents: read

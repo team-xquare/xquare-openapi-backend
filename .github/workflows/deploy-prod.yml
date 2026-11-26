@@ -1,0 +1,61 @@
+name: Deploy production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 배포가 겹치면 이미지 빌드와 컨테이너 교체가 섞이므로 하나씩 순서대로 돌린다.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v6
+      - run: ./gradlew test
+
+  deploy:
+    needs: test
+    # 운영 VM 안의 self-hosted runner. push와 수동 실행에서만 돈다.
+    runs-on: [self-hosted, prod]
+    env:
+      DEPLOY_DIR: /srv/xquare-openapi-backend
+    steps:
+      - name: Checkout commit in deploy dir
+        working-directory: ${{ env.DEPLOY_DIR }}
+        run: |
+          git fetch --prune origin
+          git checkout --force --detach "$GITHUB_SHA"
+
+      - name: Build and restart app
+        working-directory: ${{ env.DEPLOY_DIR }}
+        run: |
+          docker compose build app
+          docker compose up -d app
+
+      - name: Wait for app
+        working-directory: ${{ env.DEPLOY_DIR }}
+        run: |
+          # 인증이 필요한 경로라 401이 오면 앱이 요청을 받고 있는 것이다.
+          for _ in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/ || true)
+            if [ "$code" = "401" ]; then echo "app is up"; exit 0; fi
+            sleep 2
+          done
+          docker compose logs --tail 100 app
+          exit 1
+
+      - name: Remove dangling images
+        if: always()
+        run: docker image prune -f
