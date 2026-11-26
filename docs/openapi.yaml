@@ -384,12 +384,9 @@ paths:
     post:
       tags:
       - API 키
-      summary: 프로젝트 만들기 + 분야 신청
-      description: '프로젝트(서비스)를 만들고 분야를 신청한다. API 키는 프로젝트마다 하나다. 교내(`SCHOOL`) 분야는 신청과 동시에 승인되고, 제한(`RESTRICTED`) 분야는 관리자 승인을
-        기다린다(`PENDING`). 승인된 분야가 하나라도 생기면 이 요청에서 키를 발급하고 원문을 `apiKey`에 담는다(이 응답에서만 볼 수 있음). 제한 분야만 신청하면 `apiKey`는 null이고,
-        관리자가 승인한 뒤 `POST /projects/{projectId}/api-key/reissue`로 키를 받는다. 같은 분야를 여러 번 넣으면 한 번만 신청한다. 사용자당 프로젝트는 5개까지다. 신청 전에
-        `POST /auth/email/otp`·`POST /auth/email/otp/verify`로 로그인한 계정의 이메일을 인증하고 받은 `emailVerifiedToken`을 보내야 하며, 성공하면 토큰은 폐기된다.
-        권한: USER, ADMIN(로그인한 본인).'
+      summary: 프로젝트 만들기
+      description: '이름(과 선택 입력인 서비스 URL)만으로 빈 프로젝트(서비스)를 만든다. API 키는 프로젝트마다 하나다. 분야·사용 목적·이메일 인증은 `POST /projects/{projectId}/fields`에서 받고,
+        키도 첫 분야 신청 때 발급된다. 사용자당 프로젝트는 5개까지다. 권한: USER, ADMIN(로그인한 본인).'
       operationId: createProject
       security:
       - bearerAuth: []
@@ -402,30 +399,25 @@ paths:
               $ref: '#/components/schemas/ProjectCreateRequest'
             example:
               name: 급식 알리미
-              purpose: 반 단톡방에 매일 급식을 올리려고 합니다.
-              fields:
-              - SCHEDULE
-              - STUDENT
-              emailVerifiedToken: 3f1c2a9e-8b7d-4e6f-9a01-2b3c4d5e6f70
+              serviceUrl: https://meal.example.com
       responses:
         '201':
-          description: 만들어짐. 이번 요청으로 키가 처음 발급됐으면 `apiKey`에 원문이 있고, 아니면 null
+          description: 만들어짐. 분야가 없고 키도 발급 전이다
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProjectApplyResponse'
+                $ref: '#/components/schemas/ProjectDetailResponse'
               example:
                 projectId: 1
-                apiKey: xq_UNhY4JhezH9gQYqvDMWrWH9CwlcKiECVqejMrND2VFw
-                fields:
-                - field: SCHEDULE
-                  level: SCHOOL
-                  status: APPROVED
-                - field: STUDENT
-                  level: RESTRICTED
-                  status: PENDING
+                name: 급식 알리미
+                serviceUrl: https://meal.example.com
+                createdAt: '2026-11-24T10:00:00+09:00'
+                keyIssued: false
+                issuedAt: null
+                expiresAt: null
+                fields: []
         '400':
-          description: '`INVALID_INPUT`: 필수 값 누락, 분야 목록이 비었거나 없는 분야, 이름 공백·30자 초과, 사용 목적 공백·200자 초과, 이메일 인증 토큰 공백'
+          description: '`INVALID_INPUT`: 이름 누락·공백·30자 초과, 서비스 URL이 http/https 주소가 아니거나 255자 초과'
           content:
             application/json:
               schema:
@@ -436,7 +428,7 @@ paths:
                     code: INVALID_INPUT
                     message: 요청 값이 올바르지 않습니다.
         '401':
-          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
+          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음, 또는 토큰의 사용자가 없음'
           content:
             application/json:
               schema:
@@ -446,17 +438,6 @@ paths:
                   value:
                     code: INVALID_TOKEN
                     message: 토큰이 없거나 유효하지 않습니다.
-        '403':
-          description: '`EMAIL_NOT_VERIFIED`: 이메일 인증 토큰이 없거나 만료됨, 또는 로그인한 사용자의 이메일로 받은 토큰이 아님'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                EMAIL_NOT_VERIFIED:
-                  value:
-                    code: EMAIL_NOT_VERIFIED
-                    message: 이메일 인증이 완료되지 않았습니다.
         '409':
           description: '`PROJECT_NAME_DUPLICATED`: 같은 이름의 내 프로젝트가 있음. `PROJECT_LIMIT_EXCEEDED`: 내 프로젝트가 이미 5개'
           content:
@@ -494,6 +475,7 @@ paths:
               example:
               - projectId: 1
                 name: 급식 알리미
+                serviceUrl: https://meal.example.com
                 keyIssued: true
                 issuedAt: '2026-11-24T10:00:00+09:00'
                 expiresAt: '2027-01-23T10:00:00+09:00'
@@ -501,10 +483,12 @@ paths:
                 - field: SCHEDULE
                   level: SCHOOL
                   status: APPROVED
+                  purpose: 반 단톡방에 학사 일정을 알려 주려고 합니다.
                   rejectReason: null
                 - field: STUDENT
                   level: RESTRICTED
                   status: REJECTED
+                  purpose: 학생 인증에 쓰려고 합니다.
                   rejectReason: 사용 목적에 학생 개인정보가 필요하지 않습니다.
         '401':
           description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
@@ -522,7 +506,7 @@ paths:
       tags:
       - API 키
       summary: 내 프로젝트 상세
-      description: '목록 항목에 사용 목적(`purpose`)과 만든 시각(`createdAt`)을 더해 보여 준다. 권한: USER, ADMIN(로그인한 본인).'
+      description: '목록 항목에 만든 시각(`createdAt`)을 더해 보여 준다. 사용 목적은 분야마다 `fields[].purpose`에 있다. 권한: USER, ADMIN(로그인한 본인).'
       operationId: getMyProject
       security:
       - bearerAuth: []
@@ -574,6 +558,83 @@ paths:
                   value:
                     code: PROJECT_NOT_FOUND
                     message: 존재하지 않는 프로젝트입니다.
+    patch:
+      tags:
+      - API 키
+      summary: 프로젝트 수정
+      description: '내 프로젝트의 이름과 서비스 URL을 바꾼다. 다른 수정 API처럼 모든 값을 받아 통째로 바꾸므로 `serviceUrl`을 빼거나 null로 보내면 지운다. 이름을 그대로 두는 수정은
+        막지 않는다. 분야·키는 그대로다. 권한: USER, ADMIN(로그인한 본인).'
+      operationId: updateProject
+      security:
+      - bearerAuth: []
+      x-required-role: USER
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCreateRequest'
+            example:
+              name: 급식 알리미 2
+              serviceUrl: https://meal.example.com
+      responses:
+        '200':
+          description: 수정됨. 수정한 뒤의 프로젝트 상세
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectDetailResponse'
+        '400':
+          description: '`INVALID_INPUT`: 이름 누락·공백·30자 초과, 서비스 URL이 http/https 주소가 아니거나 255자 초과, projectId가 숫자가 아님'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
+        '401':
+          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_TOKEN:
+                  value:
+                    code: INVALID_TOKEN
+                    message: 토큰이 없거나 유효하지 않습니다.
+        '404':
+          description: '`PROJECT_NOT_FOUND`: 없거나 내 프로젝트가 아님'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                PROJECT_NOT_FOUND:
+                  value:
+                    code: PROJECT_NOT_FOUND
+                    message: 존재하지 않는 프로젝트입니다.
+        '409':
+          description: '`PROJECT_NAME_DUPLICATED`: 같은 이름의 내 다른 프로젝트가 있음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                PROJECT_NAME_DUPLICATED:
+                  value:
+                    code: PROJECT_NAME_DUPLICATED
+                    message: 같은 이름의 프로젝트가 이미 있습니다.
     delete:
       tags:
       - API 키
@@ -628,7 +689,7 @@ paths:
       - API 키
       summary: 키 재발급
       description: '프로젝트의 키 값을 새로 발급하고 기존 키는 즉시 폐기한다(이전 키는 바로 `401 INVALID_API_KEY`). 분야와 승인 상태는 그대로다. 키 원문은 이 응답에서만 볼 수
-        있다. 관리자 승인으로 처음 발급된 키는 원문을 받은 사람이 없으므로 이 API로 받는다. 이메일 인증이 필요하고, 성공하면 토큰은 폐기된다. 권한: USER, ADMIN(로그인한 본인).'
+        있다. 이메일 인증이 필요하고, 성공하면 토큰은 폐기된다. 권한: USER, ADMIN(로그인한 본인).'
       operationId: reissueProjectApiKey
       security:
       - bearerAuth: []
@@ -802,10 +863,13 @@ paths:
     post:
       tags:
       - API 키
-      summary: 분야 추가 신청
-      description: '내 프로젝트에 분야를 더 신청한다. 교내 분야는 바로 승인, 제한 분야는 관리자 승인 대기다. 반려(`REJECTED`)된 분야는 다시 신청할 수 있고, 그러면 처음 신청할 때와
-        같은 상태로 돌아가며 반려 사유가 지워진다. 이번 신청으로 프로젝트의 첫 승인 분야가 생기면 키를 발급해 원문을 `apiKey`에 담고, 아니면 null이다. 응답의 `fields`는 프로젝트의
-        모든 분야(처음 신청한 순서)다. 이메일 인증이 필요하고, 성공하면 토큰은 폐기된다. 권한: USER, ADMIN(로그인한 본인).'
+      summary: 분야 신청
+      description: '내 프로젝트에 분야를 신청한다. 분야마다 사용 목적(`purpose`)을 받는다. 공개(`PUBLIC`, 급식)·교내(`SCHOOL`) 분야는 바로 승인, 제한(`RESTRICTED`) 분야는
+        관리자 승인 대기다. 프로젝트에 키가 아직 없으면 단계와 상관없이 이 요청에서 키를 발급해 원문을 `apiKey`에 담고(이 응답에서만 볼 수 있음, 60일 만료), 이미 있으면 null이다.
+        승인 전(대기·반려) 분야의 조회 API는 키가 있어도 403 `API_KEY_FIELD_FORBIDDEN`이다. 프로젝트의 첫 신청 요청에 들어 있던 분야는 `FIRST`, 그 뒤 요청의 분야는 `ADDITIONAL`로
+        구분해 저장한다(관리자 신청 목록에서 쓴다). 반려(`REJECTED`)된 분야는 다시 신청할 수 있고, 그러면 처음 신청할 때와 같은 상태로 돌아가며 반려 사유가 지워지고 사용 목적은 새 값으로
+        바뀐다. 같은 분야를 두 번 넣으면 400이다. 응답의 `fields`는 프로젝트의 모든 분야(처음 신청한 순서)다. 신청 전에 `POST /auth/email/otp`·`POST /auth/email/otp/verify`로
+        로그인한 계정의 이메일을 인증하고 받은 `emailVerifiedToken`을 보내야 하며, 성공하면 토큰은 폐기된다. 권한: USER, ADMIN(로그인한 본인).'
       operationId: applyProjectFields
       security:
       - bearerAuth: []
@@ -825,7 +889,10 @@ paths:
               $ref: '#/components/schemas/ProjectFieldsApplyRequest'
             example:
               fields:
-              - CLUB
+              - field: SCHEDULE
+                purpose: 반 단톡방에 학사 일정을 알려 주려고 합니다.
+              - field: STUDENT
+                purpose: 학생 인증에 쓰려고 합니다.
               emailVerifiedToken: 3f1c2a9e-8b7d-4e6f-9a01-2b3c4d5e6f70
       responses:
         '201':
@@ -836,19 +903,18 @@ paths:
                 $ref: '#/components/schemas/ProjectApplyResponse'
               example:
                 projectId: 1
-                apiKey: null
+                apiKey: xq_UNhY4JhezH9gQYqvDMWrWH9CwlcKiECVqejMrND2VFw
                 fields:
                 - field: SCHEDULE
                   level: SCHOOL
                   status: APPROVED
+                  purpose: 반 단톡방에 학사 일정을 알려 주려고 합니다.
                 - field: STUDENT
                   level: RESTRICTED
                   status: PENDING
-                - field: CLUB
-                  level: SCHOOL
-                  status: APPROVED
+                  purpose: 학생 인증에 쓰려고 합니다.
         '400':
-          description: '`INVALID_INPUT`: 분야 목록이 비었거나 없는 분야, 이메일 인증 토큰 공백, projectId가 숫자가 아님'
+          description: '`INVALID_INPUT`: 분야 목록이 비었거나 없는 분야, 같은 분야를 두 번 넣음, 사용 목적 누락·공백·200자 초과, 이메일 인증 토큰 공백, projectId가 숫자가 아님'
           content:
             application/json:
               schema:
@@ -3697,7 +3763,7 @@ paths:
       tags:
       - API 키
       summary: 분야 신청 승인
-      description: '대기(PENDING) 중인 신청을 승인한다. 프로젝트의 첫 승인이면 키를 발급하지만 해시만 저장하고 원문은 주지 않는다(사용자가 `POST /projects/{projectId}/api-key/reissue`로 받음). 승인된 분야는 그 프로젝트의 키로 바로 조회할 수 있다. 권한: ADMIN.'
+      description: '대기(PENDING) 중인 신청을 승인한다. 키는 첫 분야 신청 때 이미 발급되므로 상태만 바꾼다(그 규칙 전에 만든 키 없는 프로젝트만 이때 키를 발급하고 해시만 저장한다. 원문은 `POST /projects/{projectId}/api-key/reissue`로 받는다). 승인된 분야는 그 프로젝트의 키로 바로 조회할 수 있다. 권한: ADMIN.'
       operationId: approveApiApplication
       security:
       - bearerAuth: []
@@ -3884,10 +3950,10 @@ paths:
       - name: field
         in: query
         required: false
-        description: '저장된 MVC 템플릿으로 정하는 기존 분야. 다른 필터와 AND로 적용합니다. 공개 급식과 UNMAPPED 등 미분류는 분야를 지정하면 제외합니다. 빈 값 또는 목록에 없는 값은 400입니다.'
+        description: '저장된 MVC 템플릿으로 정하는 기존 분야. 다른 필터와 AND로 적용합니다. MEAL은 공개 급식 조회 경로이고, 시간표와 UNMAPPED 등 미분류는 분야를 지정하면 제외합니다. 빈 값 또는 목록에 없는 값은 400입니다.'
         schema:
           type: string
-          enum: [STUDENT, TEACHER, CLUB, SCHEDULE, STUDY_SUPERVISOR]
+          enum: [STUDENT, TEACHER, CLUB, SCHEDULE, STUDY_SUPERVISOR, MEAL]
       - name: page
         in: query
         schema: {type: integer, format: int32, minimum: 0, maximum: 1000, default: 0}
@@ -3945,19 +4011,21 @@ components:
   schemas:
     ApiKeyField:
       type: string
-      description: '분야. STUDENT(학생, 제한), TEACHER(교직원, 제한), CLUB(동아리, 교내), SCHEDULE(일정, 교내), STUDY_SUPERVISOR(자습 감독, 교내). 급식·시간표는 키 없이
-        호출하는 공개 API라 분야가 없다'
+      description: '분야. STUDENT(학생, 제한), TEACHER(교직원, 제한), CLUB(동아리, 제한), SCHEDULE(일정, 교내), STUDY_SUPERVISOR(자습 감독, 교내), MEAL(급식, 공개).
+        급식 조회 API는 키 없이도 열려 있고, MEAL은 프로젝트에서 쓰는 분야로 신청하는 용도다(신청 즉시 승인). 시간표는 분야가 없다'
       enum:
       - STUDENT
       - TEACHER
       - CLUB
       - SCHEDULE
       - STUDY_SUPERVISOR
+      - MEAL
       example: STUDENT
     AccessLevel:
       type: string
-      description: '분야의 접근 단계. SCHOOL(교내, 신청 즉시 자동 승인), RESTRICTED(제한, 개인정보 포함, 관리자 승인 후 사용). 분야마다 정해져 있다'
+      description: '분야의 접근 단계. PUBLIC(공개, 신청 즉시 자동 승인, 조회 API는 키 없이도 열림), SCHOOL(교내, 신청 즉시 자동 승인), RESTRICTED(제한, 개인정보 포함, 관리자 승인 후 사용). 분야마다 정해져 있다'
       enum:
+      - PUBLIC
       - SCHOOL
       - RESTRICTED
       example: SCHOOL
@@ -3969,13 +4037,17 @@ components:
       - APPROVED
       - REJECTED
       example: APPROVED
+    ApplicationType:
+      type: string
+      description: '분야 신청 구분. FIRST(프로젝트의 첫 신청 요청에 들어 있던 분야), ADDITIONAL(그 뒤 요청으로 추가한 분야). 신청할 때 정해지고 반려 후 재신청해도 바뀌지 않는다'
+      enum:
+      - FIRST
+      - ADDITIONAL
+      example: FIRST
     ProjectCreateRequest:
       type: object
       required:
       - name
-      - purpose
-      - fields
-      - emailVerifiedToken
       properties:
         name:
           type: string
@@ -3983,23 +4055,14 @@ components:
           maxLength: 30
           description: 서비스(프로젝트) 이름. 같은 사용자 안에서 겹치지 않아야 한다
           example: 급식 알리미
-        purpose:
-          type: string
-          minLength: 1
-          maxLength: 200
-          description: 사용 목적
-          example: 반 단톡방에 매일 급식을 올리려고 합니다.
-        fields:
-          type: array
-          minItems: 1
-          description: 신청할 분야. 같은 분야를 여러 번 넣으면 한 번만 신청한다
-          items:
-            $ref: '#/components/schemas/ApiKeyField'
-        emailVerifiedToken:
-          type: string
-          minLength: 1
-          description: '`POST /auth/email/otp/verify`가 준 토큰. 로그인한 계정의 이메일로 받은 것이어야 한다'
-          example: 3f1c2a9e-8b7d-4e6f-9a01-2b3c4d5e6f70
+        serviceUrl:
+          type:
+          - string
+          - 'null'
+          maxLength: 255
+          pattern: ^https?://\S+$
+          description: 서비스 주소(http/https). 선택 입력이고, 수정 때 빼거나 null로 보내면 지운다
+          example: https://meal.example.com
     ProjectFieldsApplyRequest:
       type: object
       required:
@@ -4009,20 +4072,35 @@ components:
         fields:
           type: array
           minItems: 1
-          description: 더 신청할 분야. 같은 분야를 여러 번 넣으면 한 번만 신청한다
+          description: 신청할 분야와 분야별 사용 목적. 같은 분야를 두 번 넣으면 400이다
           items:
-            $ref: '#/components/schemas/ApiKeyField'
+            $ref: '#/components/schemas/ProjectFieldApplication'
         emailVerifiedToken:
           type: string
           minLength: 1
           description: '`POST /auth/email/otp/verify`가 준 토큰. 로그인한 계정의 이메일로 받은 것이어야 한다'
           example: 3f1c2a9e-8b7d-4e6f-9a01-2b3c4d5e6f70
+    ProjectFieldApplication:
+      type: object
+      required:
+      - field
+      - purpose
+      properties:
+        field:
+          $ref: '#/components/schemas/ApiKeyField'
+        purpose:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: 이 분야를 쓰려는 목적. 앞뒤 공백은 다듬어 저장한다
+          example: 반 단톡방에 학사 일정을 알려 주려고 합니다.
     ProjectFieldStatus:
       type: object
       required:
       - field
       - level
       - status
+      - purpose
       properties:
         field:
           $ref: '#/components/schemas/ApiKeyField'
@@ -4030,6 +4108,9 @@ components:
           $ref: '#/components/schemas/AccessLevel'
         status:
           $ref: '#/components/schemas/ApplicationStatus'
+        purpose:
+          type: string
+          description: 이 분야의 사용 목적
     ProjectApplyResponse:
       type: object
       required:
@@ -4058,6 +4139,7 @@ components:
       - field
       - level
       - status
+      - purpose
       - rejectReason
       properties:
         field:
@@ -4066,6 +4148,10 @@ components:
           $ref: '#/components/schemas/AccessLevel'
         status:
           $ref: '#/components/schemas/ApplicationStatus'
+        purpose:
+          type: string
+          description: 이 분야의 사용 목적
+          example: 반 단톡방에 학사 일정을 알려 주려고 합니다.
         rejectReason:
           type:
           - string
@@ -4077,6 +4163,7 @@ components:
       required:
       - projectId
       - name
+      - serviceUrl
       - keyIssued
       - issuedAt
       - expiresAt
@@ -4089,9 +4176,15 @@ components:
         name:
           type: string
           example: 급식 알리미
+        serviceUrl:
+          type:
+          - string
+          - 'null'
+          description: 서비스 주소. 없으면 null
+          example: https://meal.example.com
         keyIssued:
           type: boolean
-          description: 키가 발급됐는지(첫 승인 전이면 false)
+          description: 키가 발급됐는지(첫 분야 신청 전이면 false)
         issuedAt:
           type:
           - string
@@ -4116,7 +4209,7 @@ components:
       required:
       - projectId
       - name
-      - purpose
+      - serviceUrl
       - createdAt
       - keyIssued
       - issuedAt
@@ -4130,9 +4223,12 @@ components:
         name:
           type: string
           example: 급식 알리미
-        purpose:
-          type: string
-          example: 반 단톡방에 매일 급식을 올리려고 합니다.
+        serviceUrl:
+          type:
+          - string
+          - 'null'
+          description: 서비스 주소. 없으면 null
+          example: https://meal.example.com
         createdAt:
           type: string
           format: date-time
@@ -4282,6 +4378,8 @@ components:
       - field
       - level
       - status
+      - applicationType
+      - purpose
       - rejectReason
       - appliedAt
       - decidedAt
@@ -4299,6 +4397,11 @@ components:
           $ref: '#/components/schemas/AccessLevel'
         status:
           $ref: '#/components/schemas/ApplicationStatus'
+        applicationType:
+          $ref: '#/components/schemas/ApplicationType'
+        purpose:
+          type: string
+          description: 이 분야의 사용 목적
         rejectReason:
           type:
           - string
@@ -4322,7 +4425,7 @@ components:
           required:
           - projectId
           - name
-          - purpose
+          - serviceUrl
           - keyIssued
           - createdAt
           - fields
@@ -4332,8 +4435,10 @@ components:
               format: int64
             name:
               type: string
-            purpose:
-              type: string
+            serviceUrl:
+              type:
+              - string
+              - 'null'
             keyIssued:
               type: boolean
             createdAt:

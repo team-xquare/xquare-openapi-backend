@@ -24,6 +24,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import org.springframework.test.util.ReflectionTestUtils
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActionsDsl
+import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import tools.jackson.databind.json.JsonMapper
 import java.time.LocalDateTime
@@ -64,10 +65,11 @@ class ApplyProjectFieldsTest @Autowired constructor(
         projectRepository.deleteAll()
         userRepository.deleteAll()
         emailVerifiedTokens.tokens.clear()
+        emailVerifiedTokens.failOnDelete = false
     }
 
     @Test
-    fun `키가 없는 프로젝트에 교내 분야를 더하면 첫 승인이라 키를 발급한다`() {
+    fun `키가 없는 프로젝트에 교내 분야를 신청하면 바로 승인되고 키를 발급한다`() {
         val project = projectRepository.saveProject(userId)
         fieldRepository.saveField(project.id!!, ApiKeyField.STUDENT, ApplicationStatus.PENDING)
 
@@ -102,15 +104,120 @@ class ApplyProjectFieldsTest @Autowired constructor(
     }
 
     @Test
-    fun `키가 없는 프로젝트에 제한 분야만 더하면 승인 대기이고 키는 없다`() {
+    fun `제한 분야만 신청해도 첫 신청이면 키를 바로 발급하고, 승인 전에는 그 분야를 조회할 수 없다`() {
+        val project = projectRepository.saveProject(userId)
+        val before = LocalDateTime.now(SEOUL)
+
+        val apiKey = apply(project.id!!, """["TEACHER"]""").andExpect {
+            status { isCreated() }
+            jsonPath("$.fields[0].level") { value("RESTRICTED") }
+            jsonPath("$.fields[0].status") { value("PENDING") }
+        }.json()["apiKey"].asString()
+
+        assertTrue(apiKey.startsWith("xq_"))
+        val saved = projectRepository.findById(project.id!!).orElseThrow()
+        assertEquals(ApiKeySecret.hash(apiKey), saved.keyHash)
+        assertTrue(saved.issuedAt!! >= before, "${saved.issuedAt}")
+        assertEquals(saved.issuedAt!!.plusDays(ApiProject.KEY_LIFETIME_DAYS), saved.expiresAt)
+        val pending = fieldRepository.findAll().single()
+        assertNull(pending.decidedAt)
+        mockMvc.get("/teachers") { header("X-API-Key", apiKey) }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("API_KEY_FIELD_FORBIDDEN") }
+        }
+    }
+
+    @Test
+    fun `급식(MEAL)은 공개 단계라 신청하면 바로 승인한다`() {
         val project = projectRepository.saveProject(userId)
 
-        apply(project.id!!, """["TEACHER"]""").andExpect {
+        apply(project.id!!, """["MEAL"]""").andExpect {
             status { isCreated() }
-            jsonPath("$.apiKey") { value(nullValue()) }
-            jsonPath("$.fields[0].status") { value("PENDING") }
+            jsonPath("$.fields[0].field") { value("MEAL") }
+            jsonPath("$.fields[0].level") { value("PUBLIC") }
+            jsonPath("$.fields[0].status") { value("APPROVED") }
         }
+        val meal = fieldRepository.findAll().single()
+        assertEquals(ApplicationStatus.APPROVED, meal.status)
+        assertEquals(meal.appliedAt, meal.decidedAt)
+        assertNull(meal.decidedBy)
+    }
+
+    @Test
+    fun `분야마다 사용 목적을 앞뒤 공백을 다듬어 저장하고 응답에도 준다`() {
+        val project = projectRepository.saveProject(userId)
+
+        applyRaw(project.id!!, """[{"field":"SCHEDULE","purpose":"  일정 알림  "},{"field":"STUDENT","purpose":"학생 인증"}]""").andExpect {
+            status { isCreated() }
+            jsonPath("$.fields[0].purpose") { value("일정 알림") }
+            jsonPath("$.fields[1].purpose") { value("학생 인증") }
+        }
+        val saved = fieldRepository.findAllByProjectIdOrderByIdAsc(project.id!!)
+        assertEquals(listOf("일정 알림", "학생 인증"), saved.map { it.purpose })
+    }
+
+    @Test
+    fun `프로젝트의 첫 신청 요청에 들어 있던 분야는 FIRST, 그 뒤 요청의 분야는 ADDITIONAL이다`() {
+        val project = projectRepository.saveProject(userId)
+
+        apply(project.id!!, """["SCHEDULE","STUDENT"]""").andExpect { status { isCreated() } }
+        emailVerifiedTokens.tokens[TOKEN] = EMAIL
+        apply(project.id!!, """["CLUB"]""").andExpect { status { isCreated() } }
+
+        val types = fieldRepository.findAllByProjectIdOrderByIdAsc(project.id!!).associate { it.field to it.applicationType }
+        assertEquals(
+            mapOf(
+                ApiKeyField.SCHEDULE to ApplicationType.FIRST,
+                ApiKeyField.STUDENT to ApplicationType.FIRST,
+                ApiKeyField.CLUB to ApplicationType.ADDITIONAL,
+            ),
+            types,
+        )
+    }
+
+    @Test
+    fun `같은 분야를 두 번 넣으면 어느 목적인지 알 수 없어 INVALID_INPUT이고 아무것도 남기지 않는다`() {
+        val project = projectRepository.saveProject(userId)
+
+        apply(project.id!!, """["CLUB","STUDENT","CLUB"]""").andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_INPUT") }
+        }
+        assertEquals(0, fieldRepository.count())
         assertNull(projectRepository.findById(project.id!!).orElseThrow().keyHash)
+        assertEquals(EMAIL, emailVerifiedTokens.tokens[TOKEN])
+    }
+
+    @Test
+    fun `모든 분야를 한 번에 신청할 수 있고 사용 목적은 200자까지 받는다`() {
+        val project = projectRepository.saveProject(userId)
+        val all = ApiKeyField.entries.joinToString(",", "[", "]") { """{"field":"$it","purpose":"${"가".repeat(200)}"}""" }
+
+        applyRaw(project.id!!, all).andExpect { status { isCreated() } }
+        assertEquals(ApiKeyField.entries.toSet(), fieldRepository.findAll().map { it.field }.toSet())
+    }
+
+    @Test
+    fun `대문자가 섞인 이메일로 가입한 계정도 소문자로 저장된 인증 토큰으로 신청할 수 있다`() {
+        val mixedCase = userRepository.saveUser("mixed", email = "MixedCase@DSM.hs.kr")
+        val project = projectRepository.saveProject(mixedCase.id!!)
+        emailVerifiedTokens.tokens["mixed-token"] = "mixedcase@dsm.hs.kr"
+
+        mockMvc.post("/projects/${project.id}/fields") {
+            header("Authorization", "Bearer ${jwtProvider.generateAccessToken(mixedCase.id!!, Role.USER)}")
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"fields":${fieldsJson("CLUB")},"emailVerifiedToken":"mixed-token"}"""
+        }.andExpect { status { isCreated() } }
+        assertEquals(1, fieldRepository.count())
+    }
+
+    @Test
+    fun `토큰을 지우지 못해도 신청은 끝난다`() {
+        val project = projectRepository.saveProject(userId)
+        emailVerifiedTokens.failOnDelete = true
+
+        apply(project.id!!, """["CLUB"]""").andExpect { status { isCreated() } }
+        assertEquals(1, fieldRepository.count())
     }
 
     @Test
@@ -133,7 +240,7 @@ class ApplyProjectFieldsTest @Autowired constructor(
     }
 
     @Test
-    fun `반려된 분야는 다시 신청하면 승인 대기로 돌아가고 반려 기록을 지운다`() {
+    fun `반려된 분야는 다시 신청하면 승인 대기로 돌아가고 반려 기록을 지우며 목적은 새로 받고 구분은 그대로다`() {
         val project = projectRepository.saveProject(userId)
         val rejected = fieldRepository.saveField(project.id!!, ApiKeyField.STUDENT, ApplicationStatus.REJECTED)
         ReflectionTestUtils.setField(rejected, "rejectReason", "목적이 불분명합니다.")
@@ -144,7 +251,6 @@ class ApplyProjectFieldsTest @Autowired constructor(
 
         apply(project.id!!, """["STUDENT"]""").andExpect {
             status { isCreated() }
-            jsonPath("$.apiKey") { value(nullValue()) }
             jsonPath("$.fields[0].status") { value("PENDING") }
         }
 
@@ -155,6 +261,8 @@ class ApplyProjectFieldsTest @Autowired constructor(
         assertNull(resubmitted.decidedAt)
         assertNull(resubmitted.decidedBy)
         assertTrue(resubmitted.appliedAt >= before, "${resubmitted.appliedAt}")
+        assertEquals(PURPOSE, resubmitted.purpose)
+        assertEquals(ApplicationType.FIRST, resubmitted.applicationType)
     }
 
     @Test
@@ -226,8 +334,14 @@ class ApplyProjectFieldsTest @Autowired constructor(
         listOf(
             """{"fields":[],"emailVerifiedToken":"$TOKEN"}""" to "fields",
             """{"fields":[null],"emailVerifiedToken":"$TOKEN"}""" to "요청 값이 올바르지 않습니다.",
-            """{"fields":["MEAL"],"emailVerifiedToken":"$TOKEN"}""" to "요청 값이 올바르지 않습니다.",
-            """{"fields":["CLUB"],"emailVerifiedToken":" "}""" to "emailVerifiedToken",
+            // 예전 형식(분야 이름만)은 사용 목적이 없어 받지 않는다.
+            """{"fields":["CLUB"],"emailVerifiedToken":"$TOKEN"}""" to "요청 값이 올바르지 않습니다.",
+            """{"fields":[{"field":"TIMETABLE","purpose":"p"}],"emailVerifiedToken":"$TOKEN"}""" to "요청 값이 올바르지 않습니다.",
+            """{"fields":[{"purpose":"p"}],"emailVerifiedToken":"$TOKEN"}""" to "요청 값이 올바르지 않습니다.",
+            """{"fields":[{"field":"CLUB","purpose":" "}],"emailVerifiedToken":"$TOKEN"}""" to "purpose",
+            """{"fields":[{"field":"CLUB","purpose":"${"가".repeat(201)}"}],"emailVerifiedToken":"$TOKEN"}""" to "purpose",
+            """{"fields":[{"field":"CLUB"}],"emailVerifiedToken":"$TOKEN"}""" to "요청 값이 올바르지 않습니다.",
+            """{"fields":${fieldsJson("CLUB")},"emailVerifiedToken":" "}""" to "emailVerifiedToken",
             """{"emailVerifiedToken":"$TOKEN"}""" to "요청 값이 올바르지 않습니다.",
         ).forEach { (invalid, expectedMessage) ->
             mockMvc.post("/projects/${project.id}/fields") {
@@ -249,19 +363,26 @@ class ApplyProjectFieldsTest @Autowired constructor(
 
         mockMvc.post("/projects/${project.id}/fields") {
             contentType = MediaType.APPLICATION_JSON
-            content = """{"fields":["CLUB"],"emailVerifiedToken":"$TOKEN"}"""
+            content = """{"fields":${fieldsJson("CLUB")},"emailVerifiedToken":"$TOKEN"}"""
         }.andExpect {
             status { isUnauthorized() }
             jsonPath("$.code") { value("INVALID_TOKEN") }
         }
     }
 
+    // fields는 ["CLUB","STUDENT"]처럼 분야 이름만 적고, 사용 목적은 모두 PURPOSE로 채운다.
     private fun apply(projectId: Long, fields: String, token: String = TOKEN) =
+        applyRaw(projectId, fieldsJson(*Regex("\\w+").findAll(fields).map { it.value }.toList().toTypedArray()), token)
+
+    private fun applyRaw(projectId: Long, fieldsJson: String, token: String = TOKEN) =
         mockMvc.post("/projects/$projectId/fields") {
             header("Authorization", "Bearer $userToken")
             contentType = MediaType.APPLICATION_JSON
-            content = """{"fields":$fields,"emailVerifiedToken":"$token"}"""
+            content = """{"fields":$fieldsJson,"emailVerifiedToken":"$token"}"""
         }
+
+    private fun fieldsJson(vararg fields: String) =
+        fields.joinToString(",", "[", "]") { """{"field":"$it","purpose":"$PURPOSE"}""" }
 
     private fun ResultActionsDsl.json() = jsonMapper.readTree(andReturn().response.contentAsString)
 
@@ -269,6 +390,7 @@ class ApplyProjectFieldsTest @Autowired constructor(
         private const val EMAIL = "junseo@dsm.hs.kr"
         private const val TOKEN = "verified-token"
         private const val RAW_KEY = "xq_existing"
+        private const val PURPOSE = "반 단톡방에 알림을 보내려고 합니다."
         private val SEOUL = ZoneId.of("Asia/Seoul")
     }
 }

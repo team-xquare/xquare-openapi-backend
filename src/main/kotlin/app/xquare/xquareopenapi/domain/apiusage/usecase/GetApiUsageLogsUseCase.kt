@@ -100,6 +100,7 @@ class GetApiUsageLogsUseCase(
         ApiKeyField.TEACHER -> listOf("/teachers", "/teachers/{teacherId}")
         ApiKeyField.CLUB -> listOf("/clubs", "/clubs/{clubId}")
         ApiKeyField.SCHEDULE -> listOf("/schedules", "/schedules/{scheduleId}")
+        ApiKeyField.MEAL -> listOf("/meals", "/meals/{mealId}")
         ApiKeyField.STUDY_SUPERVISOR -> listOf("/study-supervisors", "/study-supervisors/day", "/study-supervisors/{studySupervisorId}")
     }.map(String::toByteArray)
 

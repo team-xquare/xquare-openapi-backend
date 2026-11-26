@@ -9,8 +9,8 @@ import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 import java.time.LocalDateTime
 
-// 프로젝트 하나에 키 하나. 분야별 신청·승인 상태는 ApiProjectField에 두고, 여기에는 키 해시만 둔다. 키 원문은 저장하지 않는다.
-// 키는 프로젝트의 분야가 처음 승인될 때 발급되므로 그 전에는 key_hash가 null이다.
+// 프로젝트 하나에 키 하나. 분야별 신청 내용(사용 목적)·승인 상태는 ApiProjectField에 두고, 여기에는 키 해시만 둔다. 키 원문은 저장하지 않는다.
+// 프로젝트는 이름만으로 만들고, 키는 첫 분야 신청 때 발급되므로 그 전에는 key_hash가 null이다.
 @Entity
 // 제약 이름은 같은 이름의 프로젝트가 겹쳤는지 구분하는 계약이라 직접 정한다.
 @Table(
@@ -24,14 +24,12 @@ class ApiProject(
     @Column(name = "user_id", nullable = false)
     val userId: Long,
 
-    @Column(nullable = false, length = 30)
-    val name: String,
-
-    @Column(nullable = false, length = 200)
-    val purpose: String,
+    name: String,
 
     @Column(name = "created_at", nullable = false)
     val createdAt: LocalDateTime,
+
+    serviceUrl: String? = null,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -46,12 +44,28 @@ class ApiProject(
     var issuedAt: LocalDateTime? = null
         protected set
 
-    // 만료 시각 = 발급·재발급·갱신 시각 + 60일. 첫 승인 전(키 없음)이면 null이다.
+    // 만료 시각 = 발급·재발급·갱신 시각 + 60일. 첫 분야 신청 전(키 없음)이면 null이다.
     @Column(name = "expires_at")
     var expiresAt: LocalDateTime? = null
         protected set
 
+    // 같은 사용자 안에서 겹치지 않아야 한다. 수정 API로 바꿀 수 있다.
+    @Column(nullable = false, length = 30)
+    var name: String = name
+        protected set
+
+    // 프로젝트(서비스)의 주소. 선택 입력이라 null일 수 있다.
+    @Column(name = "service_url", length = 255)
+    var serviceUrl: String? = serviceUrl
+        protected set
+
     val keyIssued: Boolean get() = keyHash != null
+
+    // 이름과 서비스 URL을 통째로 바꾼다. serviceUrl을 null로 주면 지운다.
+    fun update(name: String, serviceUrl: String?) {
+        this.name = name
+        this.serviceUrl = serviceUrl
+    }
 
     // 새 키를 만들어 해시만 남기고 원문을 돌려준다. 이미 키가 있으면 해시가 바뀌어 이전 키로는 더 이상 찾을 수 없다.
     fun issueKey(now: LocalDateTime): String {

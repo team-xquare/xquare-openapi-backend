@@ -63,7 +63,7 @@ class ScheduleListStorageFailureHttpTest @Autowired constructor(
 
     @BeforeEach
     fun stubApiKey() {
-        val project = ApiProject(1L, "일정 장애 테스트", "테스트 목적", LocalDateTime.now())
+        val project = ApiProject(1L, "일정 장애 테스트", LocalDateTime.now())
         project.issueKey(LocalDateTime.now())
         ReflectionTestUtils.setField(project, "id", 1L)
         doReturn(project).`when`(projects).findByKeyHash(anyString())

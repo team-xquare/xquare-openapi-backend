@@ -1,25 +1,19 @@
 package app.xquare.xquareopenapi.domain.apikey.presentation.dto
 
-import app.xquare.xquareopenapi.domain.apikey.ApiKeyField
 import jakarta.validation.constraints.NotBlank
-import jakarta.validation.constraints.NotEmpty
+import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
 
+// 프로젝트는 이름(과 선택 입력인 서비스 URL)만으로 만든다. 분야·사용 목적·이메일 인증은 분야 신청(POST /projects/{id}/fields)에서 받는다.
+// 수정(PATCH /projects/{id})도 같은 DTO로 모든 값을 받아 통째로 바꾼다.
 data class CreateProjectRequest(
     // 같은 사용자 안에서 겹치지 않아야 한다.
     @field:NotBlank
     @field:Size(max = 30)
     val name: String,
 
-    @field:NotBlank
-    @field:Size(max = 200)
-    val purpose: String,
-
-    // 같은 분야를 여러 번 넣으면 한 번만 신청한다.
-    @field:NotEmpty
-    val fields: List<ApiKeyField>,
-
-    // POST /auth/email/otp/verify가 준 토큰. 로그인한 사용자의 이메일로 받은 것이어야 한다.
-    @field:NotBlank
-    val emailVerifiedToken: String,
+    // http·https 주소. 없으면 null
+    @field:Size(max = SERVICE_URL_MAX_LENGTH)
+    @field:Pattern(regexp = SERVICE_URL_PATTERN)
+    val serviceUrl: String? = null,
 )

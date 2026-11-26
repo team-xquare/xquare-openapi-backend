@@ -77,26 +77,30 @@
 
 ### 정한 것 (11/20 선생님 피드백, 명세 #57)
 - API 키는 **프로젝트마다 하나**. 사용자는 프로젝트를 여러 개 만들 수 있다(최대 5개, 넘으면 `409 PROJECT_LIMIT_EXCEEDED`)
-- 접근 단계: 공개(`PUBLIC`, 키 없음) · 교내(`SCHOOL`, 신청 즉시 자동 승인) · 제한(`RESTRICTED`, 관리자 승인 후). 단계는 분야에 붙은 코드 상수(`ApiKeyField.level`)
-  - 공개: 급식(`/meals`, `/meals/{mealId}`), 시간표(`/timetables`)
+- 접근 단계: 공개(`PUBLIC`, 조회는 키 없이도 열림, 분야 신청은 즉시 승인) · 교내(`SCHOOL`, 신청 즉시 자동 승인) · 제한(`RESTRICTED`, 관리자 승인 후). 단계는 분야에 붙은 코드 상수(`ApiKeyField.level`)
+  - 공개: 급식 `MEAL`(`/meals`, `/meals/{mealId}`), 시간표(`/timetables`, 분야 없음)
   - 교내: 일정 `SCHEDULE`, 동아리 `CLUB`, 자습 감독 `STUDY_SUPERVISOR`
   - 제한: 교직원 `TEACHER`, 학생 `STUDENT`
-- 키는 프로젝트의 **첫 승인** 시점에 발급한다. 교내 분야가 있는 신청이면 그 응답에 원문을 준다. 제한 분야만 신청해 승인을 기다리면 응답의 `apiKey`는 null이고, 관리자 승인으로 첫 발급되면 해시만 저장한다(원문은 사용자가 재발급 API로 받음)
-- 반려된 분야는 다시 신청할 수 있다(`REJECTED` → 처음 신청할 때와 같은 상태, 반려 사유·처리 기록 초기화)
+- 키는 프로젝트의 **첫 분야 신청** 때 단계와 상관없이 발급하고 그 응답에 원문을 준다(11/27 태스크: "첫 분야 신청 때 키 발급, 제한 분야도 바로 발급, 승인 전 호출은 403"). 승인 전(대기·반려) 분야의 조회는 `403 API_KEY_FIELD_FORBIDDEN`
+- 프로젝트는 이름만으로 만든다(11/27 태스크: "빈 프로젝트 만들기"). 분야·사용 목적·이메일 인증은 분야 신청에서 받는다
+- 사용 목적은 분야마다 저장한다(`api_project_fields.purpose`). 예전에는 프로젝트당 1개(`api_projects.purpose`)였다
+- 분야 신청 구분(`application_type`): 프로젝트에 신청 기록이 하나도 없을 때 들어온 요청의 분야는 `FIRST`, 그 뒤 요청의 분야는 `ADDITIONAL`. 신청할 때 정하고 반려 후 재신청해도 바꾸지 않는다(관리자 목록의 "첫 신청 / 분야 추가")
+- 반려된 분야는 다시 신청할 수 있다(`REJECTED` → 처음 신청할 때와 같은 상태, 반려 사유·처리 기록 초기화, 사용 목적은 새 값)
 - 기존 사용자당 키 1개 구조(`api_keys`, `api_key_applications`, `/api-keys`, `/api-key-applications`)는 새 구조로 대체하고 지웠다. 스테이징에도 데이터가 없어 이관하지 않는다
 
 ### 구현하면서 정한 것
-- 테이블: `api_projects`(프로젝트 = 키 1개, `key_hash`는 첫 승인 전 null), `api_project_fields`(프로젝트의 분야별 신청·승인 상태). 스키마는 `docs/schema/api_projects.sql`
-- `POST /projects`: 이름 1~30자(같은 사용자 안에서 unique), 사용 목적 1~200자, 분야 1개 이상, `emailVerifiedToken`. 같은 분야를 여러 번 넣으면 한 번만 신청한다. 응답 `201 { projectId, apiKey, fields[{field, level, status}] }`
-- `POST /projects/{projectId}/fields`: 분야 추가 신청. 대기·승인된 분야를 다시 넣으면 `409 FIELD_ALREADY_APPLIED`이고 함께 보낸 다른 분야도 신청되지 않는다(트랜잭션 롤백). 응답은 프로젝트의 모든 분야(처음 신청한 순서). 없거나 남의 프로젝트면 `404 PROJECT_NOT_FOUND`(남의 프로젝트 존재 여부를 드러내지 않음)
-- `GET /projects`: 내 프로젝트를 만든 순서대로 `{ projectId, name, keyIssued, issuedAt, expiresAt, fields[{field, level, status, rejectReason}] }`. 키 원문·해시는 내려주지 않는다. `GET /projects/{projectId}`는 여기에 `purpose`, `createdAt`을 더한다
-- `POST /projects/{projectId}/api-key/reissue`: 이메일 인증 후 새 키 원문을 준다(`{ apiKey, issuedAt, expiresAt }`). 이전 키는 바로 `401 INVALID_API_KEY`. 아직 발급 전(승인된 분야 없음)이면 `409 API_KEY_NOT_ISSUED`. 관리자 승인으로 첫 발급된 키는 원문을 받은 사람이 없으므로 이 API로 받는다
+- 테이블: `api_projects`(프로젝트 = 키 1개, `key_hash`는 첫 분야 신청 전 null), `api_project_fields`(프로젝트의 분야별 사용 목적·구분·신청·승인 상태). 스키마는 `docs/schema/api_projects.sql`, 기존 DB 변경은 `docs/schema/migrations/2026-11-28-project-structure.sql`
+- `POST /projects`: 이름 1~30자(같은 사용자 안에서 unique)와 선택 입력인 서비스 URL(`serviceUrl`, http/https, 255자, 공백 불가)만 받는다. 이메일 인증 없음. 응답 `201`은 프로젝트 상세(`fields: []`, `keyIssued: false`). 토큰의 사용자가 지워졌으면 `401 INVALID_TOKEN`
+- `POST /projects/{projectId}/fields`: 분야 신청. `{ fields: [{ field, purpose }], emailVerifiedToken }`, 사용 목적 1~200자(앞뒤 공백 제거). 같은 분야를 두 번 넣으면 `400 INVALID_INPUT`. 응답 `201 { projectId, apiKey, fields[{field, level, status, purpose}] }`. 대기·승인된 분야를 다시 넣으면 `409 FIELD_ALREADY_APPLIED`이고 함께 보낸 다른 분야도 신청되지 않는다(트랜잭션 롤백). 응답은 프로젝트의 모든 분야(처음 신청한 순서). 없거나 남의 프로젝트면 `404 PROJECT_NOT_FOUND`(남의 프로젝트 존재 여부를 드러내지 않음)
+- `PATCH /projects/{projectId}`: 이름·서비스 URL 수정(11/27 태스크). 등록과 같은 DTO로 모든 값을 받아 통째로 바꾼다(`serviceUrl`을 빼면 지움). 이름을 그대로 두면 막지 않고, 내 다른 프로젝트와 겹치면 `409 PROJECT_NAME_DUPLICATED`. 프로젝트 행을 잠근다. 응답은 프로젝트 상세
+- `GET /projects`: 내 프로젝트를 만든 순서대로 `{ projectId, name, keyIssued, issuedAt, expiresAt, fields[{field, level, status, rejectReason}] }`. 키 원문·해시는 내려주지 않는다. `fields[]`에는 `purpose`도 있다. `GET /projects/{projectId}`는 여기에 `createdAt`을 더한다
+- `POST /projects/{projectId}/api-key/reissue`: 이메일 인증 후 새 키 원문을 준다(`{ apiKey, issuedAt, expiresAt }`). 이전 키는 바로 `401 INVALID_API_KEY`. 아직 발급 전(분야 신청 전)이면 `409 API_KEY_NOT_ISSUED`
 - `DELETE /projects/{projectId}`: 프로젝트·분야·키를 모두 지운다(하드 삭제). 이메일 인증은 요구하지 않는다(예전 키 삭제와 같음). 성공하면 `200 {"message":"삭제되었습니다."}`. 같은 프로젝트를 동시에 지우면 하나만 200이고 나머지는 404
 - 남의 프로젝트(목록 제외 모든 프로젝트 API)는 `404 PROJECT_NOT_FOUND`
 - 관리자(OPN-71 대체): `GET /admin/api-applications?status=&page=&size=`(PageResponse, 신청 시각 역순·같으면 id 역순, page 0~21474836·size 1~100), `GET /admin/api-applications/{applicationId}`, `POST .../approve`, `POST .../reject`(`{ "reason" }` 1~200자, 공백만이면 400). `applicationId`는 `api_project_fields.id`. ADMIN 액세스 토큰으로 열고 USER는 `403 FORBIDDEN`. 옛 `/api-key-applications`는 1단계에서 테이블과 함께 지웠다
-  - 상세: 신청 내용·처리 기록(`decidedAt`, `decidedBy`, `rejectReason`) + 프로젝트(이름·목적·키 발급 여부·분야 전체) + 신청자(`applicant`, 사용자 행이 없으면 null). 승인·반려 응답도 처리 뒤의 상세를 준다
+  - 상세: 신청 내용(구분 `applicationType`·사용 목적 `purpose`)·처리 기록(`decidedAt`, `decidedBy`, `rejectReason`) + 프로젝트(이름·키 발급 여부·분야 전체) + 신청자(`applicant`, 사용자 행이 없으면 null). 승인·반려 응답도 처리 뒤의 상세를 준다
   - `PENDING`이 아닌 신청을 승인·반려하면 `409 APPLICATION_ALREADY_DECIDED`, 없는 신청은 `404 APPLICATION_NOT_FOUND`
-  - 첫 승인이면 키를 발급하되 해시만 저장한다. 승인 응답에 원문은 없고, 사용자가 `POST /projects/{projectId}/api-key/reissue`로 받는다(명세 4.1 제안)
+  - 키는 첫 분야 신청 때 발급되므로 승인은 상태만 바꾼다. 그 규칙 전에 만든 키 없는 프로젝트만 승인 때 키를 발급하고 해시만 저장한다(원문은 재발급 API로 받음)
   - 동시성: 승인·반려도 프로젝트 행을 잠근다. 잠글 프로젝트 id는 트랜잭션 밖에서 먼저 읽는다. 트랜잭션 안에서 잠금 전에 일반 조회를 하면 REPEATABLE READ 스냅샷이 잠금 전에 생겨, 두 관리자가 같은 신청을 동시에 처리할 때 늦은 쪽이 이미 처리된 상태를 못 보기 때문이다(`DecideApiApplicationMySqlConcurrencyTest`)
   - API 사용 기록: `/admin/api-applications/**`는 업무 호출로 기록한다(예전 `/api-key-applications`도 기록 대상이었음). 관리자 사용 기록 조회(`/admin/api-usage-logs`)는 여전히 기록하지 않는다. `ApiUsageLogCapture`는 첫 세그먼트가 `admin`이면 두 번째 세그먼트로 판단한다
 - 동시성
@@ -114,7 +118,7 @@
   - 동아리·자습 감독·일정 조회는 예전에 JWT(USER)로 열려 있었는데 키 체인으로 옮겼다. 이제 액세스 토큰만으로는 `401 INVALID_API_KEY`
   - `GET /study-supervisors/{id}`는 매핑이 없어 키 체인에 넣지 않았다(JWT 체인에서 405)
 - 공개 단계: 급식과 시간표(`GET /timetables`)는 키·토큰 없이 연다(`permitAll`). 시간표는 예전에 JWT(USER)였다
-- 60일 만료: 키를 발급(첫 승인)·재발급하면 `expires_at = 그 시각 + 60일`. `POST /projects/{projectId}/api-key/renew`(이메일 인증)는 키 값과 `issued_at`은 그대로 두고 `expires_at = 지금 + 60일`로 늦춘다. 이미 만료된 키도 갱신하면 다시 쓴다. 응답 `{ issuedAt, expiresAt }`(원문 없음). 키가 아직 없으면 `409 API_KEY_NOT_ISSUED`
+- 60일 만료: 키를 발급(첫 분야 신청)·재발급하면 `expires_at = 그 시각 + 60일`. `POST /projects/{projectId}/api-key/renew`(이메일 인증)는 키 값과 `issued_at`은 그대로 두고 `expires_at = 지금 + 60일`로 늦춘다. 이미 만료된 키도 갱신하면 다시 쓴다. 응답 `{ issuedAt, expiresAt }`(원문 없음). 키가 아직 없으면 `409 API_KEY_NOT_ISSUED`
   - 만료 계산은 `Clock` 빈(서울)으로 한다. 테스트는 시각을 바꿀 수 있는 가짜 Clock(`MutableClockConfig`)으로 경계(만료 시각 직전·정각)를 확인한다
   - 만료 전 알림 메일은 이번 범위 밖(명세 6절 5번)
 - 만료: `api_projects.expires_at`이 지금 시각(Clock 빈, 서울) 이하이면 만료로 보고 `401 API_KEY_EXPIRED`. 필터가 요청 속성에 만료 표시만 남기고 인증하지 않으면, 키 체인의 entry point가 그 표시를 보고 `INVALID_API_KEY` 대신 `API_KEY_EXPIRED`로 응답한다. `expires_at`이 null이면 만료되지 않는다

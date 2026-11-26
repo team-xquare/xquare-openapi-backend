@@ -76,7 +76,7 @@ abstract class ProjectManageConcurrencyScenarios {
         val actions = listOf { _: String -> deleteProjectUseCase.execute(userId, project.id!!) } +
             fields.map { field ->
                 { token: String ->
-                    applyProjectFieldsUseCase.execute(userId, project.id!!, ApplyProjectFieldsRequest(listOf(field), token))
+                    applyProjectFieldsUseCase.execute(userId, project.id!!, ApplyProjectFieldsRequest(listOf(ApplyProjectFieldsRequest.FieldApplication(field, "목적")), token))
                     Unit
                 }
             }
