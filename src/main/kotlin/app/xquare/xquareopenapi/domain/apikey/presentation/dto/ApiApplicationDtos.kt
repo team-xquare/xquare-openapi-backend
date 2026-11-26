@@ -5,6 +5,7 @@ import app.xquare.xquareopenapi.domain.apikey.ApiKeyField
 import app.xquare.xquareopenapi.domain.apikey.ApiProject
 import app.xquare.xquareopenapi.domain.apikey.ApiProjectField
 import app.xquare.xquareopenapi.domain.apikey.ApplicationStatus
+import app.xquare.xquareopenapi.domain.apikey.ApplicationType
 import app.xquare.xquareopenapi.domain.apikey.withSeoulOffset
 import app.xquare.xquareopenapi.domain.user.User
 import io.swagger.v3.oas.annotations.Parameter
@@ -66,12 +67,15 @@ data class ApiApplicationSummaryResponse(
     }
 }
 
-// 관리자 신청 상세. 신청 내용과 처리 기록, 프로젝트(목적·분야 전체), 신청자를 함께 보여 준다. 시각은 한국 시간(+09:00)
+// 관리자 신청 상세. 신청 내용(구분·사용 목적)과 처리 기록, 프로젝트(분야 전체), 신청자를 함께 보여 준다. 시각은 한국 시간(+09:00)
 data class ApiApplicationDetailResponse(
     val applicationId: Long,
     val field: ApiKeyField,
     val level: AccessLevel,
     val status: ApplicationStatus,
+    val applicationType: ApplicationType,
+    // 이 분야를 쓰려는 목적
+    val purpose: String,
     val rejectReason: String?,
     val appliedAt: OffsetDateTime,
     val decidedAt: OffsetDateTime?,
@@ -85,7 +89,6 @@ data class ApiApplicationDetailResponse(
     data class Project(
         val projectId: Long,
         val name: String,
-        val purpose: String,
         val keyIssued: Boolean,
         val createdAt: OffsetDateTime,
         // 이 프로젝트의 분야 전체(처음 신청한 순서)
@@ -106,6 +109,8 @@ data class ApiApplicationDetailResponse(
                 field = field.field,
                 level = field.field.level,
                 status = field.status,
+                applicationType = field.applicationType,
+                purpose = field.purpose,
                 rejectReason = field.rejectReason,
                 appliedAt = field.appliedAt.withSeoulOffset(),
                 decidedAt = field.decidedAt?.withSeoulOffset(),
@@ -113,7 +118,6 @@ data class ApiApplicationDetailResponse(
                 project = Project(
                     projectId = project.id!!,
                     name = project.name,
-                    purpose = project.purpose,
                     keyIssued = project.keyIssued,
                     createdAt = project.createdAt.withSeoulOffset(),
                     fields = projectFields.map(ProjectFieldResponse::from),

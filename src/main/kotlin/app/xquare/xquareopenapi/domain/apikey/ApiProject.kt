@@ -9,8 +9,8 @@ import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 import java.time.LocalDateTime
 
-// 프로젝트 하나에 키 하나. 분야별 신청·승인 상태는 ApiProjectField에 두고, 여기에는 키 해시만 둔다. 키 원문은 저장하지 않는다.
-// 키는 프로젝트의 분야가 처음 승인될 때 발급되므로 그 전에는 key_hash가 null이다.
+// 프로젝트 하나에 키 하나. 분야별 신청 내용(사용 목적)·승인 상태는 ApiProjectField에 두고, 여기에는 키 해시만 둔다. 키 원문은 저장하지 않는다.
+// 프로젝트는 이름만으로 만들고, 키는 첫 분야 신청 때 발급되므로 그 전에는 key_hash가 null이다.
 @Entity
 // 제약 이름은 같은 이름의 프로젝트가 겹쳤는지 구분하는 계약이라 직접 정한다.
 @Table(
@@ -26,9 +26,6 @@ class ApiProject(
 
     @Column(nullable = false, length = 30)
     val name: String,
-
-    @Column(nullable = false, length = 200)
-    val purpose: String,
 
     @Column(name = "created_at", nullable = false)
     val createdAt: LocalDateTime,
@@ -46,7 +43,7 @@ class ApiProject(
     var issuedAt: LocalDateTime? = null
         protected set
 
-    // 만료 시각 = 발급·재발급·갱신 시각 + 60일. 첫 승인 전(키 없음)이면 null이다.
+    // 만료 시각 = 발급·재발급·갱신 시각 + 60일. 첫 분야 신청 전(키 없음)이면 null이다.
     @Column(name = "expires_at")
     var expiresAt: LocalDateTime? = null
         protected set

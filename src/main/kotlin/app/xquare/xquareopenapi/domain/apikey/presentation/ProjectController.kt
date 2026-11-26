@@ -54,20 +54,19 @@ class ProjectController(
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(
         operationId = "createProject",
-        summary = "프로젝트 만들기 + 분야 신청",
-        description = "프로젝트(서비스)를 만들고 분야를 신청합니다. 교내(SCHOOL) 분야는 즉시 승인되며 첫 승인 시 발급된 키 원문(apiKey)과 60일 만료가 적용됩니다. 제한(RESTRICTED) 분야만 신청하면 apiKey는 null이며 관리자 승인 후 재발급 API로 원문을 받습니다. 사용자당 최대 5개입니다. 권한: USER.",
+        summary = "프로젝트 만들기",
+        description = "이름만으로 빈 프로젝트(서비스)를 만듭니다. 분야·사용 목적·이메일 인증은 분야 신청 API에서 받고, 키도 첫 분야 신청 때 발급됩니다. 사용자당 최대 5개입니다. 권한: USER.",
         extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "USER")])],
     )
     @ApiResponse(responseCode = "201", description = "생성됨")
     @ApiResponse(responseCode = "400", description = "INVALID_INPUT", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     @ApiResponse(responseCode = "401", description = "INVALID_TOKEN", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
-    @ApiResponse(responseCode = "403", description = "EMAIL_NOT_VERIFIED", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     @ApiResponse(responseCode = "409", description = "PROJECT_LIMIT_EXCEEDED / PROJECT_NAME_DUPLICATED", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     @ApiResponse(responseCode = "500", description = "INTERNAL_SERVER_ERROR", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
     fun create(
         @AuthenticationPrincipal userId: Long,
         @RequestBody @Valid request: CreateProjectRequest,
-    ): ProjectApplyResponse =
+    ): ProjectDetailResponse =
         createProjectUseCase.execute(userId, request)
 
     // 분야 신청 기록이 생기거나(반려 후 재신청이면) 다시 대기 상태가 되므로 201이다.
@@ -75,8 +74,8 @@ class ProjectController(
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(
         operationId = "applyProjectFields",
-        summary = "프로젝트 분야 추가 신청",
-        description = "내 프로젝트에 분야를 추가 신청합니다. 반려된(REJECTED) 분야는 재신청할 수 있으며 대기·승인된 분야는 409입니다. 이번 요청으로 첫 승인이 발생하면 키를 발급해 apiKey에 원문을 반환합니다. 권한: USER.",
+        summary = "프로젝트 분야 신청",
+        description = "이메일 인증 후 내 프로젝트에 분야를 신청합니다. 분야마다 사용 목적을 받습니다. 공개(PUBLIC)·교내(SCHOOL) 분야는 즉시 승인되고 제한(RESTRICTED) 분야는 관리자 승인을 기다립니다. 프로젝트에 키가 없으면 단계와 상관없이 이번 요청에서 키를 발급해 apiKey에 원문을 반환하고(60일 만료), 이미 있으면 null입니다. 승인 전 분야의 조회 API는 403 API_KEY_FIELD_FORBIDDEN입니다. 반려된(REJECTED) 분야는 재신청할 수 있으며 대기·승인된 분야는 409, 같은 분야를 두 번 넣으면 400입니다. 권한: USER.",
         extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "USER")])],
     )
     @ApiResponse(responseCode = "201", description = "신청됨")
@@ -129,7 +128,7 @@ class ProjectController(
     @Operation(
         operationId = "reissueProjectApiKey",
         summary = "프로젝트 API 키 재발급",
-        description = "이메일 인증 후 프로젝트의 API 키를 새로 발급하고 만료 시각을 지금부터 60일 뒤로 설정합니다. 기존 키는 즉시 폐기됩니다. 관리자 승인으로 첫 발급된 키의 원문 수령에도 사용합니다. 권한: USER.",
+        description = "이메일 인증 후 프로젝트의 API 키를 새로 발급하고 만료 시각을 지금부터 60일 뒤로 설정합니다. 기존 키는 즉시 폐기됩니다. 권한: USER.",
         extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "USER")])],
     )
     @ApiResponse(responseCode = "200", description = "재발급 성공")

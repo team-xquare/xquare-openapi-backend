@@ -73,7 +73,7 @@ class AdminApiApplicationController(
     @Operation(
         operationId = "approveApiApplication",
         summary = "관리자 분야 신청 승인",
-        description = "대기(PENDING) 중인 분야 신청을 승인합니다. 프로젝트의 첫 승인이면 API 키를 발급하되 해시만 저장하며 키 원문은 반환하지 않습니다. 권한: ADMIN.",
+        description = "대기(PENDING) 중인 분야 신청을 승인합니다. 키는 첫 분야 신청 때 발급되므로 상태만 바꿉니다(키 없는 예전 프로젝트만 이때 발급하고 원문은 반환하지 않습니다). 권한: ADMIN.",
         extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "ADMIN")])],
     )
     @ApiResponse(responseCode = "200", description = "승인됨")
