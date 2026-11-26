@@ -968,6 +968,86 @@ paths:
                   value:
                     code: FIELD_ALREADY_APPLIED
                     message: 이미 신청했거나 승인된 분야입니다.
+  /projects/{projectId}/fields/{field}:
+    delete:
+      tags:
+      - API 키
+      summary: 대기 중인 분야 신청 취소
+      description: '내 프로젝트의 승인 대기(`PENDING`) 중인 분야 신청을 취소한다. 신청 기록을 지우므로 같은 분야를 바로 다시 신청할 수 있다. 승인·반려된 신청은 409, 신청하지 않은
+        분야는 404다. 키는 그대로다. 관리자 승인과 겹치면 프로젝트 행 잠금으로 하나만 처리된다(승인이 먼저면 취소는 409, 취소가 먼저면 승인은 404). 권한: USER, ADMIN(로그인한 본인).'
+      operationId: cancelProjectField
+      security:
+      - bearerAuth: []
+      x-required-role: USER
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: field
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/ApiKeyField'
+      responses:
+        '200':
+          description: 취소됨
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: 취소되었습니다.
+        '400':
+          description: '`INVALID_INPUT`: 없는 분야 이름, projectId가 숫자가 아님'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_INPUT:
+                  value:
+                    code: INVALID_INPUT
+                    message: 요청 값이 올바르지 않습니다.
+        '401':
+          description: '`INVALID_TOKEN`: 토큰이 없거나 유효하지 않음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                INVALID_TOKEN:
+                  value:
+                    code: INVALID_TOKEN
+                    message: 토큰이 없거나 유효하지 않습니다.
+        '404':
+          description: '`PROJECT_NOT_FOUND`: 없거나 내 프로젝트가 아님. `APPLICATION_NOT_FOUND`: 이 프로젝트에 그 분야 신청이 없음'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                PROJECT_NOT_FOUND:
+                  value:
+                    code: PROJECT_NOT_FOUND
+                    message: 존재하지 않는 프로젝트입니다.
+                APPLICATION_NOT_FOUND:
+                  value:
+                    code: APPLICATION_NOT_FOUND
+                    message: 존재하지 않는 신청입니다.
+        '409':
+          description: '`APPLICATION_NOT_PENDING`: 이미 승인·반려된 신청'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                APPLICATION_NOT_PENDING:
+                  value:
+                    code: APPLICATION_NOT_PENDING
+                    message: 승인 대기 중인 신청만 취소할 수 있습니다.
   /users/me:
     get:
       tags:

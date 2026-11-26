@@ -8,7 +8,9 @@ import app.xquare.xquareopenapi.domain.apikey.presentation.dto.CreateProjectRequ
 import app.xquare.xquareopenapi.domain.apikey.presentation.dto.ProjectApplyResponse
 import app.xquare.xquareopenapi.domain.apikey.presentation.dto.ProjectDetailResponse
 import app.xquare.xquareopenapi.domain.apikey.presentation.dto.ProjectSummaryResponse
+import app.xquare.xquareopenapi.domain.apikey.ApiKeyField
 import app.xquare.xquareopenapi.domain.apikey.usecase.ApplyProjectFieldsUseCase
+import app.xquare.xquareopenapi.domain.apikey.usecase.CancelProjectFieldUseCase
 import app.xquare.xquareopenapi.domain.apikey.usecase.CreateProjectUseCase
 import app.xquare.xquareopenapi.domain.apikey.usecase.DeleteProjectUseCase
 import app.xquare.xquareopenapi.domain.apikey.usecase.GetMyProjectsUseCase
@@ -51,6 +53,7 @@ class ProjectController(
     private val deleteProjectUseCase: DeleteProjectUseCase,
     private val renewProjectApiKeyUseCase: RenewProjectApiKeyUseCase,
     private val updateProjectUseCase: UpdateProjectUseCase,
+    private val cancelProjectFieldUseCase: CancelProjectFieldUseCase,
 ) {
 
     @PostMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -94,6 +97,28 @@ class ProjectController(
         @RequestBody @Valid request: ApplyProjectFieldsRequest,
     ): ProjectApplyResponse =
         applyProjectFieldsUseCase.execute(userId, projectId, request)
+
+    @DeleteMapping("/{projectId}/fields/{field}", produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(
+        operationId = "cancelProjectField",
+        summary = "대기 중인 분야 신청 취소",
+        description = "내 프로젝트의 승인 대기(PENDING) 중인 분야 신청을 취소합니다. 신청 기록을 지우므로 같은 분야를 바로 다시 신청할 수 있습니다. 승인·반려된 신청은 409, 신청하지 않은 분야는 404입니다. 키는 그대로입니다. 권한: USER.",
+        extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "USER")])],
+    )
+    @ApiResponse(responseCode = "200", description = "취소됨")
+    @ApiResponse(responseCode = "400", description = "INVALID_INPUT", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "401", description = "INVALID_TOKEN", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "404", description = "PROJECT_NOT_FOUND / APPLICATION_NOT_FOUND", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "409", description = "APPLICATION_NOT_PENDING", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    @ApiResponse(responseCode = "500", description = "INTERNAL_SERVER_ERROR", content = [Content(schema = Schema(implementation = ErrorResponse::class))])
+    fun cancelField(
+        @AuthenticationPrincipal userId: Long,
+        @Parameter(description = "프로젝트 id", example = "1") @PathVariable projectId: Long,
+        @Parameter(description = "취소할 분야", example = "STUDENT") @PathVariable field: ApiKeyField,
+    ): MessageResponse {
+        cancelProjectFieldUseCase.execute(userId, projectId, field)
+        return MessageResponse("취소되었습니다.")
+    }
 
     // 액세스 토큰으로 여는 GET이라 API 키 체인 대상이 아니다(ApiKeyReadEndpointCoverageTest의 예외 목록).
     @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])

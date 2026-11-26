@@ -11,6 +11,7 @@
 - 급식 `MEAL` 분야를 추가했습니다. 단계는 공개 `PUBLIC`이고 신청하면 바로 승인합니다. 급식 조회 API는 지금처럼 키 없이도 열려 있습니다.
 - 사용 목적은 **분야마다** 저장합니다(`api_project_fields.purpose`). `api_projects.purpose`는 지웠습니다.
 - 분야 신청 구분 `application_type`(`FIRST` 첫 신청 / `ADDITIONAL` 분야 추가)을 저장합니다.
+- 프로젝트 이름·서비스 URL 수정 `PATCH /projects/{id}`, 대기 중인 분야 신청 취소 `DELETE /projects/{id}/fields/{field}`를 추가했습니다.
 - 기존 DB 변경: `docs/schema/migrations/2026-11-28-project-structure.sql`
 
 ## 1. 현재(develop)와 바뀌는 점
@@ -185,6 +186,7 @@ DB에는 해시만 두므로 원문은 한 번만 보여 줄 수 있습니다.
 | `PROJECT_LIMIT_EXCEEDED` | 409 | 내 프로젝트가 이미 5개(사용자당 상한) |
 | `API_KEY_NOT_ISSUED` | 409 | 승인 전이라 갱신·재발급할 키가 없음 |
 | `FIELD_ALREADY_APPLIED` | 409 | 이미 신청(대기·승인)한 분야 |
+| `APPLICATION_NOT_PENDING` | 409 | 승인 대기가 아닌 신청을 취소함(11/27 추가) |
 | `APPLICATION_NOT_FOUND` | 404 | 없는 신청 |
 | `APPLICATION_ALREADY_DECIDED` | 409 | 이미 처리된 신청 |
 

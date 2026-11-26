@@ -1,5 +1,6 @@
 package app.xquare.xquareopenapi.domain.apikey
 
+import app.xquare.xquareopenapi.domain.apikey.usecase.CancelProjectFieldUseCase
 import app.xquare.xquareopenapi.domain.apikey.usecase.DecideApiApplicationUseCase
 import app.xquare.xquareopenapi.global.error.ErrorCode
 import app.xquare.xquareopenapi.global.error.XquareException
@@ -17,6 +18,9 @@ import kotlin.test.assertTrue
 abstract class DecideApiApplicationConcurrencyScenarios {
     @Autowired
     private lateinit var decideApiApplicationUseCase: DecideApiApplicationUseCase
+
+    @Autowired
+    private lateinit var cancelProjectFieldUseCase: CancelProjectFieldUseCase
 
     @Autowired
     private lateinit var projectRepository: ApiProjectRepository
@@ -65,6 +69,31 @@ abstract class DecideApiApplicationConcurrencyScenarios {
         assertTrue(results.all { it == null }, "$results")
         assertTrue(fieldRepository.findAll().all { it.status == ApplicationStatus.APPROVED })
         assertNotNull(projectRepository.findById(project.id!!).orElseThrow().keyHash)
+    }
+
+    @RepeatedTest(3)
+    fun `승인과 사용자의 신청 취소가 겹치면 둘 중 하나만 처리된다`() {
+        val project = projectRepository.saveProject(2L)
+        val application = fieldRepository.saveField(project.id!!, ApiKeyField.STUDENT, ApplicationStatus.PENDING)
+
+        val (approved, cancelled) = concurrently(
+            listOf(
+                { decideApiApplicationUseCase.approve(1L, application.id!!); Unit },
+                { cancelProjectFieldUseCase.execute(2L, project.id!!, ApiKeyField.STUDENT) },
+            ),
+        )
+
+        val remaining = fieldRepository.findAll()
+        if (approved == null) {
+            // 승인이 먼저 끝났으면 취소는 이미 처리된 신청이라 거절되고 승인된 신청이 남는다.
+            assertEquals(ErrorCode.APPLICATION_NOT_PENDING, cancelled)
+            assertEquals(ApplicationStatus.APPROVED, remaining.single().status)
+        } else {
+            // 취소가 먼저 끝났으면 승인할 신청이 없다.
+            assertEquals(ErrorCode.APPLICATION_NOT_FOUND, approved)
+            assertEquals(null, cancelled)
+            assertTrue(remaining.isEmpty())
+        }
     }
 
     // XquareException이 아닌 예외(예: 교착, stale state)는 get()에서 그대로 터져 테스트가 실패한다.
