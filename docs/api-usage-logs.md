@@ -6,8 +6,15 @@
 
 - 기존 업무 경로(`auth`, `users`, `students`, `teachers`, `clubs`, `meals`, `notices`, `study-supervisors`, `timetables`, `schedules`, `api-keys`, `api-key-applications`)에서 서블릿에 도달한 최초 요청을 관찰합니다. 성공, 애플리케이션 오류, 인증·인가 거절을 포함합니다. 기존 업무 경로 아래에서 컨트롤러가 결정되지 않은 거절·미매핑 요청은 `UNMAPPED`로 기록합니다. 새 업무 경로를 추가할 때 수집 대상도 함께 검토합니다.
 - CORS 프리플라이트, Swagger/OpenAPI, 헬스 등 업무 밖 경로, 이 기록을 읽는 운영용 관리자 API는 기록하지 않습니다. Tomcat 오류 재디스패치를 별도 행으로 세지 않습니다. 컨테이너가 애플리케이션에 전달하기 전에 거절한 요청은 관찰할 수 없습니다. 현재 동기식 MVC 업무 요청을 대상으로 합니다.
-- 저장·조회 필드는 `id`(서버 생성 정수), `occurredAt`(UTC의 응답 완료 시각), `method`(정해진 HTTP 메서드 또는 `OTHER`), `route`(MVC가 정한 템플릿 또는 `UNMAPPED`), `status`(최종 상태), `durationMs`(기록 자체의 DB 시간을 뺀 처리 시간, 밀리초)입니다. 모두 필수이며 null을 반환하지 않습니다.
-- 요청·응답 본문, raw URI/쿼리/헤더 값, 경로 변수 값, IP, 사용자 식별자, 이메일, 비밀번호, OTP, 토큰과 API 키 원문·해시를 저장하지 않습니다.
+- 필수 필드는 `id`(서버 생성 정수), `occurredAt`(UTC의 응답 완료 시각), `method`(정해진 HTTP 메서드 또는 `OTHER`), `route`(MVC가 정한 템플릿 또는 `UNMAPPED`), `status`(최종 상태), `durationMs`(기록 자체의 DB 시간을 뺀 처리 시간, 밀리초)이며 null을 반환하지 않습니다.
+- 선택 필드(없으면 null)는 다음과 같습니다. 인증 필터와 오류 응답 작성기가 요청 속성으로 남기고, 요청 완료 시 함께 저장합니다.
+  - `projectId`: API 키로 찾은 프로젝트 id. 만료된 키·분야 미승인 거절에도 남기며, 맞지 않는 키는 남기지 않습니다.
+  - `userId`: API 키 호출이면 프로젝트 주인(신청자), JWT 호출이면 로그인한 사용자 id.
+  - `keyPrefix`: API 키 원문의 앞 11글자(`xq_` + 8글자). 프로젝트를 찾은 키만 남깁니다.
+  - `errorCode`: 응답 본문의 `code`(예: `INVALID_API_KEY`, `API_KEY_FIELD_FORBIDDEN`, `PROJECT_NOT_FOUND`). 성공과 `code`가 없는 기본 오류 응답(미매핑 404, 415 등)은 null입니다.
+  - `accessLevel`: 요청 경로로 정한 단계. GET·HEAD의 급식·시간표 조회는 `PUBLIC`, `SecurityConfig.API_KEY_READ_PATHS`의 분야 조회는 그 분야 단계(`SCHOOL`/`RESTRICTED`), 그 밖은 null입니다. 인증에서 막혀 `UNMAPPED`인 키 조회도 단계가 남습니다.
+- 프로젝트·사용자는 FK 없이 id만 저장합니다. 지워져도 기록은 남고 상세의 이름만 null이 됩니다.
+- 요청·응답 본문, raw URI/쿼리/헤더 값, 경로 변수 값, IP, 이메일, 비밀번호, OTP, 토큰과 API 키 원문·해시를 저장하지 않습니다. 키는 앞 11글자만 남기므로 원문을 복원할 수 없습니다.
 - 수집 범위는 MVC와 같은 방식으로 해석한 첫 경로 세그먼트로 결정합니다. 같은 업무 경로의 percent 인코딩 표기에서도 원문이나 디코딩된 값 대신 MVC 템플릿 또는 `UNMAPPED`만 저장합니다.
 - 요청 완료 시 메타데이터를 메모리 큐에 넘깁니다(`api-usage-log.queue-capacity`, 기본 256건, 허용 1–4096건). 요청 스레드는 큐 공간, DB, 로그 출력을 기다리지 않습니다. 기록 워커 한 개가 단일 INSERT를 자동 커밋으로 한 번만 시도합니다. 저장 실패는 `API_USAGE_LOG_WRITE_FAILED`, 포화로 버린 건수는 워커와 별개인 주기 작업에서 `API_USAGE_LOG_QUEUE_FULL`로 알립니다. 종료 시 큐에 남은 기록은 버릴 수 있습니다(`API_USAGE_LOG_SHUTDOWN_DROPPED`). 신호에 요청 값이나 예외 메시지는 포함하지 않습니다. 조회에는 아직 저장되지 않은 기록이 보이지 않을 수 있고, 재시도·백필은 없습니다.
 - 기록 풀은 인스턴스당 최대 1개 연결을 별도로 사용합니다(최소 유휴 0개, 풀 획득 제한 1초, MySQL 연결·소켓 읽기 기본 제한 각각 2초). 업무용 풀과 관리자 조회 경로는 그대로입니다. 두 풀이 같은 DB를 쓰므로 DB 서버 장애·연결 총량 고갈·서버 자원 경합까지 격리하지는 않습니다.
@@ -21,10 +28,14 @@
 - `status`: 100–599의 정수이며 생략하면 전체입니다.
 - `api`: 저장된 `route` 템플릿의 일부를 검색합니다. 예: `GET /admin/api-usage-logs?api=%2Fnotices&method=GET`. 디코딩한 값이 비어 있거나 공백으로만 이루어졌거나 160자(UTF-16 코드 단위)를 넘으면 `400 INVALID_INPUT`입니다. 그 외에는 값을 자르거나 공백을 제거하지 않으며 `%`, `_`, `!`도 글자 그대로 비교합니다. 대소문자 비교는 DB 정렬 규칙을 따릅니다. 다른 필터와 AND로 결합하며, `api`를 지정한 경우 `UNMAPPED`는 제외합니다. 생략하면 미매핑 기록도 기존과 같이 조회합니다. 원본 URL·실제 경로 변수·쿼리는 검색 대상이 아니며 이 기능은 검색어를 저장하거나 사용 기록에 남기지 않습니다.
 - `field`: 기존 활용신청 분야 이름 하나를 지정합니다. 빈 값, 공백, 잘못된 대소문자 및 목록에 없는 값은 `400 INVALID_INPUT`입니다. 아래의 저장된 MVC 템플릿과 정확히 일치하는 행만 반환합니다. 예: `GET /admin/api-usage-logs?field=SCHEDULE&status=404&api=schedules`. 기간·메서드·상태·API 검색을 모두 만족하는 행을 대상으로 페이지와 전체 건수를 계산합니다.
-- `page`: 0–1000(기본 0). `size`: 1–100(기본 20). `occurredAt` 내림차순, 동일 시각이면 `id` 내림차순입니다. 응답은 기존 `content`, `page`, `size`, `totalCount`, `totalPage` 형식입니다. 연속 페이지 조회 시 `from`/`to`를 고정해도 동시 기록이 들어오면 오프셋이 달라질 수 있습니다.
+- `level`: `PUBLIC`, `SCHOOL`, `RESTRICTED` 중 하나. 저장된 단계와 정확히 일치하는 행만 반환하며 단계가 없는 행은 제외합니다. 빈 값, 소문자, 공백, 목록에 없는 값은 `400 INVALID_INPUT`입니다.
+- `projectId`, `userId`: 저장된 id와 정확히 일치하는 행. 정수가 아니면 `400 INVALID_INPUT`입니다.
+- `errorCode`: 정의된 에러 코드 이름 하나(예: `INVALID_API_KEY`). 정의되지 않은 값(대소문자 다름 포함)은 `400 INVALID_INPUT`입니다.
+- 모든 필터는 AND로 결합합니다. 예: `GET /admin/api-usage-logs?level=RESTRICTED&errorCode=API_KEY_FIELD_FORBIDDEN&projectId=3`.
+- `page`: 0–1000(기본 0). `size`: 1–100(기본 20). `occurredAt` 내림차순, 동일 시각이면 `id` 내림차순입니다. 응답은 기존 `content`, `page`, `size`, `totalCount`, `totalPage` 형식이며, `content`의 각 행은 필수 필드와 선택 필드(`projectId`, `userId`, `keyPrefix`, `errorCode`, `accessLevel`, 없으면 null)를 모두 포함합니다. 연속 페이지 조회 시 `from`/`to`를 고정해도 동시 기록이 들어오면 오프셋이 달라질 수 있습니다.
 - 범위·타입 오류는 조회 트랜잭션 전에 `400 INVALID_INPUT`을 반환합니다. 연결 획득과 트랜잭션 종료를 포함한 조회 저장소 오류는 `500 INTERNAL_SERVER_ERROR`, 잠금 충돌은 기존대로 `409 CONCURRENT_UPDATE`입니다.
 
-분야는 조회 시에만 다음 템플릿으로 결정합니다. 키나 권한과는 무관하며 스키마, 저장 항목, 응답 필드는 바뀌지 않습니다. 기존 행과 템플릿이 남은 실패 행에도 같은 규칙을 적용합니다.
+분야(`field`)는 조회 시에만 다음 템플릿으로 결정합니다. 키나 권한과는 무관합니다. 기존 행과 템플릿이 남은 실패 행에도 같은 규칙을 적용합니다.
 
 - `STUDENT`: `/students`, `/students/{studentId}`
 - `TEACHER`: `/teachers`, `/teachers/{teacherId}`
@@ -32,10 +43,17 @@
 - `SCHEDULE`: `/schedules`, `/schedules/{scheduleId}`
 - `STUDY_SUPERVISOR`: `/study-supervisors`, `/study-supervisors/day`, `/study-supervisors/{studySupervisorId}`
 
-분야가 없는 공개 급식과 그 밖의 미분류 행(`UNMAPPED` 포함)은 어떤 분야와도 일치하지 않습니다. `field`를 생략하면 다른 조회 조건에 따라 기존과 동일하게 볼 수 있습니다. 예를 들어 `api=meals`로 공개 급식을, `status=401`만 지정해 템플릿이 없는 인증 실패를 볼 수 있습니다. 프로젝트·신청자·단계의 저장과 검색은 이 기능의 범위에 포함하지 않습니다.
+분야가 없는 공개 급식과 그 밖의 미분류 행(`UNMAPPED` 포함)은 어떤 분야와도 일치하지 않습니다. `field`를 생략하면 다른 조회 조건에 따라 기존과 동일하게 볼 수 있습니다. 예를 들어 `api=meals`로 공개 급식을, `status=401`만 지정해 템플릿이 없는 인증 실패를 볼 수 있습니다. 템플릿이 없는 키 조회 거절은 `level`로 단계별로 볼 수 있습니다.
+
+## 관리자 상세 조회
+
+`GET /admin/api-usage-logs/{logId}` (자동 HEAD 포함): 목록과 같이 ADMIN 액세스 JWT만 허용합니다(토큰 없음/무효 `401 INVALID_TOKEN`, USER `403 FORBIDDEN`). 이 조회도 사용 기록에 남기지 않습니다.
+
+- 목록 행의 모든 필드에 `projectName`(프로젝트의 지금 이름), `applicantName`(`userId` 사용자의 이름), `applicantUsername`(그 사용자의 아이디)을 더해 반환합니다. 이름은 기록 시점이 아니라 조회 시점의 값이며, 대상이 없거나 지워졌으면 null입니다.
+- 없는 `logId`는 `404 API_USAGE_LOG_NOT_FOUND`, 정수가 아닌 `logId`는 `400 INVALID_INPUT`입니다.
 
 ## 적용 및 롤백
 
 1. 보존기간, 테이블 성장·접근 점검 주기, 기록 실패 알림 처리 주체와 허용 지연·손실을 운영 팀이 결정합니다. 최대 인스턴스 수를 기준으로 DB 연결 예산에 기록용 연결(인스턴스당 최대 1개)을 더합니다. 이 PR은 자동 삭제나 무기한 보존 정책을 만들지 않습니다.
-2. 앱은 기본 `ddl-auto=validate`라 기동 전에 별도 승인으로 [신규 MySQL 테이블 DDL](schema/api_usage_logs.sql)을 먼저 적용해야 합니다. 신규 테이블 생성만 수행하며 기존 테이블은 변경하지 않습니다. 과거 요청의 백필은 없습니다. 기존 앱은 새 테이블을 사용하지 않습니다.
+2. 앱은 기본 `ddl-auto=validate`라 기동 전에 별도 승인으로 스키마를 먼저 적용해야 합니다. 테이블이 없는 DB는 [신규 MySQL 테이블 DDL](schema/api_usage_logs.sql)을, 이미 `api_usage_logs`가 있는 DB(스테이징·운영)는 [상세 항목 변경 스크립트](schema/migrations/2026-11-28-api-usage-logs-detail.sql)를 적용합니다. 변경 스크립트는 nullable 열 5개와 `(project_id, occurred_at)` 인덱스를 더하며, 이전 앱은 새 열을 쓰지 않으므로 앱보다 먼저 적용해도 됩니다. 과거 행은 새 열이 null이고 백필하지 않습니다.
 3. 적용 후 관리자의 접근 제한, 기록률·DB 지연과 테이블 성장, 저장 실패와 큐 포화 신호를 확인합니다. 복구 시 먼저 이전 앱으로 되돌리고 테이블은 유지합니다. 삭제가 필요한 경우 보존 정책과 데이터 삭제 승인을 별도로 받습니다.

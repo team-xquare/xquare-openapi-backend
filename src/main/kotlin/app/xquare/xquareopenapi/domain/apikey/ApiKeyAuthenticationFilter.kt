@@ -1,5 +1,7 @@
 package app.xquare.xquareopenapi.domain.apikey
 
+import app.xquare.xquareopenapi.domain.apiusage.ApiUsageLog
+import app.xquare.xquareopenapi.global.apiusage.ApiUsageAttributes
 import app.xquare.xquareopenapi.global.error.SecurityErrorResponder
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
@@ -28,6 +30,10 @@ class ApiKeyAuthenticationFilter(
         val rawKey = request.getHeader(HEADER)?.takeIf { it.isNotBlank() }
         val project = rawKey?.let { projectRepository.findByKeyHash(ApiKeySecret.hash(it)) }
         if (project != null) {
+            // 사용 기록용. 만료된 키도 어느 프로젝트의 키인지는 남긴다. 맞지 않는 키의 값은 남기지 않는다.
+            request.setAttribute(ApiUsageAttributes.PROJECT_ID, project.id)
+            request.setAttribute(ApiUsageAttributes.USER_ID, project.userId)
+            request.setAttribute(ApiUsageAttributes.KEY_PREFIX, rawKey.take(ApiUsageLog.KEY_PREFIX_MAX_LENGTH))
             val expiresAt = project.expiresAt
             // 만료 시각이 되는 순간부터 쓸 수 없다.
             if (expiresAt != null && !LocalDateTime.now(clock).isBefore(expiresAt)) {

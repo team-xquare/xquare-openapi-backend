@@ -3888,6 +3888,28 @@ paths:
         schema:
           type: string
           enum: [STUDENT, TEACHER, CLUB, SCHEDULE, STUDY_SUPERVISOR]
+      - name: level
+        in: query
+        required: false
+        description: '저장된 접근 단계. PUBLIC(공개 급식·시간표 조회), SCHOOL·RESTRICTED(해당 단계 분야의 키 조회). 단계가 없는 기록은 지정하면 제외합니다. 빈 값 또는 목록에 없는 값은 400입니다.'
+        schema:
+          type: string
+          enum: [PUBLIC, SCHOOL, RESTRICTED]
+      - name: projectId
+        in: query
+        required: false
+        description: 'API 키 호출의 프로젝트 id'
+        schema: {type: integer, format: int64}
+      - name: userId
+        in: query
+        required: false
+        description: '호출한 사용자 id. API 키 호출이면 프로젝트 신청자, JWT 호출이면 로그인한 사용자입니다.'
+        schema: {type: integer, format: int64}
+      - name: errorCode
+        in: query
+        required: false
+        description: '오류 응답의 code(예: INVALID_API_KEY). 정의된 에러 코드가 아니면 400입니다.'
+        schema: {type: string, maxLength: 40, example: INVALID_API_KEY}
       - name: page
         in: query
         schema: {type: integer, format: int32, minimum: 0, maximum: 1000, default: 0}
@@ -3925,6 +3947,64 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: INTERNAL_SERVER_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/api-usage-logs/{logId}:
+    get:
+      tags:
+      - API 사용 기록
+      summary: 관리자 API 사용 기록 상세 조회
+      description: '기록 한 건과 프로젝트 이름, 호출한 사용자의 이름·아이디를 조회한다. 프로젝트나 사용자가 삭제됐으면 이름은 null이다. 이 조회도 사용 기록에 남기지 않는다.'
+      operationId: getApiUsageLog
+      security:
+      - bearerAuth: []
+      x-required-role: ADMIN
+      parameters:
+      - name: logId
+        in: path
+        required: true
+        description: 사용 기록 id
+        schema: {type: integer, format: int64}
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiUsageLogDetailResponse'
+        '400':
+          description: 'INVALID_INPUT: logId가 정수가 아님'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: INVALID_TOKEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: API_USAGE_LOG_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                API_USAGE_LOG_NOT_FOUND:
+                  value:
+                    code: API_USAGE_LOG_NOT_FOUND
+                    message: 존재하지 않는 API 사용 기록입니다.
         '500':
           description: INTERNAL_SERVER_ERROR
           content:
@@ -4384,6 +4464,67 @@ components:
         route: {type: string, maxLength: 160, description: 'MVC 경로 템플릿 또는 UNMAPPED'}
         status: {type: integer, format: int32}
         durationMs: {type: integer, format: int64, minimum: 0}
+        projectId:
+          type: [integer, 'null']
+          format: int64
+          description: 'API 키 호출의 프로젝트 id. 키가 맞지 않거나 키 호출이 아니면 null'
+        userId:
+          type: [integer, 'null']
+          format: int64
+          description: '호출한 사용자 id. API 키 호출이면 프로젝트 신청자, JWT 호출이면 로그인한 사용자. 알 수 없으면 null'
+        keyPrefix:
+          type: [string, 'null']
+          maxLength: 11
+          description: 'API 키 원문의 앞 11글자(예: xq_ab12cd34). 키가 맞은 호출에만 남긴다. 키 원문·해시는 저장하지 않는다'
+        errorCode:
+          type: [string, 'null']
+          maxLength: 40
+          description: '오류 응답의 code(예: INVALID_API_KEY, API_KEY_FIELD_FORBIDDEN). 성공이거나 code 없는 응답(미매핑 404 등)이면 null'
+        accessLevel:
+          type: [string, 'null']
+          enum: [PUBLIC, SCHOOL, RESTRICTED]
+          description: '접근 단계. 급식·시간표 조회는 PUBLIC, 키로 여는 분야 조회는 분야 단계. 그 밖의 호출은 null'
+    ApiUsageLogDetailResponse:
+      type: object
+      required: [id, occurredAt, method, route, status, durationMs]
+      properties:
+        id: {type: integer, format: int64}
+        occurredAt: {type: string, format: date-time, description: UTC 요청 완료 시각}
+        method:
+          type: string
+          enum: [GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS, TRACE, CONNECT, OTHER]
+        route: {type: string, maxLength: 160, description: 'MVC 경로 템플릿 또는 UNMAPPED'}
+        status: {type: integer, format: int32}
+        durationMs: {type: integer, format: int64, minimum: 0}
+        projectId:
+          type: [integer, 'null']
+          format: int64
+          description: 'API 키 호출의 프로젝트 id. 키가 맞지 않거나 키 호출이 아니면 null'
+        projectName:
+          type: [string, 'null']
+          description: '프로젝트의 지금 이름. 프로젝트가 없거나 삭제됐으면 null'
+        userId:
+          type: [integer, 'null']
+          format: int64
+          description: '호출한 사용자 id. API 키 호출이면 프로젝트 신청자, JWT 호출이면 로그인한 사용자. 알 수 없으면 null'
+        applicantName:
+          type: [string, 'null']
+          description: 'userId 사용자의 이름(users.name). 없거나 탈퇴했으면 null'
+        applicantUsername:
+          type: [string, 'null']
+          description: 'userId 사용자의 아이디(users.username). 없거나 탈퇴했으면 null'
+        keyPrefix:
+          type: [string, 'null']
+          maxLength: 11
+          description: 'API 키 원문의 앞 11글자(예: xq_ab12cd34). 키가 맞은 호출에만 남긴다. 키 원문·해시는 저장하지 않는다'
+        errorCode:
+          type: [string, 'null']
+          maxLength: 40
+          description: '오류 응답의 code(예: INVALID_API_KEY, API_KEY_FIELD_FORBIDDEN). 성공이거나 code 없는 응답(미매핑 404 등)이면 null'
+        accessLevel:
+          type: [string, 'null']
+          enum: [PUBLIC, SCHOOL, RESTRICTED]
+          description: '접근 단계. 급식·시간표 조회는 PUBLIC, 키로 여는 분야 조회는 분야 단계. 그 밖의 호출은 null'
     ErrorResponse:
       type: object
       required:

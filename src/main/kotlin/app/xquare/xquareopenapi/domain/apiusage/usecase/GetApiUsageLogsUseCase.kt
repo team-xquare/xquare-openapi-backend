@@ -3,6 +3,7 @@ package app.xquare.xquareopenapi.domain.apiusage.usecase
 import app.xquare.xquareopenapi.domain.apikey.ApiKeyField
 import app.xquare.xquareopenapi.domain.apiusage.ApiUsageLog
 import app.xquare.xquareopenapi.domain.apiusage.ApiUsageLogRepository
+import app.xquare.xquareopenapi.domain.apiusage.UsageAccessLevel
 import app.xquare.xquareopenapi.domain.apiusage.presentation.API_USAGE_ROUTE_MAX_LENGTH
 import app.xquare.xquareopenapi.domain.apiusage.presentation.ApiUsageLogQuery
 import app.xquare.xquareopenapi.domain.apiusage.presentation.ApiUsageLogResponse
@@ -57,6 +58,8 @@ class GetApiUsageLogsUseCase(
         }
         val fieldValue = request.field
         val fieldRoutes = if (fieldValue == null) null else routesFor(parseField(fieldValue))
+        val level = request.level?.let { parseLevel(it) }
+        val errorCode = request.errorCode?.let { parseErrorCode(it) }
         val start = toStorageBoundary(from)
         val end = toStorageBoundary(to)
         val filters = Specification<ApiUsageLog> { root, _, cb ->
@@ -69,6 +72,10 @@ class GetApiUsageLogsUseCase(
                 conditions += cb.notEqual(route, "UNMAPPED")
                 conditions += cb.like(route, routePattern, '!')
             }
+            level?.let { conditions += cb.equal(root.get<String>("accessLevel"), it.name) }
+            request.projectId?.let { conditions += cb.equal(root.get<Long>("projectId"), it) }
+            request.userId?.let { conditions += cb.equal(root.get<Long>("userId"), it) }
+            errorCode?.let { conditions += cb.equal(root.get<String>("errorCode"), it.name) }
             if (fieldRoutes != null) {
                 // DB 정렬 규칙이 대소문자나 악센트를 무시해도 분야는 MVC 템플릿과 정확히 일치해야 한다.
                 val route = root.get<String>("route").cast(ByteArray::class.java)
@@ -90,6 +97,19 @@ class GetApiUsageLogsUseCase(
 
     private fun parseField(value: String): ApiKeyField = try {
         ApiKeyField.valueOf(value)
+    } catch (_: IllegalArgumentException) {
+        invalidInput()
+    }
+
+    private fun parseLevel(value: String): UsageAccessLevel = try {
+        UsageAccessLevel.valueOf(value)
+    } catch (_: IllegalArgumentException) {
+        invalidInput()
+    }
+
+    // 저장되는 오류 코드는 모두 ErrorCode 이름이라 그 밖의 값은 찾을 행이 없는 입력 오류로 본다.
+    private fun parseErrorCode(value: String): ErrorCode = try {
+        ErrorCode.valueOf(value)
     } catch (_: IllegalArgumentException) {
         invalidInput()
     }

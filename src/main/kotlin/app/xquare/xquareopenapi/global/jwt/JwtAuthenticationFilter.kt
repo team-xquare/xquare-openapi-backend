@@ -1,5 +1,6 @@
 package app.xquare.xquareopenapi.global.jwt
 
+import app.xquare.xquareopenapi.global.apiusage.ApiUsageAttributes
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -18,6 +19,8 @@ class JwtAuthenticationFilter(
     override fun doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, filterChain: FilterChain) {
         val payload = parse(request.getHeader(HttpHeaders.AUTHORIZATION))
         if (payload != null) {
+            // 사용 기록에 호출한 사용자를 남긴다.
+            request.setAttribute(ApiUsageAttributes.USER_ID, payload.userId)
             SecurityContextHolder.getContext().authentication = UsernamePasswordAuthenticationToken.authenticated(
                 payload.userId,
                 null,
