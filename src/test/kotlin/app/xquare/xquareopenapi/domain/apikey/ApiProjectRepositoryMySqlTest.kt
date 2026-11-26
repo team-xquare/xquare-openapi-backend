@@ -1,6 +1,9 @@
 package app.xquare.xquareopenapi.domain.apikey
 
+import app.xquare.xquareopenapi.domain.user.UserRepository
 import app.xquare.xquareopenapi.global.error.violates
+import app.xquare.xquareopenapi.global.jpa.escapeLike
+import org.springframework.data.domain.PageRequest
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest
@@ -24,6 +27,7 @@ import kotlin.test.assertTrue
 class ApiProjectRepositoryMySqlTest @Autowired constructor(
     private val projectRepository: ApiProjectRepository,
     private val fieldRepository: ApiProjectFieldRepository,
+    private val userRepository: UserRepository,
 ) {
 
     @Test
@@ -49,10 +53,10 @@ class ApiProjectRepositoryMySqlTest @Autowired constructor(
     @Test
     fun `같은 프로젝트에 같은 분야를 두 번 넣으면 분야 제약 위반으로 구분한다`() {
         val project = projectRepository.saveAndFlush(project(2L, "급식 알리미"))
-        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.CLUB, NOW))
+        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.CLUB, "테스트 목적", ApplicationType.FIRST, NOW))
 
         val e = assertFailsWith<DataIntegrityViolationException> {
-            fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.CLUB, NOW))
+            fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.CLUB, "테스트 목적", ApplicationType.FIRST, NOW))
         }
 
         assertTrue(e.violates(ApiProjectField.FIELD_UNIQUE_CONSTRAINT))
@@ -73,9 +77,9 @@ class ApiProjectRepositoryMySqlTest @Autowired constructor(
         val rawKey = project.issueKey(NOW)
         projectRepository.saveAndFlush(project)
         val other = projectRepository.saveAndFlush(project(3L, "다른 프로젝트"))
-        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.STUDY_SUPERVISOR, NOW))
-        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.STUDENT, NOW))
-        fieldRepository.saveAndFlush(ApiProjectField(other.id!!, ApiKeyField.SCHEDULE, NOW))
+        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.STUDY_SUPERVISOR, "테스트 목적", ApplicationType.FIRST, NOW))
+        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.STUDENT, "테스트 목적", ApplicationType.FIRST, NOW))
+        fieldRepository.saveAndFlush(ApiProjectField(other.id!!, ApiKeyField.SCHEDULE, "테스트 목적", ApplicationType.FIRST, NOW))
 
         assertEquals(project.id, projectRepository.findByKeyHash(ApiKeySecret.hash(rawKey))?.id)
         assertEquals(listOf(ApiKeyField.STUDY_SUPERVISOR), fieldRepository.findFieldsByProjectIdAndStatus(project.id!!, ApplicationStatus.APPROVED))
@@ -91,9 +95,9 @@ class ApiProjectRepositoryMySqlTest @Autowired constructor(
         val first = projectRepository.saveAndFlush(project(2L, "하나"))
         projectRepository.saveAndFlush(project(3L, "남의 것"))
         val second = projectRepository.saveAndFlush(project(2L, "둘"))
-        val a = fieldRepository.saveAndFlush(ApiProjectField(first.id!!, ApiKeyField.CLUB, NOW))
-        val b = fieldRepository.saveAndFlush(ApiProjectField(second.id!!, ApiKeyField.STUDENT, NOW))
-        val c = fieldRepository.saveAndFlush(ApiProjectField(first.id!!, ApiKeyField.TEACHER, NOW))
+        val a = fieldRepository.saveAndFlush(ApiProjectField(first.id!!, ApiKeyField.CLUB, "테스트 목적", ApplicationType.FIRST, NOW))
+        val b = fieldRepository.saveAndFlush(ApiProjectField(second.id!!, ApiKeyField.STUDENT, "테스트 목적", ApplicationType.FIRST, NOW))
+        val c = fieldRepository.saveAndFlush(ApiProjectField(first.id!!, ApiKeyField.TEACHER, "테스트 목적", ApplicationType.FIRST, NOW))
 
         assertEquals(listOf(first.id, second.id), projectRepository.findAllByUserIdOrderByIdAsc(2L).map { it.id })
         assertEquals(
@@ -105,17 +109,32 @@ class ApiProjectRepositoryMySqlTest @Autowired constructor(
     }
 
     @Test
-    fun `관리자 목록은 상태로 거르고 null이면 전체를 읽는다`() {
-        val project = projectRepository.saveAndFlush(project(2L, "급식 알리미"))
-        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.SCHEDULE, NOW))
-        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.STUDENT, NOW))
+    fun `관리자 목록은 상태, 구분, 분야, 키워드로 거르고 null이면 거르지 않는다`() {
+        val junseo = userRepository.saveUser("junseo").id!!
+        val project = projectRepository.saveAndFlush(project(junseo, "급식_알리미"))
+        // 신청자 행이 없는 프로젝트도 목록에서 빠지지 않는다(left join).
+        val orphan = projectRepository.saveAndFlush(project(999L, "급식x알리미"))
+        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.SCHEDULE, "테스트 목적", ApplicationType.FIRST, NOW))
+        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.STUDENT, "테스트 목적", ApplicationType.ADDITIONAL, NOW))
+        fieldRepository.saveAndFlush(ApiProjectField(orphan.id!!, ApiKeyField.CLUB, "테스트 목적", ApplicationType.FIRST, NOW))
+        val all = ApiKeyField.entries
+        val page = PageRequest.of(0, 10)
+        fun search(status: ApplicationStatus? = null, type: ApplicationType? = null, fields: List<ApiKeyField> = all, keyword: String? = null) =
+            fieldRepository.search(status, type, fields, keyword?.let { "%${it.escapeLike()}%" }, page).content.map { it.field }.toSet()
 
-        val pageable = org.springframework.data.domain.PageRequest.of(0, 10)
-        assertEquals(listOf(ApiKeyField.STUDENT), fieldRepository.search(ApplicationStatus.PENDING, pageable).content.map { it.field })
-        assertEquals(2, fieldRepository.search(null, pageable).totalElements)
+        assertEquals(setOf(ApiKeyField.SCHEDULE, ApiKeyField.STUDENT, ApiKeyField.CLUB), search())
+        assertEquals(setOf(ApiKeyField.STUDENT, ApiKeyField.CLUB), search(status = ApplicationStatus.PENDING))
+        assertEquals(setOf(ApiKeyField.STUDENT), search(type = ApplicationType.ADDITIONAL))
+        assertEquals(setOf(ApiKeyField.SCHEDULE), search(fields = listOf(ApiKeyField.SCHEDULE, ApiKeyField.MEAL)))
+        // 밑줄은 와일드카드가 아니라 글자 그대로 찾는다.
+        assertEquals(setOf(ApiKeyField.SCHEDULE, ApiKeyField.STUDENT), search(keyword = "급식_"))
+        // 신청자 이름(김준서)으로도 찾는다.
+        assertEquals(setOf(ApiKeyField.SCHEDULE, ApiKeyField.STUDENT), search(keyword = "준서"))
+        assertEquals(setOf(ApiKeyField.CLUB), search(keyword = "x알리"))
+        assertEquals(emptySet(), search(keyword = "없는 이름"))
     }
 
-    private fun project(userId: Long, name: String) = ApiProject(userId, name, "급식 공유", NOW)
+    private fun project(userId: Long, name: String) = ApiProject(userId, name, NOW)
 
     companion object {
         private val NOW = LocalDateTime.of(2026, 11, 24, 10, 0)

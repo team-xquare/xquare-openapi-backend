@@ -2,7 +2,17 @@
 
 11/20 선생님 피드백 반영안입니다. **API 키는 프로젝트마다 하나**이고, **제한 분야는 관리자가 승인**합니다.
 프론트 연동용으로 먼저 공유하는 명세이고, 구현은 이 문서가 확정된 뒤 PR을 나눠 올립니다.
-결정 사항은 6절에 정리했습니다(11/25 확정).
+결정 사항은 6절에 정리했습니다(11/25 확정). **11/27 백엔드 태스크로 바뀐 점은 0절에 먼저 적었습니다.**
+
+## 0. 11/27 변경
+
+- 프로젝트는 **이름만**으로 만듭니다(`POST /projects` `{ "name" }`). 분야·사용 목적·이메일 인증은 `POST /projects/{id}/fields`에서 받습니다.
+- 키는 **첫 분야 신청 때** 단계와 상관없이 발급합니다(제한 분야만 신청해도 발급). 승인 전 분야를 호출하면 `403 API_KEY_FIELD_FORBIDDEN`입니다. 아래 4.1(승인 후 재발급으로 원문 수령)은 더 이상 쓰지 않습니다.
+- 급식 `MEAL` 분야를 추가했습니다. 단계는 공개 `PUBLIC`이고 신청하면 바로 승인합니다. 급식 조회 API는 지금처럼 키 없이도 열려 있습니다.
+- 사용 목적은 **분야마다** 저장합니다(`api_project_fields.purpose`). `api_projects.purpose`는 지웠습니다.
+- 분야 신청 구분 `application_type`(`FIRST` 첫 신청 / `ADDITIONAL` 분야 추가)을 저장합니다.
+- 프로젝트 이름·서비스 URL 수정 `PATCH /projects/{id}`, 대기 중인 분야 신청 취소 `DELETE /projects/{id}/fields/{field}`를 추가했습니다.
+- 기존 DB 변경: `docs/schema/migrations/2026-11-28-project-structure.sql`
 
 ## 1. 현재(develop)와 바뀌는 점
 
@@ -176,6 +186,7 @@ DB에는 해시만 두므로 원문은 한 번만 보여 줄 수 있습니다.
 | `PROJECT_LIMIT_EXCEEDED` | 409 | 내 프로젝트가 이미 5개(사용자당 상한) |
 | `API_KEY_NOT_ISSUED` | 409 | 승인 전이라 갱신·재발급할 키가 없음 |
 | `FIELD_ALREADY_APPLIED` | 409 | 이미 신청(대기·승인)한 분야 |
+| `APPLICATION_NOT_PENDING` | 409 | 승인 대기가 아닌 신청을 취소함(11/27 추가) |
 | `APPLICATION_NOT_FOUND` | 404 | 없는 신청 |
 | `APPLICATION_ALREADY_DECIDED` | 409 | 이미 처리된 신청 |
 

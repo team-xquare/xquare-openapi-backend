@@ -5,6 +5,7 @@ import app.xquare.xquareopenapi.domain.apikey.ApiKeyField
 import app.xquare.xquareopenapi.domain.apikey.ApiProject
 import app.xquare.xquareopenapi.domain.apikey.ApiProjectField
 import app.xquare.xquareopenapi.domain.apikey.ApplicationStatus
+import app.xquare.xquareopenapi.domain.apikey.ApplicationType
 import app.xquare.xquareopenapi.domain.apikey.withSeoulOffset
 import app.xquare.xquareopenapi.domain.user.User
 import io.swagger.v3.oas.annotations.Parameter
@@ -19,6 +20,20 @@ data class ApiApplicationSearchRequest(
     // 없으면 모든 상태
     @field:Parameter(description = "신청 상태 필터 (생략 시 전체)")
     val status: ApplicationStatus? = null,
+
+    @field:Parameter(description = "분야 필터 (생략 시 전체)")
+    val field: ApiKeyField? = null,
+
+    @field:Parameter(description = "단계 필터 (생략 시 전체). 분야 필터와 함께 주면 둘 다 맞는 신청만")
+    val level: AccessLevel? = null,
+
+    @field:Parameter(description = "구분 필터: FIRST(첫 신청) / ADDITIONAL(분야 추가). 생략 시 전체")
+    val type: ApplicationType? = null,
+
+    // 프로젝트 이름이나 신청자 이름의 부분 일치. %, _, !는 글자 그대로 찾는다. 공백뿐이면 400이다.
+    @field:Parameter(description = "프로젝트 이름 또는 신청자 이름 부분 일치 검색 (1~30자, 공백만은 불가)", example = "급식")
+    @field:Size(min = 1, max = 30)
+    val keyword: String? = null,
 
     // page × size(최대 100)가 int를 넘으면 Spring Data가 offset을 만들지 못하고 500을 낸다.
     @field:Parameter(description = "페이지 번호 (0 이상)", example = "0")
@@ -45,33 +60,41 @@ data class ApiApplicationSummaryResponse(
     val projectId: Long,
     val projectName: String,
     val userId: Long,
+    // 신청자 이름. 사용자 행이 지워졌으면 null
+    val applicantName: String?,
     val field: ApiKeyField,
     val level: AccessLevel,
     val status: ApplicationStatus,
+    val applicationType: ApplicationType,
     val appliedAt: OffsetDateTime,
     val decidedAt: OffsetDateTime?,
 ) {
     companion object {
-        fun of(field: ApiProjectField, project: ApiProject) = ApiApplicationSummaryResponse(
+        fun of(field: ApiProjectField, project: ApiProject, applicant: User?) = ApiApplicationSummaryResponse(
             applicationId = field.id!!,
             projectId = project.id!!,
             projectName = project.name,
             userId = project.userId,
+            applicantName = applicant?.name,
             field = field.field,
             level = field.field.level,
             status = field.status,
+            applicationType = field.applicationType,
             appliedAt = field.appliedAt.withSeoulOffset(),
             decidedAt = field.decidedAt?.withSeoulOffset(),
         )
     }
 }
 
-// 관리자 신청 상세. 신청 내용과 처리 기록, 프로젝트(목적·분야 전체), 신청자를 함께 보여 준다. 시각은 한국 시간(+09:00)
+// 관리자 신청 상세. 신청 내용(구분·사용 목적)과 처리 기록, 프로젝트(분야 전체), 신청자를 함께 보여 준다. 시각은 한국 시간(+09:00)
 data class ApiApplicationDetailResponse(
     val applicationId: Long,
     val field: ApiKeyField,
     val level: AccessLevel,
     val status: ApplicationStatus,
+    val applicationType: ApplicationType,
+    // 이 분야를 쓰려는 목적
+    val purpose: String,
     val rejectReason: String?,
     val appliedAt: OffsetDateTime,
     val decidedAt: OffsetDateTime?,
@@ -85,7 +108,7 @@ data class ApiApplicationDetailResponse(
     data class Project(
         val projectId: Long,
         val name: String,
-        val purpose: String,
+        val serviceUrl: String?,
         val keyIssued: Boolean,
         val createdAt: OffsetDateTime,
         // 이 프로젝트의 분야 전체(처음 신청한 순서)
@@ -106,6 +129,8 @@ data class ApiApplicationDetailResponse(
                 field = field.field,
                 level = field.field.level,
                 status = field.status,
+                applicationType = field.applicationType,
+                purpose = field.purpose,
                 rejectReason = field.rejectReason,
                 appliedAt = field.appliedAt.withSeoulOffset(),
                 decidedAt = field.decidedAt?.withSeoulOffset(),
@@ -113,7 +138,7 @@ data class ApiApplicationDetailResponse(
                 project = Project(
                     projectId = project.id!!,
                     name = project.name,
-                    purpose = project.purpose,
+                    serviceUrl = project.serviceUrl,
                     keyIssued = project.keyIssued,
                     createdAt = project.createdAt.withSeoulOffset(),
                     fields = projectFields.map(ProjectFieldResponse::from),

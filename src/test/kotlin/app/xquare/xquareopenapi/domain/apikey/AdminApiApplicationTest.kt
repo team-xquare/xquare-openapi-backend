@@ -1,6 +1,7 @@
 package app.xquare.xquareopenapi.domain.apikey
 
 import app.xquare.xquareopenapi.domain.user.Role
+import app.xquare.xquareopenapi.domain.user.User
 import app.xquare.xquareopenapi.domain.user.UserRepository
 import app.xquare.xquareopenapi.global.jwt.JwtProvider
 import org.hamcrest.Matchers.contains
@@ -55,7 +56,7 @@ class AdminApiApplicationTest @Autowired constructor(
     // 목록
 
     @Test
-    fun `목록은 최근 신청부터 프로젝트 이름, 신청자, 분야, 단계, 상태를 보여 준다`() {
+    fun `목록은 최근 신청부터 프로젝트 이름, 신청자, 분야, 단계, 상태, 구분을 보여 준다`() {
         val project = projectRepository.saveProject(userId, name = "급식 알리미")
         val first = field(project.id!!, ApiKeyField.STUDENT, ApplicationStatus.PENDING, LocalDateTime.of(2026, 11, 24, 9, 0))
         val second = field(project.id!!, ApiKeyField.CLUB, ApplicationStatus.APPROVED, LocalDateTime.of(2026, 11, 24, 10, 0))
@@ -69,6 +70,8 @@ class AdminApiApplicationTest @Autowired constructor(
             jsonPath("$.content[1].projectId") { value(project.id!!) }
             jsonPath("$.content[1].projectName") { value("급식 알리미") }
             jsonPath("$.content[1].userId") { value(userId) }
+            jsonPath("$.content[1].applicantName") { value("김준서") }
+            jsonPath("$.content[1].applicationType") { value("FIRST") }
             jsonPath("$.content[1].field") { value("STUDENT") }
             jsonPath("$.content[1].level") { value("RESTRICTED") }
             jsonPath("$.content[1].status") { value("PENDING") }
@@ -125,14 +128,93 @@ class AdminApiApplicationTest @Autowired constructor(
     }
 
     @Test
-    fun `목록 조건이 범위를 벗어나거나 없는 상태면 INVALID_INPUT`() {
-        listOf("page=-1", "size=0", "size=101", "page=21474837", "status=DONE").forEach { query ->
+    fun `분야, 단계, 구분으로 거르고 함께 주면 모두 맞는 신청만 보여 준다`() {
+        val project = projectRepository.saveProject(userId)
+        val now = LocalDateTime.of(2026, 11, 24, 9, 0)
+        field(project.id!!, ApiKeyField.STUDENT, ApplicationStatus.PENDING, now)
+        field(project.id!!, ApiKeyField.SCHEDULE, ApplicationStatus.APPROVED, now.plusMinutes(1), ApplicationType.ADDITIONAL)
+        field(project.id!!, ApiKeyField.MEAL, ApplicationStatus.APPROVED, now.plusMinutes(2), ApplicationType.ADDITIONAL)
+        field(project.id!!, ApiKeyField.CLUB, ApplicationStatus.PENDING, now.plusMinutes(3), ApplicationType.ADDITIONAL)
+
+        fun fields(query: String) = mockMvc.get("/admin/api-applications?$query") { bearer(adminToken) }
+            .andExpect { status { isOk() } }.andReturn().response.contentAsString
+            .let { Regex("\"field\":\"(\\w+)\"").findAll(it).map { m -> m.groupValues[1] }.toList() }
+
+        assertEquals(listOf("SCHEDULE"), fields("field=SCHEDULE"))
+        assertEquals(listOf("CLUB", "STUDENT"), fields("level=RESTRICTED"))
+        assertEquals(listOf("MEAL"), fields("level=PUBLIC"))
+        assertEquals(listOf("STUDENT"), fields("type=FIRST"))
+        assertEquals(listOf("CLUB", "MEAL", "SCHEDULE"), fields("type=ADDITIONAL"))
+        assertEquals(listOf("CLUB"), fields("type=ADDITIONAL&level=RESTRICTED&status=PENDING"))
+        // 분야와 단계가 서로 맞지 않으면 고를 분야가 없어 빈 목록이다.
+        assertEquals(emptyList(), fields("field=STUDENT&level=SCHOOL"))
+        mockMvc.get("/admin/api-applications?field=STUDENT&level=SCHOOL&page=2&size=5") { bearer(adminToken) }.andExpect {
+            jsonPath("$.totalCount") { value(0) }
+            jsonPath("$.totalPage") { value(0) }
+            jsonPath("$.page") { value(2) }
+            jsonPath("$.size") { value(5) }
+        }
+    }
+
+    @Test
+    fun `키워드는 프로젝트 이름이나 신청자 이름의 일부로 찾고 특수 문자는 글자 그대로 비교한다`() {
+        val other = userRepository.save(User(username = "minji", password = "encoded", studentNumber = 2101, name = "이민지", email = "minji@dsm.hs.kr"))
+        val mine = projectRepository.saveProject(userId, name = "급식_알리미")
+        val hers = projectRepository.saveProject(other.id!!, name = "시간표 봇 100%")
+        val now = LocalDateTime.of(2026, 11, 24, 9, 0)
+        field(mine.id!!, ApiKeyField.STUDENT, ApplicationStatus.PENDING, now)
+        field(hers.id!!, ApiKeyField.TEACHER, ApplicationStatus.PENDING, now.plusMinutes(1))
+
+        fun names(keyword: String) = mockMvc.get("/admin/api-applications") {
+            bearer(adminToken)
+            param("keyword", keyword)
+        }.andExpect { status { isOk() } }.andReturn().response.contentAsString
+            .let { Regex("\"projectName\":\"([^\"]+)\"").findAll(it).map { m -> m.groupValues[1] }.toList() }
+
+        assertEquals(listOf("급식_알리미"), names("급식"))
+        assertEquals(listOf("시간표 봇 100%"), names("민지"))
+        assertEquals(listOf("급식_알리미"), names("식_알"))
+        assertEquals(emptyList(), names("식x알"))
+        assertEquals(listOf("시간표 봇 100%"), names("100%"))
+        assertEquals(emptyList(), names("1%0"))
+        // 앞뒤 공백은 다듬어서 찾는다.
+        assertEquals(listOf("급식_알리미"), names(" 급식 "))
+    }
+
+    @Test
+    fun `신청자 행이 지워진 신청도 목록에 나오고 신청자 이름은 null이다`() {
+        val project = projectRepository.saveProject(userId + 100)
+        field(project.id!!, ApiKeyField.STUDENT, ApplicationStatus.PENDING, LocalDateTime.of(2026, 11, 24, 9, 0))
+
+        mockMvc.get("/admin/api-applications") { bearer(adminToken) }.andExpect {
+            jsonPath("$.totalCount") { value(1) }
+            jsonPath("$.content[0].applicantName") { value(nullValue()) }
+        }
+        mockMvc.get("/admin/api-applications?keyword=테스트") { bearer(adminToken) }.andExpect {
+            jsonPath("$.totalCount") { value(1) }
+        }
+    }
+
+    @Test
+    fun `목록 조건이 범위를 벗어나거나 없는 값이면 INVALID_INPUT`() {
+        listOf(
+            "page=-1", "size=0", "size=101", "page=21474837", "status=DONE",
+            "field=TIMETABLE", "level=OPEN", "type=SECOND", "keyword=${"가".repeat(31)}",
+        ).forEach { query ->
             mockMvc.get("/admin/api-applications?$query") { bearer(adminToken) }.andExpect {
                 status { isBadRequest() }
                 jsonPath("$.code") { value("INVALID_INPUT") }
             }
         }
         mockMvc.get("/admin/api-applications?page=21474836&size=100") { bearer(adminToken) }.andExpect { status { isOk() } }
+        // 공백뿐인 키워드는 거를 값이 없어 400이다. URL 템플릿은 %를 다시 인코딩하므로 param으로 보낸다.
+        mockMvc.get("/admin/api-applications") {
+            bearer(adminToken)
+            param("keyword", "  ")
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_INPUT") }
+        }
     }
 
     // 상세
@@ -155,8 +237,11 @@ class AdminApiApplicationTest @Autowired constructor(
             jsonPath("$.decidedBy") { value(nullValue()) }
             jsonPath("$.project.projectId") { value(project.id!!) }
             jsonPath("$.project.name") { value("급식 알리미") }
-            jsonPath("$.project.purpose") { value("테스트 목적") }
+            jsonPath("$.purpose") { value("테스트 목적") }
+            jsonPath("$.applicationType") { value("FIRST") }
+            jsonPath("$.project.purpose") { doesNotExist() }
             jsonPath("$.project.keyIssued") { value(false) }
+            jsonPath("$.project.serviceUrl") { value(nullValue()) }
             jsonPath("$.project.fields[*].field") { value(contains("CLUB", "STUDENT")) }
             jsonPath("$.userId") { value(userId) }
             jsonPath("$.applicant.username") { value("junseo") }
@@ -325,7 +410,7 @@ class AdminApiApplicationTest @Autowired constructor(
         val application = fieldRepository.saveField(project.id!!, ApiKeyField.TEACHER, ApplicationStatus.PENDING)
         mockMvc.post("/admin/api-applications/${application.id}/reject") { bearer(adminToken); reason("사유") }
         val rejected = fieldRepository.findById(application.id!!).orElseThrow()
-        rejected.resubmit(LocalDateTime.now(SEOUL))
+        rejected.resubmit("다시 신청한 목적", LocalDateTime.now(SEOUL))
         fieldRepository.save(rejected)
 
         mockMvc.post("/admin/api-applications/${application.id}/approve") { bearer(adminToken) }.andExpect {
@@ -361,9 +446,16 @@ class AdminApiApplicationTest @Autowired constructor(
         assertEquals(ApplicationStatus.PENDING, fieldRepository.findById(application.id!!).orElseThrow().status)
     }
 
-    private fun field(projectId: Long, field: ApiKeyField, status: ApplicationStatus, appliedAt: LocalDateTime): ApiProjectField {
+    private fun field(
+        projectId: Long,
+        field: ApiKeyField,
+        status: ApplicationStatus,
+        appliedAt: LocalDateTime,
+        type: ApplicationType = ApplicationType.FIRST,
+    ): ApiProjectField {
         val saved = fieldRepository.saveField(projectId, field, status)
         ReflectionTestUtils.setField(saved, "appliedAt", appliedAt)
+        ReflectionTestUtils.setField(saved, "applicationType", type)
         return fieldRepository.save(saved)
     }
 

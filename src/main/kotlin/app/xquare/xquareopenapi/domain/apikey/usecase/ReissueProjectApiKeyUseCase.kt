@@ -10,7 +10,6 @@ import java.time.Clock
 import java.time.LocalDateTime
 
 // 프로젝트의 키 값을 새로 발급하고 기존 키는 즉시 폐기한다. 분야와 승인 상태는 그대로 둔다.
-// 관리자 승인으로 처음 발급된 키는 원문을 아무도 받지 못했으므로, 사용자는 이 API로 원문을 받는다.
 @Service
 class ReissueProjectApiKeyUseCase(
     private val projectFinder: MyProjectFinder,

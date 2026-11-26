@@ -56,8 +56,9 @@ class ApiKeyExpiryTest @Autowired constructor(
     }
 
     @Test
-    fun `프로젝트를 만들며 받은 키는 발급 시각부터 60일 뒤에 만료된다`() {
-        val created = post("/projects", """{"name":"급식 알리미","purpose":"급식","fields":["SCHEDULE"],"emailVerifiedToken":"${token()}"}""")
+    fun `첫 분야 신청으로 받은 키는 발급 시각부터 60일 뒤에 만료된다`() {
+        val projectId = post("/projects", """{"name":"급식 알리미"}""").andExpect { status { isCreated() } }.json()["projectId"].asLong()
+        val created = post("/projects/$projectId/fields", """{"fields":[{"field":"SCHEDULE","purpose":"급식"}],"emailVerifiedToken":"${token()}"}""")
             .andExpect { status { isCreated() } }.json()
         val apiKey = created["apiKey"].asString()
         val project = projectRepository.findAll().single()

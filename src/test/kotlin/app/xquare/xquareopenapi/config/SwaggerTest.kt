@@ -149,7 +149,7 @@ class SwaggerTest @Autowired constructor(
                 "/study-supervisors/day" to listOf("date"),
                 "/timetables" to listOf("grade", "classNum", "date"),
                 "/schedules" to listOf("startDate", "finishDate"),
-                "/admin/api-applications" to listOf("status", "page", "size"),
+                "/admin/api-applications" to listOf("status", "field", "level", "type", "keyword", "page", "size"),
                 "/admin/api-usage-logs" to listOf("from", "to", "method", "status", "page", "size", "api", "field"),
             ).forEach { (path, expectedParams) ->
                 jsonPath("$.paths['$path'].get.parameters.length()") { value(expectedParams.size) }
