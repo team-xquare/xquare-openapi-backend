@@ -21,6 +21,20 @@ data class ApiApplicationSearchRequest(
     @field:Parameter(description = "신청 상태 필터 (생략 시 전체)")
     val status: ApplicationStatus? = null,
 
+    @field:Parameter(description = "분야 필터 (생략 시 전체)")
+    val field: ApiKeyField? = null,
+
+    @field:Parameter(description = "단계 필터 (생략 시 전체). 분야 필터와 함께 주면 둘 다 맞는 신청만")
+    val level: AccessLevel? = null,
+
+    @field:Parameter(description = "구분 필터: FIRST(첫 신청) / ADDITIONAL(분야 추가). 생략 시 전체")
+    val type: ApplicationType? = null,
+
+    // 프로젝트 이름이나 신청자 이름의 부분 일치. %, _, !는 글자 그대로 찾는다. 공백뿐이면 400이다.
+    @field:Parameter(description = "프로젝트 이름 또는 신청자 이름 부분 일치 검색 (1~30자, 공백만은 불가)", example = "급식")
+    @field:Size(min = 1, max = 30)
+    val keyword: String? = null,
+
     // page × size(최대 100)가 int를 넘으면 Spring Data가 offset을 만들지 못하고 500을 낸다.
     @field:Parameter(description = "페이지 번호 (0 이상)", example = "0")
     @field:Min(0)
@@ -46,21 +60,26 @@ data class ApiApplicationSummaryResponse(
     val projectId: Long,
     val projectName: String,
     val userId: Long,
+    // 신청자 이름. 사용자 행이 지워졌으면 null
+    val applicantName: String?,
     val field: ApiKeyField,
     val level: AccessLevel,
     val status: ApplicationStatus,
+    val applicationType: ApplicationType,
     val appliedAt: OffsetDateTime,
     val decidedAt: OffsetDateTime?,
 ) {
     companion object {
-        fun of(field: ApiProjectField, project: ApiProject) = ApiApplicationSummaryResponse(
+        fun of(field: ApiProjectField, project: ApiProject, applicant: User?) = ApiApplicationSummaryResponse(
             applicationId = field.id!!,
             projectId = project.id!!,
             projectName = project.name,
             userId = project.userId,
+            applicantName = applicant?.name,
             field = field.field,
             level = field.field.level,
             status = field.status,
+            applicationType = field.applicationType,
             appliedAt = field.appliedAt.withSeoulOffset(),
             decidedAt = field.decidedAt?.withSeoulOffset(),
         )

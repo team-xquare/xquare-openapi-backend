@@ -1,6 +1,9 @@
 package app.xquare.xquareopenapi.domain.apikey
 
+import app.xquare.xquareopenapi.domain.user.UserRepository
 import app.xquare.xquareopenapi.global.error.violates
+import app.xquare.xquareopenapi.global.jpa.escapeLike
+import org.springframework.data.domain.PageRequest
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest
@@ -24,6 +27,7 @@ import kotlin.test.assertTrue
 class ApiProjectRepositoryMySqlTest @Autowired constructor(
     private val projectRepository: ApiProjectRepository,
     private val fieldRepository: ApiProjectFieldRepository,
+    private val userRepository: UserRepository,
 ) {
 
     @Test
@@ -105,14 +109,29 @@ class ApiProjectRepositoryMySqlTest @Autowired constructor(
     }
 
     @Test
-    fun `관리자 목록은 상태로 거르고 null이면 전체를 읽는다`() {
-        val project = projectRepository.saveAndFlush(project(2L, "급식 알리미"))
+    fun `관리자 목록은 상태, 구분, 분야, 키워드로 거르고 null이면 거르지 않는다`() {
+        val junseo = userRepository.saveUser("junseo").id!!
+        val project = projectRepository.saveAndFlush(project(junseo, "급식_알리미"))
+        // 신청자 행이 없는 프로젝트도 목록에서 빠지지 않는다(left join).
+        val orphan = projectRepository.saveAndFlush(project(999L, "급식x알리미"))
         fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.SCHEDULE, "테스트 목적", ApplicationType.FIRST, NOW))
-        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.STUDENT, "테스트 목적", ApplicationType.FIRST, NOW))
+        fieldRepository.saveAndFlush(ApiProjectField(project.id!!, ApiKeyField.STUDENT, "테스트 목적", ApplicationType.ADDITIONAL, NOW))
+        fieldRepository.saveAndFlush(ApiProjectField(orphan.id!!, ApiKeyField.CLUB, "테스트 목적", ApplicationType.FIRST, NOW))
+        val all = ApiKeyField.entries
+        val page = PageRequest.of(0, 10)
+        fun search(status: ApplicationStatus? = null, type: ApplicationType? = null, fields: List<ApiKeyField> = all, keyword: String? = null) =
+            fieldRepository.search(status, type, fields, keyword?.let { "%${it.escapeLike()}%" }, page).content.map { it.field }.toSet()
 
-        val pageable = org.springframework.data.domain.PageRequest.of(0, 10)
-        assertEquals(listOf(ApiKeyField.STUDENT), fieldRepository.search(ApplicationStatus.PENDING, pageable).content.map { it.field })
-        assertEquals(2, fieldRepository.search(null, pageable).totalElements)
+        assertEquals(setOf(ApiKeyField.SCHEDULE, ApiKeyField.STUDENT, ApiKeyField.CLUB), search())
+        assertEquals(setOf(ApiKeyField.STUDENT, ApiKeyField.CLUB), search(status = ApplicationStatus.PENDING))
+        assertEquals(setOf(ApiKeyField.STUDENT), search(type = ApplicationType.ADDITIONAL))
+        assertEquals(setOf(ApiKeyField.SCHEDULE), search(fields = listOf(ApiKeyField.SCHEDULE, ApiKeyField.MEAL)))
+        // 밑줄은 와일드카드가 아니라 글자 그대로 찾는다.
+        assertEquals(setOf(ApiKeyField.SCHEDULE, ApiKeyField.STUDENT), search(keyword = "급식_"))
+        // 신청자 이름(김준서)으로도 찾는다.
+        assertEquals(setOf(ApiKeyField.SCHEDULE, ApiKeyField.STUDENT), search(keyword = "준서"))
+        assertEquals(setOf(ApiKeyField.CLUB), search(keyword = "x알리"))
+        assertEquals(emptySet(), search(keyword = "없는 이름"))
     }
 
     private fun project(userId: Long, name: String) = ApiProject(userId, name, NOW)

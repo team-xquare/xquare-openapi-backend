@@ -42,7 +42,7 @@ class AdminApiApplicationController(
     @Operation(
         operationId = "getApiApplications",
         summary = "관리자 분야 신청 목록 조회",
-        description = "분야 신청 목록을 신청 시각 역순(같으면 id 역순)으로 페이지 조회합니다. status로 상태를 걸러 볼 수 있습니다. 권한: ADMIN.",
+        description = "분야 신청 목록을 신청 시각 역순(같으면 id 역순)으로 페이지 조회합니다. 상태·분야·단계·구분으로 거르고 keyword로 프로젝트 이름이나 신청자 이름을 찾을 수 있습니다(모두 AND). 권한: ADMIN.",
         extensions = [Extension(properties = [ExtensionProperty(name = "required-role", value = "ADMIN")])],
     )
     @ApiResponse(responseCode = "200", description = "신청 목록")

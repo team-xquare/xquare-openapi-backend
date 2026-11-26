@@ -12,9 +12,27 @@ interface ApiProjectFieldRepository : JpaRepository<ApiProjectField, Long> {
 
     fun findAllByProjectIdInOrderByIdAsc(projectIds: Collection<Long>): List<ApiProjectField>
 
-    // 관리자 신청 목록. status가 null이면 거르지 않는다.
-    @Query("select f from ApiProjectField f where (:status is null or f.status = :status)")
-    fun search(status: ApplicationStatus?, pageable: Pageable): Page<ApiProjectField>
+    // 관리자 신청 목록. status·type이 null이면 거르지 않고, fields(분야·단계 필터를 합친 결과, 비지 않음)에 든 분야만 본다.
+    // keywordPattern은 escapeLike()를 거친 부분 일치 패턴이고, 프로젝트 이름이나 신청자 이름에 들어 있으면 고른다. null이면 거르지 않는다.
+    // 신청자 행은 FK가 없어 지워졌을 수 있으므로 left join이다.
+    @Query(
+        """
+        select f from ApiProjectField f
+        join ApiProject p on p.id = f.projectId
+        left join User u on u.id = p.userId
+        where (:status is null or f.status = :status)
+          and (:type is null or f.applicationType = :type)
+          and f.field in :fields
+          and (:keywordPattern is null or p.name like :keywordPattern escape '!' or u.name like :keywordPattern escape '!')
+        """,
+    )
+    fun search(
+        status: ApplicationStatus?,
+        type: ApplicationType?,
+        fields: Collection<ApiKeyField>,
+        keywordPattern: String?,
+        pageable: Pageable,
+    ): Page<ApiProjectField>
 
     @Modifying
     @Query("delete from ApiProjectField f where f.projectId = :projectId")

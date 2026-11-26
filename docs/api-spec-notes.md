@@ -98,7 +98,8 @@
 - `POST /projects/{projectId}/api-key/reissue`: 이메일 인증 후 새 키 원문을 준다(`{ apiKey, issuedAt, expiresAt }`). 이전 키는 바로 `401 INVALID_API_KEY`. 아직 발급 전(분야 신청 전)이면 `409 API_KEY_NOT_ISSUED`
 - `DELETE /projects/{projectId}`: 프로젝트·분야·키를 모두 지운다(하드 삭제). 이메일 인증은 요구하지 않는다(예전 키 삭제와 같음). 성공하면 `200 {"message":"삭제되었습니다."}`. 같은 프로젝트를 동시에 지우면 하나만 200이고 나머지는 404
 - 남의 프로젝트(목록 제외 모든 프로젝트 API)는 `404 PROJECT_NOT_FOUND`
-- 관리자(OPN-71 대체): `GET /admin/api-applications?status=&page=&size=`(PageResponse, 신청 시각 역순·같으면 id 역순, page 0~21474836·size 1~100), `GET /admin/api-applications/{applicationId}`, `POST .../approve`, `POST .../reject`(`{ "reason" }` 1~200자, 공백만이면 400). `applicationId`는 `api_project_fields.id`. ADMIN 액세스 토큰으로 열고 USER는 `403 FORBIDDEN`. 옛 `/api-key-applications`는 1단계에서 테이블과 함께 지웠다
+- 관리자(OPN-71 대체): `GET /admin/api-applications?status=&field=&level=&type=&keyword=&page=&size=`(PageResponse, 신청 시각 역순·같으면 id 역순, page 0~21474836·size 1~100), `GET /admin/api-applications/{applicationId}`, `POST .../approve`, `POST .../reject`(`{ "reason" }` 1~200자, 공백만이면 400). `applicationId`는 `api_project_fields.id`. ADMIN 액세스 토큰으로 열고 USER는 `403 FORBIDDEN`. 옛 `/api-key-applications`는 1단계에서 테이블과 함께 지웠다
+  - 목록 항목에 신청자 이름(`applicantName`, 사용자 행이 없으면 null)과 구분(`applicationType`)을 준다(11/27 태스크). 분야·단계 필터는 분야 목록 하나로 합쳐서 `in`으로 거르고, 서로 맞지 않으면 쿼리 없이 빈 페이지. `keyword`는 프로젝트 이름 또는 신청자 이름 부분 일치(`escapeLike`, 앞뒤 공백 제거, 공백뿐이면 400, 1~30자). 신청자는 FK가 없어 `left join`이다
   - 상세: 신청 내용(구분 `applicationType`·사용 목적 `purpose`)·처리 기록(`decidedAt`, `decidedBy`, `rejectReason`) + 프로젝트(이름·키 발급 여부·분야 전체) + 신청자(`applicant`, 사용자 행이 없으면 null). 승인·반려 응답도 처리 뒤의 상세를 준다
   - `PENDING`이 아닌 신청을 승인·반려하면 `409 APPLICATION_ALREADY_DECIDED`, 없는 신청은 `404 APPLICATION_NOT_FOUND`
   - 키는 첫 분야 신청 때 발급되므로 승인은 상태만 바꾼다. 그 규칙 전에 만든 키 없는 프로젝트만 승인 때 키를 발급하고 해시만 저장한다(원문은 재발급 API로 받음)
