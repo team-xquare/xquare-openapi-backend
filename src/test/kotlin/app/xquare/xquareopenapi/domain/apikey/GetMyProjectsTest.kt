@@ -91,13 +91,14 @@ class GetMyProjectsTest @Autowired constructor(
             status { isOk() }
             jsonPath("$.projectId") { value(project.id!!) }
             jsonPath("$.name") { value("급식 알리미") }
-            jsonPath("$.purpose") { value("테스트 목적") }
+            jsonPath("$.purpose") { doesNotExist() }
             jsonPath("$.createdAt") { value("2026-11-24T09:30:00+09:00") }
             jsonPath("$.keyIssued") { value(false) }
             jsonPath("$.issuedAt") { value(nullValue()) }
             jsonPath("$.expiresAt") { value(nullValue()) }
             jsonPath("$.fields[0].field") { value("STUDENT") }
             jsonPath("$.fields[0].status") { value("PENDING") }
+            jsonPath("$.fields[0].purpose") { value("테스트 목적") }
             jsonPath("$.fields[0].rejectReason") { value(nullValue()) }
         }
     }

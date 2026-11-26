@@ -12,6 +12,8 @@ import java.time.OffsetDateTime
 data class ProjectSummaryResponse(
     val projectId: Long,
     val name: String,
+    // 서비스 URL. 없으면 null
+    val serviceUrl: String?,
     val keyIssued: Boolean,
     // 지금 키 값을 발급한 시각. 발급 전이면 null. 한국 시간(+09:00)
     val issuedAt: OffsetDateTime?,
@@ -24,6 +26,7 @@ data class ProjectSummaryResponse(
         fun of(project: ApiProject, fields: List<ApiProjectField>) = ProjectSummaryResponse(
             projectId = project.id!!,
             name = project.name,
+            serviceUrl = project.serviceUrl,
             keyIssued = project.keyIssued,
             issuedAt = project.issuedAt?.withSeoulOffset(),
             expiresAt = project.expiresAt?.withSeoulOffset(),
@@ -32,14 +35,16 @@ data class ProjectSummaryResponse(
     }
 }
 
-// 프로젝트의 분야 하나와 신청 상태. 반려됐으면 사유가 있다.
+// 프로젝트의 분야 하나와 사용 목적, 신청 상태. 반려됐으면 사유가 있다.
 data class ProjectFieldResponse(
     val field: ApiKeyField,
     val level: AccessLevel,
     val status: ApplicationStatus,
+    val purpose: String,
     val rejectReason: String?,
 ) {
     companion object {
-        fun from(field: ApiProjectField) = ProjectFieldResponse(field.field, field.field.level, field.status, field.rejectReason)
+        fun from(field: ApiProjectField) =
+            ProjectFieldResponse(field.field, field.field.level, field.status, field.purpose, field.rejectReason)
     }
 }
